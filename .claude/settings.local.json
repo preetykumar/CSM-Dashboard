@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__zendesk__getTicketByID",
+      "mcp__zendesk__searchTickets"
+    ],
+    "deny": []
+  }
+}
