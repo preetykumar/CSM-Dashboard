@@ -1,2 +1,19 @@
-dist
-node_modules
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+
+# Database files
+*.db
+*.sqlite
+backend/data/
+
+# IDE
+.idea/
+.vscode/
+
+# Build outputs
+frontend/dist/
+backend/dist/

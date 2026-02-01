@@ -2,7 +2,37 @@
   "permissions": {
     "allow": [
       "mcp__zendesk__getTicketByID",
-      "mcp__zendesk__searchTickets"
+      "mcp__zendesk__searchTickets",
+      "Bash(npm install:*)",
+      "Bash(export NVM_DIR=\"$HOME/.nvm\")",
+      "Bash([ -s \"/usr/local/opt/nvm/nvm.sh\" ])",
+      "Bash(. \"/usr/local/opt/nvm/nvm.sh\")",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(lsof:*)",
+      "Bash(npm run build:*)",
+      "Bash([ -s \"$NVM_DIR/nvm.sh\" ])",
+      "Bash(. \"$NVM_DIR/nvm.sh\")",
+      "Bash(nvm use:*)",
+      "Bash(npx tsc:*)",
+      "Bash(source:*)",
+      "Bash(python3:*)",
+      "Bash(xargs kill -9)",
+      "Bash(cd:*)",
+      "Bash(cd /Users/preetykumar/Deque\\\\ 2026/Dev/zendesk-mcp/backend && sqlite3:*)",
+      "Bash(sqlite3 data/zendesk-cache.db \"DELETE FROM csm_assignments;\")",
+      "Bash(node -e:*)",
+      "Bash(node scripts/sync-csm.cjs:*)",
+      "Bash(echo:*)",
+      "Bash(env)",
+      "Bash(ls:*)",
+      "Bash(sqlite3:*)",
+      "Bash(gh repo create CSM-Dashboard --public --description \"Customer Success Manager Dashboard - Zendesk integration with Salesforce CSM assignments\")",
+      "Bash(/opt/homebrew/bin/gh --version)",
+      "Bash(/usr/local/bin/gh:*)",
+      "Bash(git remote remove:*)",
+      "Bash(git remote add:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }
