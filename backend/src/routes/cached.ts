@@ -8,6 +8,10 @@ const ADMIN_EMAILS = [
   "katile.olsen@deque.com",
   "neel.sinha@deque.com",
   "preety.kumar@deque.com",
+  "sujasree.kurapati@deque.com",
+  "anik.ganguly@deque.com",
+  "dylan.barrell@deque.com",
+  "mike.farrell@deque.com",
 ];
 
 function isAdmin(email: string | undefined): boolean {

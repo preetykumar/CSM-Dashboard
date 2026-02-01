@@ -1,9 +1,14 @@
 import express from "express";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import session from "express-session";
 import passport from "passport";
 import cron from "node-cron";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { ZendeskService } from "./services/zendesk.js";
 import { SalesforceService } from "./services/salesforce.js";
 import { DatabaseService } from "./services/database.js";
@@ -24,6 +29,17 @@ const PORT = process.env.PORT || 3001;
 const SYNC_SCHEDULE = process.env.SYNC_SCHEDULE || "0 2 * * *"; // Default: 2 AM daily
 const SESSION_SECRET = process.env.SESSION_SECRET || "zendesk-dashboard-secret-change-me";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+// Extract origin from FRONTEND_URL for CORS (remove path, keep protocol://host)
+function getOriginFromUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return url;
+  }
+}
+const CORS_ORIGIN = getOriginFromUrl(FRONTEND_URL);
 
 function loadZendeskConfig() {
   const subdomain = process.env.ZENDESK_SUBDOMAIN;
@@ -57,11 +73,14 @@ const app = express();
 // CORS configuration to allow credentials
 app.use(
   cors({
-    origin: FRONTEND_URL,
+    origin: CORS_ORIGIN,
     credentials: true,
   })
 );
 app.use(express.json());
+
+// Trust proxy for Cloud Run (required for secure cookies behind load balancer)
+app.set("trust proxy", 1);
 
 // Session configuration
 app.use(
@@ -73,6 +92,7 @@ app.use(
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      sameSite: "lax", // Same-origin since frontend is served from same Cloud Run instance
     },
   })
 );
@@ -133,6 +153,19 @@ app.use("/api/sync", optionalAuth, createSyncRoutes(sync));
 if (salesforce) {
   app.use("/api/salesforce", optionalAuth, createSalesforceRoutes(salesforce));
 }
+
+// Serve static frontend files in production
+const publicPath = path.join(__dirname, "..", "public");
+app.use(express.static(publicPath));
+
+// SPA fallback - serve index.html for non-API routes
+app.get("*", (req, res) => {
+  if (!req.path.startsWith("/api")) {
+    res.sendFile(path.join(publicPath, "index.html"));
+  } else {
+    res.status(404).json({ error: "API endpoint not found" });
+  }
+});
 
 app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);

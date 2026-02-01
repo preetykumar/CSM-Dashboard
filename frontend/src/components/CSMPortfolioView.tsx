@@ -150,6 +150,7 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
   const [drilldownTickets, setDrilldownTickets] = useState<{
     title: string;
     tickets: Ticket[];
+    grouped?: boolean;
   } | null>(null);
 
   // Fetch enhanced summary when expanded
@@ -234,7 +235,7 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
       const updatedAt = new Date(t.updated_at);
       return updatedAt >= start && updatedAt <= end;
     });
-    setDrilldownTickets({ title: `Bugs Fixed - ${quarterLabel}`, tickets: bugsFixed });
+    setDrilldownTickets({ title: `Bugs Fixed - ${quarterLabel}`, tickets: bugsFixed, grouped: true });
   };
 
   const handleQuarterlyFeaturesClick = (quarter: "current" | "previous") => {
@@ -245,7 +246,7 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
       const updatedAt = new Date(t.updated_at);
       return updatedAt >= start && updatedAt <= end;
     });
-    setDrilldownTickets({ title: `Features Completed - ${quarterLabel}`, tickets: features });
+    setDrilldownTickets({ title: `Features Completed - ${quarterLabel}`, tickets: features, grouped: true });
   };
 
   const handleQuarterlyTotalClick = (quarter: "current" | "previous") => {
@@ -256,7 +257,7 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
       const updatedAt = new Date(t.updated_at);
       return updatedAt >= start && updatedAt <= end;
     });
-    setDrilldownTickets({ title: `All Closed - ${quarterLabel}`, tickets: closed });
+    setDrilldownTickets({ title: `All Closed - ${quarterLabel}`, tickets: closed, grouped: true });
   };
 
   return (
@@ -354,26 +355,30 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
               <span className="drilldown-count">{drilldownTickets.tickets.length} tickets</span>
               <button onClick={() => setDrilldownTickets(null)}>Close</button>
             </div>
-            <div className="ticket-table-container">
-              <table className="ticket-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Subject</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Priority</th>
-                    <th>Workflow</th>
-                    <th>Updated</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {drilldownTickets.tickets.map((ticket) => (
-                    <TicketDetailRow key={ticket.id} ticket={ticket} />
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {drilldownTickets.grouped ? (
+              <GroupedTicketView tickets={drilldownTickets.tickets} />
+            ) : (
+              <div className="ticket-table-container">
+                <table className="ticket-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Subject</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                      <th>Priority</th>
+                      <th>Workflow</th>
+                      <th>Updated</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {drilldownTickets.tickets.map((ticket) => (
+                      <TicketDetailRow key={ticket.id} ticket={ticket} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -411,5 +416,149 @@ function TicketDetailRow({ ticket }: { ticket: Ticket }) {
       <td className="ticket-workflow">{ticket.workflow_status || "-"}</td>
       <td className="ticket-updated">{formatDate(ticket.updated_at)}</td>
     </tr>
+  );
+}
+
+interface ProductGroup {
+  productName: string;
+  types: {
+    typeName: string;
+    tickets: Ticket[];
+  }[];
+}
+
+function GroupedTicketView({ tickets }: { tickets: Ticket[] }) {
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
+  const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
+
+  // Group tickets by product, then by issue type
+  const groupedData: ProductGroup[] = (() => {
+    const productMap = new Map<string, Map<string, Ticket[]>>();
+
+    for (const ticket of tickets) {
+      const product = ticket.product || "Unassigned";
+      const ticketType = ticket.ticket_type === "bug" ? "Bug" : ticket.ticket_type === "feature" ? "Feature" : "Other";
+
+      if (!productMap.has(product)) {
+        productMap.set(product, new Map());
+      }
+      const typeMap = productMap.get(product)!;
+      if (!typeMap.has(ticketType)) {
+        typeMap.set(ticketType, []);
+      }
+      typeMap.get(ticketType)!.push(ticket);
+    }
+
+    // Convert to array and sort
+    const result: ProductGroup[] = [];
+    const sortedProducts = Array.from(productMap.keys()).sort();
+
+    for (const productName of sortedProducts) {
+      const typeMap = productMap.get(productName)!;
+      const types: { typeName: string; tickets: Ticket[] }[] = [];
+
+      // Sort types: Bug, Feature, Other
+      const typeOrder = ["Bug", "Feature", "Other"];
+      for (const typeName of typeOrder) {
+        if (typeMap.has(typeName)) {
+          types.push({ typeName, tickets: typeMap.get(typeName)! });
+        }
+      }
+
+      result.push({ productName, types });
+    }
+
+    return result;
+  })();
+
+  const toggleProduct = (productName: string) => {
+    const newSet = new Set(expandedProducts);
+    if (newSet.has(productName)) {
+      newSet.delete(productName);
+    } else {
+      newSet.add(productName);
+    }
+    setExpandedProducts(newSet);
+  };
+
+  const toggleType = (key: string) => {
+    const newSet = new Set(expandedTypes);
+    if (newSet.has(key)) {
+      newSet.delete(key);
+    } else {
+      newSet.add(key);
+    }
+    setExpandedTypes(newSet);
+  };
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+
+  return (
+    <div className="grouped-ticket-view">
+      {groupedData.map((product) => {
+        const productExpanded = expandedProducts.has(product.productName);
+        const totalTickets = product.types.reduce((sum, t) => sum + t.tickets.length, 0);
+
+        return (
+          <div key={product.productName} className="product-group">
+            <div
+              className="product-group-header"
+              onClick={() => toggleProduct(product.productName)}
+            >
+              <span className="expand-icon">{productExpanded ? "▼" : "▶"}</span>
+              <span className="product-name">{product.productName}</span>
+              <span className="product-count">{totalTickets} tickets</span>
+            </div>
+
+            {productExpanded && (
+              <div className="product-group-content">
+                {product.types.map((type) => {
+                  const typeKey = `${product.productName}-${type.typeName}`;
+                  const typeExpanded = expandedTypes.has(typeKey);
+
+                  return (
+                    <div key={typeKey} className="type-group">
+                      <div
+                        className={`type-group-header type-${type.typeName.toLowerCase()}`}
+                        onClick={() => toggleType(typeKey)}
+                      >
+                        <span className="expand-icon">{typeExpanded ? "▼" : "▶"}</span>
+                        <span className="type-name">{type.typeName}</span>
+                        <span className="type-count">{type.tickets.length}</span>
+                      </div>
+
+                      {typeExpanded && (
+                        <div className="type-group-tickets">
+                          {type.tickets.map((ticket) => (
+                            <div
+                              key={ticket.id}
+                              className="grouped-ticket-row"
+                              onClick={() => {
+                                const url = ticket.url || `https://dequehelp.zendesk.com/agent/tickets/${ticket.id}`;
+                                window.open(url, "_blank");
+                              }}
+                            >
+                              <span className="ticket-id">#{ticket.id}</span>
+                              <span className="ticket-subject">{ticket.subject || "No subject"}</span>
+                              <span className={`ticket-priority priority-${ticket.priority || "normal"}`}>
+                                {ticket.priority || "normal"}
+                              </span>
+                              <span className="ticket-updated">{formatDate(ticket.updated_at)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

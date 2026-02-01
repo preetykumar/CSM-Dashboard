@@ -23,6 +23,9 @@ export function configureAuth() {
   const callbackURL = process.env.GOOGLE_CALLBACK_URL || "http://localhost:3001/api/auth/google/callback";
   const allowedDomain = process.env.ALLOWED_DOMAIN || "deque.com";
 
+  console.log("OAuth Config - Client ID:", clientID?.substring(0, 20) + "...");
+  console.log("OAuth Config - Callback URL:", callbackURL);
+
   if (!clientID || !clientSecret) {
     console.warn("Google OAuth not configured. Authentication disabled.");
     return null;
