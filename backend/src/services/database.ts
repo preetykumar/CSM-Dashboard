@@ -31,6 +31,8 @@ export interface CachedTicket {
   module: string | null;
   ticket_type: string | null; // 'bug', 'feature', or 'other'
   workflow_status: string | null;
+  issue_subtype: string | null; // More specific categorization within type
+  is_escalated: number; // 0 or 1, for SQLite boolean
 }
 
 export interface CachedCSMAssignment {
@@ -141,6 +143,12 @@ export class DatabaseService {
     if (!ticketColumnNames.includes("workflow_status")) {
       this.db.exec("ALTER TABLE tickets ADD COLUMN workflow_status TEXT");
     }
+    if (!ticketColumnNames.includes("issue_subtype")) {
+      this.db.exec("ALTER TABLE tickets ADD COLUMN issue_subtype TEXT");
+    }
+    if (!ticketColumnNames.includes("is_escalated")) {
+      this.db.exec("ALTER TABLE tickets ADD COLUMN is_escalated INTEGER DEFAULT 0");
+    }
 
     // Check organizations table for new columns
     const orgColumns = this.db.pragma("table_info(organizations)") as any[];
@@ -197,8 +205,8 @@ export class DatabaseService {
   // Tickets
   upsertTicket(ticket: CachedTicket): void {
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO tickets (id, organization_id, subject, status, priority, requester_id, assignee_id, tags, created_at, updated_at, cached_at, product, module, ticket_type, workflow_status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO tickets (id, organization_id, subject, status, priority, requester_id, assignee_id, tags, created_at, updated_at, cached_at, product, module, ticket_type, workflow_status, issue_subtype, is_escalated)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       ticket.id,
@@ -214,14 +222,16 @@ export class DatabaseService {
       ticket.product,
       ticket.module,
       ticket.ticket_type,
-      ticket.workflow_status
+      ticket.workflow_status,
+      ticket.issue_subtype,
+      ticket.is_escalated
     );
   }
 
   upsertTickets(tickets: CachedTicket[]): void {
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO tickets (id, organization_id, subject, status, priority, requester_id, assignee_id, tags, created_at, updated_at, cached_at, product, module, ticket_type, workflow_status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)
+      INSERT OR REPLACE INTO tickets (id, organization_id, subject, status, priority, requester_id, assignee_id, tags, created_at, updated_at, cached_at, product, module, ticket_type, workflow_status, issue_subtype, is_escalated)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?)
     `);
     const transaction = this.db.transaction((tickets: CachedTicket[]) => {
       for (const ticket of tickets) {
@@ -239,11 +249,22 @@ export class DatabaseService {
           ticket.product,
           ticket.module,
           ticket.ticket_type,
-          ticket.workflow_status
+          ticket.workflow_status,
+          ticket.issue_subtype,
+          ticket.is_escalated
         );
       }
     });
     transaction(tickets);
+  }
+
+  // Get escalation count for an organization
+  getEscalationCount(orgId: number): number {
+    const row = this.db.prepare(`
+      SELECT COUNT(*) as count FROM tickets
+      WHERE organization_id = ? AND is_escalated = 1 AND status NOT IN ('solved', 'closed')
+    `).get(orgId) as { count: number };
+    return row.count || 0;
   }
 
   getTicketsByOrganization(orgId: number): CachedTicket[] {

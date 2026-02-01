@@ -159,6 +159,21 @@ export class ZendeskService {
         }
       }
 
+      // Detect issue subtype field
+      if (
+        titleLower.includes("issue subtype") ||
+        titleLower.includes("sub-type") ||
+        titleLower.includes("subtype") ||
+        titleLower.includes("subcategory") ||
+        titleLower.includes("sub-category")
+      ) {
+        if (!this.fieldMapping.issueSubtypeFieldId) {
+          this.fieldMapping.issueSubtypeFieldId = field.id;
+          this.fieldMapping.issueSubtypeFieldName = field.title;
+          console.log(`Detected issue subtype field: ${field.title} (ID: ${field.id})`);
+        }
+      }
+
       // Legacy: Detect request type field (for backward compatibility)
       if (
         titleLower.includes("request type") ||
@@ -188,13 +203,41 @@ export class ZendeskService {
     module: string;
     ticketType: "bug" | "feature" | "other";
     workflowStatus: string;
+    issueSubtype: string;
+    isEscalated: boolean;
   } {
     return {
       product: this.getProductName(ticket),
       module: this.getModuleName(ticket),
       ticketType: this.getTicketType(ticket),
       workflowStatus: this.getWorkflowStatus(ticket),
+      issueSubtype: this.getIssueSubtype(ticket),
+      isEscalated: this.checkEscalation(ticket),
     };
+  }
+
+  // Extract issue subtype from ticket custom fields
+  private getIssueSubtype(ticket: Ticket): string {
+    const { issueSubtypeFieldId } = this.fieldMapping;
+    if (issueSubtypeFieldId) {
+      const value = this.getCustomFieldValue(ticket, issueSubtypeFieldId);
+      if (value) return String(value);
+    }
+    // Fallback: use module as issue subtype if no specific field
+    return this.getModuleName(ticket);
+  }
+
+  // Check if ticket is escalated (via tags or priority)
+  private checkEscalation(ticket: Ticket): boolean {
+    // Check tags for escalation indicators
+    if (ticket.tags) {
+      const escalationTags = ["escalated", "escalation", "exec_escalation", "management_escalation", "urgent_escalation"];
+      const hasEscalationTag = ticket.tags.some((tag: string) =>
+        escalationTags.some((et) => tag.toLowerCase().includes(et))
+      );
+      if (hasEscalationTag) return true;
+    }
+    return false;
   }
 
   // Extract module name from ticket custom fields
@@ -204,7 +247,7 @@ export class ZendeskService {
       const value = this.getCustomFieldValue(ticket, moduleFieldId);
       if (value) return String(value);
     }
-    return "General";
+    return "Helpdesk Status (Zendesk)";
   }
 
   // Extract ticket type (bug or feature) from custom fields
@@ -417,18 +460,14 @@ export class ZendeskService {
         const features = moduleTickets.filter((t) => this.getTicketType(t) === "feature");
         const completedFeatures = features.filter((t) => t.status === "solved" || t.status === "closed").length;
 
-        // Calculate bug health
+        // Calculate bug statistics
         const bugs = moduleTickets.filter((t) => this.getTicketType(t) === "bug");
-        const criticalBugs = bugs.filter((t) => t.priority === "urgent" || t.priority === "high");
-        const minorBugs = bugs.filter((t) => t.priority === "normal" || t.priority === "low" || !t.priority);
-        const blockerBugs = bugs.filter((t) =>
+        const openBugs = bugs.filter((t) => t.status !== "solved" && t.status !== "closed");
+        const fixedBugs = bugs.filter((t) => t.status === "solved" || t.status === "closed");
+        const blockers = openBugs.filter((t) =>
           t.tags?.some((tag) => tag.toLowerCase().includes("blocker")) ||
           t.priority === "urgent"
-        );
-
-        const criticalFixed = criticalBugs.filter((t) => t.status === "solved" || t.status === "closed").length;
-        const minorPending = minorBugs.filter((t) => t.status !== "solved" && t.status !== "closed").length;
-        const blockers = blockerBugs.filter((t) => t.status !== "solved" && t.status !== "closed").length;
+        ).length;
 
         modules.push({
           moduleName,
@@ -436,11 +475,14 @@ export class ZendeskService {
           features: {
             completed: completedFeatures,
             total: features.length,
+            tickets: features,
           },
-          bugHealth: {
-            criticalFixed,
-            minorPending,
+          bugs: {
+            total: bugs.length,
+            open: openBugs.length,
+            fixed: fixedBugs.length,
             blockers,
+            tickets: bugs,
           },
           tickets: moduleTickets.sort(
             (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
@@ -928,12 +970,18 @@ export class ZendeskService {
 
         let featureRequests = 0;
         let problemReports = 0;
+        let escalations = 0;
         const priorityBreakdown = { urgent: 0, high: 0, normal: 0, low: 0 };
 
         for (const ticket of orgTickets) {
           const type = this.classifyRequestType(ticket);
           if (type === "featureRequest") featureRequests++;
           else if (type === "problemReport") problemReports++;
+
+          // Count escalations (via tags)
+          if (this.checkEscalation(ticket) && ticket.status !== "solved" && ticket.status !== "closed") {
+            escalations++;
+          }
 
           const priority = ticket.priority || "normal";
           if (priority === "urgent") priorityBreakdown.urgent++;
@@ -962,6 +1010,7 @@ export class ZendeskService {
           priorityBreakdown,
           featureRequests,
           problemReports,
+          escalations,
         });
       }
 
@@ -1017,12 +1066,18 @@ export class ZendeskService {
 
       let featureRequests = 0;
       let problemReports = 0;
+      let escalations = 0;
       const priorityBreakdown = { urgent: 0, high: 0, normal: 0, low: 0 };
 
       for (const ticket of orgTickets) {
         const type = this.classifyRequestType(ticket);
         if (type === "featureRequest") featureRequests++;
         else if (type === "problemReport") problemReports++;
+
+        // Count escalations
+        if (this.checkEscalation(ticket) && ticket.status !== "solved" && ticket.status !== "closed") {
+          escalations++;
+        }
 
         const priority = ticket.priority || "normal";
         if (priority === "urgent") priorityBreakdown.urgent++;
@@ -1048,6 +1103,7 @@ export class ZendeskService {
         priorityBreakdown,
         featureRequests,
         problemReports,
+        escalations,
       });
     }
 
@@ -1154,12 +1210,18 @@ export class ZendeskService {
 
         let featureRequests = 0;
         let problemReports = 0;
+        let escalations = 0;
         const priorityBreakdown = { urgent: 0, high: 0, normal: 0, low: 0 };
 
         for (const ticket of orgTickets) {
           const type = this.classifyRequestType(ticket);
           if (type === "featureRequest") featureRequests++;
           else if (type === "problemReport") problemReports++;
+
+          // Count escalations
+          if (this.checkEscalation(ticket) && ticket.status !== "solved" && ticket.status !== "closed") {
+            escalations++;
+          }
 
           const priority = ticket.priority || "normal";
           if (priority === "urgent") priorityBreakdown.urgent++;
@@ -1190,6 +1252,7 @@ export class ZendeskService {
           priorityBreakdown,
           featureRequests,
           problemReports,
+          escalations,
         });
       }
 

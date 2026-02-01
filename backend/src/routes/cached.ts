@@ -239,11 +239,17 @@ export function createCachedRoutes(db: DatabaseService): Router {
           // Count feature requests, problem reports, and priority breakdown
           let featureRequests = 0;
           let problemReports = 0;
+          let escalations = 0;
           const priorityBreakdown = { urgent: 0, high: 0, normal: 0, low: 0 };
 
           for (const t of tickets) {
             if (t.ticket_type === "feature") featureRequests++;
             else if (t.ticket_type === "bug") problemReports++;
+
+            // Count escalations (only open/active tickets)
+            if (t.is_escalated && !["solved", "closed"].includes(t.status)) {
+              escalations++;
+            }
 
             // Count by priority
             const priority = t.priority || "normal";
@@ -271,6 +277,7 @@ export function createCachedRoutes(db: DatabaseService): Router {
             priorityBreakdown,
             featureRequests,
             problemReports,
+            escalations,
           });
         }
 
@@ -480,21 +487,18 @@ function buildProductBacklog(tickets: CachedTicket[]): ProductBacklog[] {
       const features = moduleTickets.filter((t) => t.ticket_type === "feature");
       const completedFeatures = features.filter((t) => t.status === "solved" || t.status === "closed").length;
 
-      // Calculate bug health
+      // Calculate bug statistics
       const bugs = moduleTickets.filter((t) => t.ticket_type === "bug");
-      const criticalBugs = bugs.filter((t) => t.priority === "urgent" || t.priority === "high");
-      const minorBugs = bugs.filter((t) => t.priority === "normal" || t.priority === "low" || !t.priority);
+      const openBugs = bugs.filter((t) => t.status !== "solved" && t.status !== "closed");
+      const fixedBugs = bugs.filter((t) => t.status === "solved" || t.status === "closed");
 
-      const criticalFixed = criticalBugs.filter((t) => t.status === "solved" || t.status === "closed").length;
-      const minorPending = minorBugs.filter((t) => t.status !== "solved" && t.status !== "closed").length;
-
-      // Check for blockers in tags
-      const blockers = bugs.filter((t) => {
+      // Check for blockers in tags or urgent priority
+      const blockers = openBugs.filter((t) => {
         const tags = JSON.parse(t.tags || "[]") as string[];
         return (
           tags.some((tag: string) => tag.toLowerCase().includes("blocker")) ||
           t.priority === "urgent"
-        ) && t.status !== "solved" && t.status !== "closed";
+        );
       }).length;
 
       modules.push({
@@ -503,11 +507,14 @@ function buildProductBacklog(tickets: CachedTicket[]): ProductBacklog[] {
         features: {
           completed: completedFeatures,
           total: features.length,
+          tickets: features.map((t) => mapCachedTicketToDetailed(t)),
         },
-        bugHealth: {
-          criticalFixed,
-          minorPending,
+        bugs: {
+          total: bugs.length,
+          open: openBugs.length,
+          fixed: fixedBugs.length,
           blockers,
+          tickets: bugs.map((t) => mapCachedTicketToDetailed(t)),
         },
         tickets: moduleTickets.map((t) => mapCachedTicketToDetailed(t)),
       });
@@ -562,5 +569,7 @@ function mapCachedTicketToDetailed(t: CachedTicket): any {
     module: t.module,
     ticket_type: t.ticket_type,
     workflow_status: t.workflow_status || getDefaultStatus(t.status),
+    issue_subtype: t.issue_subtype || t.module || "Helpdesk Status (Zendesk)",
+    is_escalated: t.is_escalated === 1,
   };
 }

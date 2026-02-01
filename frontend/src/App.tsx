@@ -82,7 +82,7 @@ function Dashboard() {
       <header>
         <div className="header-top">
           <div>
-            <h1>Zendesk Customer Dashboard</h1>
+            <h1>Customer Success Manager Dashboard</h1>
             <p>dequehelp.zendesk.com</p>
           </div>
           <UserMenu />

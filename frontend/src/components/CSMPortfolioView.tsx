@@ -40,7 +40,7 @@ export function CSMPortfolioView() {
   if (portfolios.length === 0) {
     return (
       <div className="no-data-message">
-        No CSM portfolios found. Make sure there are tickets with @deque.com requesters.
+        Fetching the latest data for CSM portfolios...
       </div>
     );
   }
@@ -144,7 +144,7 @@ interface CustomerCardProps {
 }
 
 function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
-  const { organization, ticketStats, priorityBreakdown, featureRequests, problemReports, tickets } = customer;
+  const { organization, ticketStats, priorityBreakdown, featureRequests, problemReports, escalations, tickets } = customer;
   const [enhancedSummary, setEnhancedSummary] = useState<EnhancedCustomerSummary | null>(null);
   const [loadingEnhanced, setLoadingEnhanced] = useState(false);
   const [drilldownTickets, setDrilldownTickets] = useState<{
@@ -168,6 +168,14 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
     setDrilldownTickets({ title: `${productName} - ${moduleName}`, tickets: moduleTickets });
   };
 
+  const handleModuleFeaturesClick = (productName: string, moduleName: string, featureTickets: Ticket[]) => {
+    setDrilldownTickets({ title: `${productName} - ${moduleName} - Features`, tickets: featureTickets });
+  };
+
+  const handleModuleBugsClick = (productName: string, moduleName: string, bugTickets: Ticket[]) => {
+    setDrilldownTickets({ title: `${productName} - ${moduleName} - Bugs`, tickets: bugTickets });
+  };
+
   const handlePriorityClick = (priority: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const filteredTickets = tickets.filter((t) => (t.priority || "normal") === priority);
@@ -180,6 +188,12 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
     const filteredTickets = tickets.filter((t) => t.ticket_type === type);
     const typeLabel = type === "feature" ? "Feature Requests" : "Bug Reports";
     setDrilldownTickets({ title: typeLabel, tickets: filteredTickets });
+  };
+
+  const handleEscalationsClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const escalatedTickets = tickets.filter((t) => t.is_escalated && !["solved", "closed"].includes(t.status));
+    setDrilldownTickets({ title: "Escalated Tickets", tickets: escalatedTickets });
   };
 
   // Velocity drill-down handlers
@@ -300,6 +314,11 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
             <span className="problem-count clickable" onClick={(e) => handleTypeClick("bug", e)}>
               {problemReports} problems
             </span>
+            {escalations > 0 && (
+              <span className="escalation-count clickable" onClick={handleEscalationsClick}>
+                {escalations} escalated
+              </span>
+            )}
           </div>
         </div>
         <span className="expand-icon">{expanded ? "▼" : "▶"}</span>
@@ -336,6 +355,8 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
                       key={product.productName}
                       backlog={product}
                       onModuleClick={handleModuleClick}
+                      onFeaturesClick={handleModuleFeaturesClick}
+                      onBugsClick={handleModuleBugsClick}
                     />
                   ))
                 )}
@@ -365,6 +386,7 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
                       <th>ID</th>
                       <th>Subject</th>
                       <th>Type</th>
+                      <th>Subtype</th>
                       <th>Status</th>
                       <th>Priority</th>
                       <th>Workflow</th>
@@ -401,16 +423,18 @@ function TicketDetailRow({ ticket }: { ticket: Ticket }) {
   };
 
   return (
-    <tr className="ticket-detail-row" onClick={openInZendesk}>
+    <tr className={`ticket-detail-row ${ticket.is_escalated ? "escalated" : ""}`} onClick={openInZendesk}>
       <td className="ticket-id">
         <a href={ticket.url || `https://dequehelp.zendesk.com/agent/tickets/${ticket.id}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
           #{ticket.id}
         </a>
+        {ticket.is_escalated && <span className="escalation-indicator" title="Escalated">!</span>}
       </td>
       <td className="ticket-subject">{ticket.subject || "No subject"}</td>
       <td className={`ticket-type type-${ticket.ticket_type || "other"}`}>
         {ticket.ticket_type === "bug" ? "Bug" : ticket.ticket_type === "feature" ? "Feature" : "Other"}
       </td>
+      <td className="ticket-subtype">{ticket.issue_subtype || ticket.module || "-"}</td>
       <td className={`ticket-status status-${ticket.status}`}>{ticket.status}</td>
       <td className={`ticket-priority priority-${ticket.priority || "normal"}`}>{ticket.priority || "normal"}</td>
       <td className="ticket-workflow">{ticket.workflow_status || "-"}</td>
@@ -421,6 +445,7 @@ function TicketDetailRow({ ticket }: { ticket: Ticket }) {
 
 interface ProductGroup {
   productName: string;
+  isPrimary: boolean;
   types: {
     typeName: string;
     tickets: Ticket[];
@@ -432,6 +457,7 @@ function GroupedTicketView({ tickets }: { tickets: Ticket[] }) {
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
 
   // Group tickets by product, then by issue type
+  // Primary product (customer's main product) is shown first, others under "Other Products"
   const groupedData: ProductGroup[] = (() => {
     const productMap = new Map<string, Map<string, Ticket[]>>();
 
@@ -449,23 +475,55 @@ function GroupedTicketView({ tickets }: { tickets: Ticket[] }) {
       typeMap.get(ticketType)!.push(ticket);
     }
 
-    // Convert to array and sort
+    // Find primary product (the one with the most tickets)
+    let primaryProduct = "";
+    let maxCount = 0;
+    for (const [product, typeMap] of productMap) {
+      let count = 0;
+      for (const tickets of typeMap.values()) {
+        count += tickets.length;
+      }
+      if (count > maxCount) {
+        maxCount = count;
+        primaryProduct = product;
+      }
+    }
+
+    // Build result: primary product first, then others
     const result: ProductGroup[] = [];
-    const sortedProducts = Array.from(productMap.keys()).sort();
+    const typeOrder = ["Bug", "Feature", "Other"];
 
-    for (const productName of sortedProducts) {
-      const typeMap = productMap.get(productName)!;
+    // Helper to build types array for a product
+    const buildTypes = (typeMap: Map<string, Ticket[]>) => {
       const types: { typeName: string; tickets: Ticket[] }[] = [];
-
-      // Sort types: Bug, Feature, Other
-      const typeOrder = ["Bug", "Feature", "Other"];
       for (const typeName of typeOrder) {
         if (typeMap.has(typeName)) {
           types.push({ typeName, tickets: typeMap.get(typeName)! });
         }
       }
+      return types;
+    };
 
-      result.push({ productName, types });
+    // Add primary product first
+    if (primaryProduct && productMap.has(primaryProduct)) {
+      result.push({
+        productName: primaryProduct,
+        isPrimary: true,
+        types: buildTypes(productMap.get(primaryProduct)!),
+      });
+    }
+
+    // Add other products sorted alphabetically
+    const otherProducts = Array.from(productMap.keys())
+      .filter((p) => p !== primaryProduct)
+      .sort();
+
+    for (const productName of otherProducts) {
+      result.push({
+        productName,
+        isPrimary: false,
+        types: buildTypes(productMap.get(productName)!),
+      });
     }
 
     return result;
@@ -503,13 +561,16 @@ function GroupedTicketView({ tickets }: { tickets: Ticket[] }) {
         const totalTickets = product.types.reduce((sum, t) => sum + t.tickets.length, 0);
 
         return (
-          <div key={product.productName} className="product-group">
+          <div key={product.productName} className={`product-group ${product.isPrimary ? "primary-product" : "other-product"}`}>
             <div
               className="product-group-header"
               onClick={() => toggleProduct(product.productName)}
             >
               <span className="expand-icon">{productExpanded ? "▼" : "▶"}</span>
-              <span className="product-name">{product.productName}</span>
+              <span className="product-name">
+                {product.productName}
+                {product.isPrimary && <span className="primary-badge">Primary</span>}
+              </span>
               <span className="product-count">{totalTickets} tickets</span>
             </div>
 
@@ -535,13 +596,17 @@ function GroupedTicketView({ tickets }: { tickets: Ticket[] }) {
                           {type.tickets.map((ticket) => (
                             <div
                               key={ticket.id}
-                              className="grouped-ticket-row"
+                              className={`grouped-ticket-row ${ticket.is_escalated ? "escalated" : ""}`}
                               onClick={() => {
                                 const url = ticket.url || `https://dequehelp.zendesk.com/agent/tickets/${ticket.id}`;
                                 window.open(url, "_blank");
                               }}
                             >
-                              <span className="ticket-id">#{ticket.id}</span>
+                              <span className="ticket-id">
+                                #{ticket.id}
+                                {ticket.is_escalated && <span className="escalation-indicator" title="Escalated">!</span>}
+                              </span>
+                              <span className="ticket-subtype">{ticket.issue_subtype || ticket.module || "-"}</span>
                               <span className="ticket-subject">{ticket.subject || "No subject"}</span>
                               <span className={`ticket-priority priority-${ticket.priority || "normal"}`}>
                                 {ticket.priority || "normal"}

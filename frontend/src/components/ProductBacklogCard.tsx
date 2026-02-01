@@ -4,9 +4,11 @@ import type { ProductBacklog, ModuleSummary, Ticket } from "../types";
 interface ProductBacklogCardProps {
   backlog: ProductBacklog;
   onModuleClick: (productName: string, moduleName: string, tickets: Ticket[]) => void;
+  onFeaturesClick?: (productName: string, moduleName: string, tickets: Ticket[]) => void;
+  onBugsClick?: (productName: string, moduleName: string, tickets: Ticket[]) => void;
 }
 
-export function ProductBacklogCard({ backlog, onModuleClick }: ProductBacklogCardProps) {
+export function ProductBacklogCard({ backlog, onModuleClick, onFeaturesClick, onBugsClick }: ProductBacklogCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -28,6 +30,8 @@ export function ProductBacklogCard({ backlog, onModuleClick }: ProductBacklogCar
               module={module}
               productName={backlog.productName}
               onClick={() => onModuleClick(backlog.productName, module.moduleName, module.tickets)}
+              onFeaturesClick={onFeaturesClick ? () => onFeaturesClick(backlog.productName, module.moduleName, module.features.tickets) : undefined}
+              onBugsClick={onBugsClick ? () => onBugsClick(backlog.productName, module.moduleName, module.bugs.tickets) : undefined}
             />
           ))}
         </div>
@@ -40,12 +44,32 @@ interface ModuleRowProps {
   module: ModuleSummary;
   productName: string;
   onClick: () => void;
+  onFeaturesClick?: () => void;
+  onBugsClick?: () => void;
 }
 
-function ModuleRow({ module, onClick }: ModuleRowProps) {
+function ModuleRow({ module, onClick, onFeaturesClick, onBugsClick }: ModuleRowProps) {
   const featurePercent = module.features.total > 0
     ? Math.round((module.features.completed / module.features.total) * 100)
     : 0;
+
+  const handleFeaturesClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onFeaturesClick) {
+      onFeaturesClick();
+    } else {
+      onClick();
+    }
+  };
+
+  const handleBugsClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onBugsClick) {
+      onBugsClick();
+    } else {
+      onClick();
+    }
+  };
 
   return (
     <div className="module-row" onClick={onClick}>
@@ -57,7 +81,7 @@ function ModuleRow({ module, onClick }: ModuleRowProps) {
       </div>
 
       <div className="module-metrics">
-        <div className="module-metric features-metric">
+        <div className="module-metric features-metric clickable" onClick={handleFeaturesClick}>
           <span className="metric-label">Features:</span>
           <div className="progress-bar-container">
             <div
@@ -70,21 +94,25 @@ function ModuleRow({ module, onClick }: ModuleRowProps) {
           </span>
         </div>
 
-        <div className="module-metric bugs-metric">
+        <div className="module-metric bugs-metric clickable" onClick={handleBugsClick}>
           <span className="metric-label">Bugs:</span>
           <span className="bug-stats">
-            <span className="bug-critical" title="Critical bugs fixed">
-              {module.bugHealth.criticalFixed} critical ✓
+            <span className="bug-total" title="Total bugs">
+              {module.bugs.total} total
             </span>
             <span className="bug-separator">|</span>
-            <span className="bug-minor" title="Minor bugs pending">
-              {module.bugHealth.minorPending} minor pending
+            <span className="bug-open" title="Open bugs">
+              {module.bugs.open} open
             </span>
-            {module.bugHealth.blockers > 0 && (
+            <span className="bug-separator">|</span>
+            <span className="bug-fixed" title="Fixed bugs">
+              {module.bugs.fixed} fixed
+            </span>
+            {module.bugs.blockers > 0 && (
               <>
                 <span className="bug-separator">|</span>
                 <span className="bug-blockers" title="Blockers">
-                  {module.bugHealth.blockers} blockers
+                  {module.bugs.blockers} blockers
                 </span>
               </>
             )}

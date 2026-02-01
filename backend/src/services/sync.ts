@@ -121,6 +121,8 @@ export class SyncService {
               module: customFields.module,
               ticket_type: customFields.ticketType,
               workflow_status: customFields.workflowStatus,
+              issue_subtype: customFields.issueSubtype,
+              is_escalated: customFields.isEscalated ? 1 : 0,
             };
           });
 

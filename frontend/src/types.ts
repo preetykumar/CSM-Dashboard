@@ -16,6 +16,8 @@ export interface Ticket {
   module?: string;
   ticket_type?: string; // 'bug', 'feature', or 'other'
   workflow_status?: string;
+  issue_subtype?: string;
+  is_escalated?: boolean;
 }
 
 export interface Organization {
@@ -95,6 +97,7 @@ export interface CSMCustomerSummary {
   };
   featureRequests: number;
   problemReports: number;
+  escalations: number;
 }
 
 export interface CSMPortfolio {
@@ -129,11 +132,14 @@ export interface ModuleSummary {
   features: {
     completed: number;
     total: number;
+    tickets: Ticket[]; // Feature tickets for drill-down
   };
-  bugHealth: {
-    criticalFixed: number;
-    minorPending: number;
+  bugs: {
+    total: number;
+    open: number;
+    fixed: number;
     blockers: number;
+    tickets: Ticket[]; // Bug tickets for drill-down
   };
   tickets: Ticket[];
 }
