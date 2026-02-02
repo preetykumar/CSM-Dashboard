@@ -99,22 +99,15 @@ function ModuleRow({ module, onClick, onFeaturesClick, onBugsClick, githubStatus
         </span>
       </div>
 
-      {/* Status rows */}
-      <div className="module-status-rows">
-        <div className="status-row zendesk-status">
-          <span className="status-row-label">Helpdesk Status (Zendesk):</span>
-          <span className={`status-row-value status-${module.status.toLowerCase().replace(/\s+/g, "-")}`}>
-            {module.status}
-          </span>
-        </div>
-
-        {hasGitHubStatus && (
+      {/* GitHub Development Status */}
+      {hasGitHubStatus && (
+        <div className="module-status-rows">
           <div className="status-row github-status">
             <span className="status-row-label">Development Status (GitHub):</span>
             <GitHubStatusSummary statuses={githubStatuses} />
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="module-metrics">
         <div className="module-metric features-metric clickable" onClick={handleFeaturesClick}>
