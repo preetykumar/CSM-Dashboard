@@ -24,6 +24,8 @@ import { createSyncRoutes } from "./routes/sync.js";
 import { createCachedRoutes } from "./routes/cached.js";
 import { createAuthRoutes } from "./routes/auth.js";
 import { createGitHubRoutes } from "./routes/github.js";
+import { AgentService } from "./services/agent.js";
+import { createAgentRoutes } from "./routes/agent.js";
 
 dotenv.config();
 
@@ -91,6 +93,19 @@ function loadGitHubConfig() {
   return { token, org, projectNumbers };
 }
 
+function loadAnthropicConfig() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+  const maxTokens = parseInt(process.env.AGENT_MAX_TOKENS || "4096", 10);
+
+  if (!apiKey) {
+    console.warn("Anthropic API key not configured. AI Agent features will be disabled.");
+    return null;
+  }
+
+  return { apiKey, model, maxTokens };
+}
+
 const app = express();
 
 // CORS configuration to allow credentials
@@ -143,6 +158,10 @@ const github = ghConfig ? new GitHubService(ghConfig) : null;
 const db = new DatabaseService();
 const sync = new SyncService(db, zendesk, salesforce, github);
 
+// Initialize AI Agent
+const anthropicConfig = loadAnthropicConfig();
+const agent = anthropicConfig ? new AgentService(db, zendesk, anthropicConfig) : null;
+
 // Auth routes (no auth required)
 app.use("/api/auth", createAuthRoutes());
 
@@ -155,6 +174,7 @@ app.get("/api/health", (_req, res) => {
     timestamp: new Date().toISOString(),
     salesforce: salesforce ? "configured" : "not configured",
     github: github ? "configured" : "not configured",
+    agent: agent ? "configured" : "not configured",
     auth: authEnabled ? "enabled" : "disabled",
     cache: {
       enabled: true,
@@ -200,6 +220,11 @@ if (salesforce) {
 // GitHub routes (for development status)
 app.use("/api/github", optionalAuth, createGitHubRoutes(db));
 
+// AI Agent routes
+if (agent) {
+  app.use("/api/agent", optionalAuth, createAgentRoutes(agent));
+}
+
 // Serve static frontend files in production
 const publicPath = path.join(__dirname, "..", "public");
 app.use(express.static(publicPath));
@@ -225,6 +250,11 @@ app.listen(PORT, async () => {
     console.log(`GitHub integration: enabled (org: ${ghConfig?.org}, projects: ${ghConfig?.projectNumbers?.join(", ") || "none"})`);
   } else {
     console.log("GitHub integration: disabled (no token)");
+  }
+  if (agent) {
+    console.log(`AI Agent: enabled (model: ${anthropicConfig?.model})`);
+  } else {
+    console.log("AI Agent: disabled (no ANTHROPIC_API_KEY)");
   }
   console.log("SQLite cache: enabled");
 

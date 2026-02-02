@@ -1621,6 +1621,32 @@ header .hint {
   background-color: rgba(0, 0, 0, 0.05);
 }
 
+/* Ticket Status Section */
+.ticket-status-section {
+  margin-bottom: 0.75rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ticket-status-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #495057;
+  padding: 0.4rem 0.5rem;
+  background: #e9ecef;
+  border-bottom: 1px solid #dee2e6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ticket-status-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.5rem;
+}
+
 /* Module Status Rows (Zendesk + GitHub) */
 .module-status-rows {
   display: flex;
@@ -1641,7 +1667,7 @@ header .hint {
 
 .status-row-label {
   color: #666;
-  min-width: 180px;
+  min-width: 150px;
 }
 
 .status-row-value {

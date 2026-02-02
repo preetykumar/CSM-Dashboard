@@ -94,20 +94,26 @@ function ModuleRow({ module, onClick, onFeaturesClick, onBugsClick, githubStatus
     <div className="module-row" onClick={onClick}>
       <div className="module-header">
         <span className="module-name">{module.moduleName}</span>
-        <span className={`module-status status-${module.status.toLowerCase().replace(/\s+/g, "-")}`}>
-          {module.status}
-        </span>
       </div>
 
-      {/* GitHub Development Status */}
-      {hasGitHubStatus && (
-        <div className="module-status-rows">
-          <div className="status-row github-status">
-            <span className="status-row-label">Development Status (GitHub):</span>
-            <GitHubStatusSummary statuses={githubStatuses} />
+      {/* Ticket Status Section */}
+      <div className="ticket-status-section">
+        <div className="ticket-status-header">Ticket Status</div>
+        <div className="ticket-status-rows">
+          <div className="status-row zendesk-status">
+            <span className="status-row-label">Helpdesk (Zendesk):</span>
+            <span className={`status-row-value status-${module.status.toLowerCase().replace(/\s+/g, "-")}`}>
+              {module.status}
+            </span>
           </div>
+          {hasGitHubStatus && (
+            <div className="status-row github-status">
+              <span className="status-row-label">Development (GitHub):</span>
+              <GitHubStatusSummary statuses={githubStatuses} />
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       <div className="module-metrics">
         <div className="module-metric features-metric clickable" onClick={handleFeaturesClick}>

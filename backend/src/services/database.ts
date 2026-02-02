@@ -66,6 +66,28 @@ export interface CachedGitHubLink {
   cached_at?: string;
 }
 
+// Agent conversation types
+export interface Conversation {
+  id: string;
+  user_id: string;
+  user_email: string;
+  channel: "web" | "slack" | "email";
+  created_at: string;
+  updated_at: string;
+  metadata?: string; // JSON string
+}
+
+export interface ConversationMessage {
+  id?: number;
+  conversation_id: string;
+  role: "user" | "assistant" | "system" | "tool_use" | "tool_result";
+  content: string;
+  tool_name?: string | null;
+  tool_input?: string | null; // JSON string
+  tool_result?: string | null; // JSON string
+  created_at: string;
+}
+
 export class DatabaseService {
   private db: Database.Database;
 
@@ -152,6 +174,33 @@ export class DatabaseService {
 
       CREATE INDEX IF NOT EXISTS idx_github_links_ticket ON github_issue_links(zendesk_ticket_id);
       CREATE INDEX IF NOT EXISTS idx_github_links_repo ON github_issue_links(github_repo);
+
+      -- Agent conversation tables
+      CREATE TABLE IF NOT EXISTS conversations (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        user_email TEXT NOT NULL,
+        channel TEXT NOT NULL CHECK (channel IN ('web', 'slack', 'email')),
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        metadata TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS conversation_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        conversation_id TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system', 'tool_use', 'tool_result')),
+        content TEXT NOT NULL,
+        tool_name TEXT,
+        tool_input TEXT,
+        tool_result TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_messages_conversation ON conversation_messages(conversation_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_created ON conversation_messages(created_at);
+      CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_email);
     `);
 
     // Migration: Add new columns if they don't exist (for existing databases)
@@ -527,6 +576,97 @@ export class DatabaseService {
       DELETE FROM sync_status;
       DELETE FROM github_issue_links;
     `);
+  }
+
+  // ==================
+  // Conversation Methods
+  // ==================
+
+  createConversation(conversation: Omit<Conversation, "created_at" | "updated_at">): Conversation {
+    const stmt = this.db.prepare(`
+      INSERT INTO conversations (id, user_id, user_email, channel, metadata, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    `);
+    stmt.run(
+      conversation.id,
+      conversation.user_id,
+      conversation.user_email,
+      conversation.channel,
+      conversation.metadata || null
+    );
+    return this.getConversation(conversation.id)!;
+  }
+
+  getConversation(id: string): Conversation | null {
+    const row = this.db.prepare("SELECT * FROM conversations WHERE id = ?").get(id) as Conversation | undefined;
+    return row || null;
+  }
+
+  getConversationsByUser(userEmail: string, limit: number = 50): Conversation[] {
+    return this.db
+      .prepare("SELECT * FROM conversations WHERE user_email = ? ORDER BY updated_at DESC LIMIT ?")
+      .all(userEmail, limit) as Conversation[];
+  }
+
+  updateConversationTimestamp(conversationId: string): void {
+    this.db.prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(conversationId);
+  }
+
+  deleteConversation(conversationId: string): void {
+    const transaction = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM conversation_messages WHERE conversation_id = ?").run(conversationId);
+      this.db.prepare("DELETE FROM conversations WHERE id = ?").run(conversationId);
+    });
+    transaction();
+  }
+
+  // Conversation Messages
+  saveMessage(message: Omit<ConversationMessage, "id" | "created_at">): ConversationMessage {
+    const stmt = this.db.prepare(`
+      INSERT INTO conversation_messages (conversation_id, role, content, tool_name, tool_input, tool_result, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+    const result = stmt.run(
+      message.conversation_id,
+      message.role,
+      message.content,
+      message.tool_name || null,
+      message.tool_input || null,
+      message.tool_result || null
+    );
+
+    // Update conversation timestamp
+    this.updateConversationTimestamp(message.conversation_id);
+
+    return {
+      id: Number(result.lastInsertRowid),
+      conversation_id: message.conversation_id,
+      role: message.role,
+      content: message.content,
+      tool_name: message.tool_name,
+      tool_input: message.tool_input,
+      tool_result: message.tool_result,
+      created_at: new Date().toISOString(),
+    };
+  }
+
+  getMessages(conversationId: string): ConversationMessage[] {
+    return this.db
+      .prepare("SELECT * FROM conversation_messages WHERE conversation_id = ? ORDER BY created_at ASC")
+      .all(conversationId) as ConversationMessage[];
+  }
+
+  getRecentMessages(conversationId: string, limit: number = 20): ConversationMessage[] {
+    // Get most recent messages, but return them in chronological order
+    const messages = this.db
+      .prepare(
+        `SELECT * FROM conversation_messages
+         WHERE conversation_id = ?
+         ORDER BY created_at DESC
+         LIMIT ?`
+      )
+      .all(conversationId, limit) as ConversationMessage[];
+    return messages.reverse();
   }
 
   close(): void {

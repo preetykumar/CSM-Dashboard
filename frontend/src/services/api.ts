@@ -139,3 +139,63 @@ export async function fetchGitHubStatusForTickets(
     return new Map();
   }
 }
+
+// ==================
+// Chat Agent APIs
+// ==================
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatResponse {
+  response: string;
+  conversationId: string;
+  toolsUsed?: string[];
+}
+
+export interface ChatConversation {
+  id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function sendChatMessage(
+  message: string,
+  conversationId?: string
+): Promise<ChatResponse> {
+  const res = await fetch(`${API_BASE}/agent/chat`, {
+    ...fetchOptions,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, conversationId }),
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: "Failed to send message" }));
+    throw new Error(error.error || error.details || "Failed to send message");
+  }
+  return res.json();
+}
+
+export async function fetchChatConversations(): Promise<ChatConversation[]> {
+  const res = await fetch(`${API_BASE}/agent/conversations`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch conversations");
+  const data = await res.json();
+  return data.conversations;
+}
+
+export async function fetchConversationHistory(conversationId: string): Promise<ChatMessage[]> {
+  const res = await fetch(`${API_BASE}/agent/conversations/${conversationId}`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch conversation history");
+  const data = await res.json();
+  return data.messages;
+}
+
+export async function deleteChatConversation(conversationId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/agent/conversations/${conversationId}`, {
+    ...fetchOptions,
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete conversation");
+}

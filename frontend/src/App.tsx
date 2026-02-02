@@ -6,7 +6,9 @@ import { CSMPortfolioView } from "./components/CSMPortfolioView";
 import { TicketListModal } from "./components/TicketListModal";
 import { LoginPage } from "./components/LoginPage";
 import { UserMenu } from "./components/UserMenu";
+import { ChatWidget } from "./components/chat";
 import { useAuth } from "./contexts/AuthContext";
+import { ChatProvider } from "./contexts/ChatContext";
 import type { CustomerSummary, Organization } from "./types";
 
 type ViewMode = "customers" | "csm";
@@ -180,6 +182,9 @@ function Dashboard() {
       ) : (
         <CSMPortfolioView />
       )}
+
+      {/* AI Chat Assistant */}
+      <ChatWidget />
     </div>
   );
 }
@@ -200,8 +205,12 @@ function App() {
     return <LoginPage />;
   }
 
-  // Otherwise show the dashboard
-  return <Dashboard />;
+  // Otherwise show the dashboard with chat
+  return (
+    <ChatProvider>
+      <Dashboard />
+    </ChatProvider>
+  );
 }
 
 export default App;
