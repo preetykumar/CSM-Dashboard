@@ -218,3 +218,20 @@ export interface ExtendedFieldMapping extends FieldMapping {
   issueSubtypeFieldId?: number;
   issueSubtypeFieldName?: string;
 }
+
+// GitHub Development Status types
+export interface GitHubDevelopmentStatus {
+  projectTitle?: string;
+  projectStatus?: string; // "In Progress", "Done", "Backlog"
+  sprint?: string; // "Sprint 24"
+  milestone?: string; // "v5.0"
+  releaseVersion?: string; // "5.0.0"
+  githubUrl: string;
+  repoName: string;
+  issueNumber: number;
+  updatedAt?: string;
+}
+
+export interface TicketWithGitHub extends Ticket {
+  githubStatus?: GitHubDevelopmentStatus[];
+}

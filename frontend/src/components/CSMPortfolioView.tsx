@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { fetchCSMPortfolios, fetchEnhancedCustomerSummary } from "../services/api";
+import { fetchCSMPortfolios, fetchEnhancedCustomerSummary, fetchGitHubStatusForTickets } from "../services/api";
 import { VelocityBanner } from "./VelocityBanner";
 import { ProductBacklogCard } from "./ProductBacklogCard";
 import { QuarterlySummaryCard } from "./QuarterlySummaryCard";
-import type { CSMPortfolio, CSMCustomerSummary, Ticket, EnhancedCustomerSummary } from "../types";
+import type { CSMPortfolio, CSMCustomerSummary, Ticket, EnhancedCustomerSummary, GitHubDevelopmentStatus } from "../types";
 
 export function CSMPortfolioView() {
   const [portfolios, setPortfolios] = useState<CSMPortfolio[]>([]);
@@ -147,6 +147,7 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
   const { organization, ticketStats, priorityBreakdown, featureRequests, problemReports, escalations, tickets } = customer;
   const [enhancedSummary, setEnhancedSummary] = useState<EnhancedCustomerSummary | null>(null);
   const [loadingEnhanced, setLoadingEnhanced] = useState(false);
+  const [githubStatusMap, setGitHubStatusMap] = useState<Map<number, GitHubDevelopmentStatus[]> | null>(null);
   const [drilldownTickets, setDrilldownTickets] = useState<{
     title: string;
     tickets: Ticket[];
@@ -163,6 +164,23 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
         .finally(() => setLoadingEnhanced(false));
     }
   }, [expanded, enhancedSummary, loadingEnhanced, organization.id]);
+
+  // Fetch GitHub statuses when enhanced summary is loaded
+  useEffect(() => {
+    if (enhancedSummary && !githubStatusMap) {
+      // Get all ticket IDs from the backlog
+      const ticketIds = enhancedSummary.backlog
+        .flatMap((p) => p.modules)
+        .flatMap((m) => m.tickets)
+        .map((t) => t.id);
+
+      if (ticketIds.length > 0) {
+        fetchGitHubStatusForTickets(ticketIds)
+          .then(setGitHubStatusMap)
+          .catch((err) => console.error("Failed to load GitHub statuses:", err));
+      }
+    }
+  }, [enhancedSummary, githubStatusMap]);
 
   const handleModuleClick = (productName: string, moduleName: string, moduleTickets: Ticket[]) => {
     setDrilldownTickets({ title: `${productName} - ${moduleName}`, tickets: moduleTickets });
@@ -357,6 +375,7 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
                       onModuleClick={handleModuleClick}
                       onFeaturesClick={handleModuleFeaturesClick}
                       onBugsClick={handleModuleBugsClick}
+                      githubStatusByTicketId={githubStatusMap || undefined}
                     />
                   ))
                 )}

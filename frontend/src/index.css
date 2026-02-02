@@ -1621,6 +1621,194 @@ header .hint {
   background-color: rgba(0, 0, 0, 0.05);
 }
 
+/* Module Status Rows (Zendesk + GitHub) */
+.module-status-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.status-row-label {
+  color: #666;
+  min-width: 180px;
+}
+
+.status-row-value {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: #e9ecef;
+  color: #666;
+}
+
+.status-row-value.status-in-progress {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status-row-value.status-backlogged {
+  background: #fff3cd;
+  color: #856404;
+}
+
+/* GitHub Status Summary */
+.github-status-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.github-issue-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.github-issue-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  background: #f3f4f6;
+  color: #374151;
+  text-decoration: none;
+  border: 1px solid #e5e7eb;
+  transition: all 0.15s ease;
+}
+
+.github-issue-link:hover {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+  text-decoration: none;
+}
+
+.github-issue-repo {
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.github-issue-number {
+  color: #111827;
+  font-weight: 600;
+}
+
+.github-issue-status {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  font-weight: 500;
+  margin-left: 0.25rem;
+}
+
+/* Status-based colors for issue links */
+.github-issue-link.status-in-progress,
+.github-issue-link.status-in-review {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.github-issue-link.status-in-progress .github-issue-status,
+.github-issue-link.status-in-review .github-issue-status {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.github-issue-link.status-done,
+.github-issue-link.status-completed,
+.github-issue-link.status-closed,
+.github-issue-link.status-devdone,
+.github-issue-link.status-waiting-for-release {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.github-issue-link.status-done .github-issue-status,
+.github-issue-link.status-completed .github-issue-status,
+.github-issue-link.status-closed .github-issue-status,
+.github-issue-link.status-devdone .github-issue-status,
+.github-issue-link.status-waiting-for-release .github-issue-status {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.github-issue-link.status-backlog,
+.github-issue-link.status-todo,
+.github-issue-link.status-product-backlog {
+  background: #f9fafb;
+  border-color: #e5e7eb;
+}
+
+.github-issue-link.status-backlog .github-issue-status,
+.github-issue-link.status-todo .github-issue-status,
+.github-issue-link.status-product-backlog .github-issue-status {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.github-issue-link.status-blocked {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.github-issue-link.status-blocked .github-issue-status {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.github-issue-link.status-archived {
+  background: #f5f5f4;
+  border-color: #d6d3d1;
+  opacity: 0.7;
+}
+
+.github-issue-link.status-archived .github-issue-status {
+  background: #e7e5e4;
+  color: #78716c;
+}
+
+/* Keep old badge styles for backward compatibility */
+.github-status-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  background: #f3f4f6;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.github-sprint,
+.github-release {
+  font-size: 0.75rem;
+  color: #666;
+  padding: 0.15rem 0.4rem;
+  background: #e9ecef;
+  border-radius: 3px;
+}
+
+.github-sprint {
+  color: #6366f1;
+  background: #eef2ff;
+}
+
+.github-release {
+  color: #059669;
+  background: #d1fae5;
+}
+
 /* Loading/Error States */
 .loading-enhanced,
 .error-enhanced {

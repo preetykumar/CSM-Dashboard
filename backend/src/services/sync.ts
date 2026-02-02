@@ -1,21 +1,29 @@
-import { DatabaseService, CachedOrganization, CachedTicket, CachedCSMAssignment } from "./database.js";
+import { DatabaseService, CachedOrganization, CachedTicket, CachedCSMAssignment, CachedGitHubLink } from "./database.js";
 import { ZendeskService } from "./zendesk.js";
 import { SalesforceService, CSMAssignment } from "./salesforce.js";
+import { GitHubService } from "./github.js";
 import type { Organization, Ticket } from "../types/index.js";
 
 export class SyncService {
   private db: DatabaseService;
   private zendesk: ZendeskService;
   private salesforce: SalesforceService | null;
+  private github: GitHubService | null;
   private isSyncing = false;
 
-  constructor(db: DatabaseService, zendesk: ZendeskService, salesforce: SalesforceService | null) {
+  constructor(
+    db: DatabaseService,
+    zendesk: ZendeskService,
+    salesforce: SalesforceService | null,
+    github: GitHubService | null = null
+  ) {
     this.db = db;
     this.zendesk = zendesk;
     this.salesforce = salesforce;
+    this.github = github;
   }
 
-  async syncAll(): Promise<{ organizations: number; tickets: number; csmAssignments: number }> {
+  async syncAll(): Promise<{ organizations: number; tickets: number; csmAssignments: number; githubLinks: number }> {
     if (this.isSyncing) {
       throw new Error("Sync already in progress");
     }
@@ -27,10 +35,11 @@ export class SyncService {
       const orgCount = await this.syncOrganizations();
       const ticketCount = await this.syncTickets();
       const csmCount = this.salesforce ? await this.syncCSMAssignments() : 0;
+      const githubCount = this.github ? await this.syncGitHubLinks() : 0;
 
-      console.log(`Sync complete: ${orgCount} orgs, ${ticketCount} tickets, ${csmCount} CSM assignments`);
+      console.log(`Sync complete: ${orgCount} orgs, ${ticketCount} tickets, ${csmCount} CSM assignments, ${githubCount} GitHub links`);
 
-      return { organizations: orgCount, tickets: ticketCount, csmAssignments: csmCount };
+      return { organizations: orgCount, tickets: ticketCount, csmAssignments: csmCount, githubLinks: githubCount };
     } finally {
       this.isSyncing = false;
     }
@@ -252,6 +261,54 @@ export class SyncService {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       this.db.updateSyncStatus("csm_assignments", "error", 0, message);
+      throw error;
+    }
+  }
+
+  async syncGitHubLinks(): Promise<number> {
+    if (!this.github) {
+      console.log("GitHub not configured, skipping GitHub sync");
+      return 0;
+    }
+
+    console.log("Syncing GitHub issue links...");
+    this.db.updateSyncStatus("github_links", "in_progress", 0);
+
+    try {
+      const links = await this.github.getLinkedIssues();
+
+      // Filter to only tickets that exist in our database
+      const ticketIds = this.db.getAllTicketIds();
+      const ticketIdSet = new Set(ticketIds);
+
+      const validLinks = links.filter((link) => ticketIdSet.has(link.zendeskTicketId));
+
+      // Clear old links and insert new ones
+      this.db.clearGitHubLinks();
+
+      const cachedLinks: CachedGitHubLink[] = validLinks.map((link) => ({
+        zendesk_ticket_id: link.zendeskTicketId,
+        github_issue_number: link.githubIssueNumber,
+        github_repo: link.repoName,
+        github_project_title: link.projectTitle,
+        project_status: link.projectStatus,
+        sprint: link.sprint || null,
+        milestone: link.milestone || null,
+        release_version: link.releaseVersion || null,
+        github_url: link.githubUrl,
+        github_updated_at: link.updatedAt,
+      }));
+
+      this.db.upsertGitHubLinks(cachedLinks);
+
+      console.log(`Synced ${validLinks.length} GitHub issue links (${links.length - validLinks.length} unmatched tickets filtered)`);
+      this.db.updateSyncStatus("github_links", "success", validLinks.length);
+
+      return validLinks.length;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error("GitHub sync error:", message);
+      this.db.updateSyncStatus("github_links", "error", 0, message);
       throw error;
     }
   }

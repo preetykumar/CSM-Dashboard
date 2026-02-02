@@ -11,6 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 import { ZendeskService } from "./services/zendesk.js";
 import { SalesforceService } from "./services/salesforce.js";
+import { GitHubService } from "./services/github.js";
 import { DatabaseService } from "./services/database.js";
 import { SyncService } from "./services/sync.js";
 import { configureAuth, optionalAuth } from "./services/auth.js";
@@ -22,6 +23,7 @@ import { createSalesforceRoutes } from "./routes/salesforce.js";
 import { createSyncRoutes } from "./routes/sync.js";
 import { createCachedRoutes } from "./routes/cached.js";
 import { createAuthRoutes } from "./routes/auth.js";
+import { createGitHubRoutes } from "./routes/github.js";
 
 dotenv.config();
 
@@ -66,6 +68,27 @@ function loadSalesforceConfig() {
   }
 
   return { clientId, clientSecret, loginUrl };
+}
+
+function loadGitHubConfig() {
+  const token = process.env.GITHUB_TOKEN;
+  const org = process.env.GITHUB_ORG || "dequelabs";
+  const projectNumbersStr = process.env.GITHUB_PROJECT_NUMBERS;
+
+  if (!token) {
+    console.warn("GitHub token not configured. GitHub features will be disabled.");
+    return null;
+  }
+
+  const projectNumbers = projectNumbersStr
+    ? projectNumbersStr.split(",").map((n) => parseInt(n.trim(), 10)).filter((n) => !isNaN(n))
+    : [];
+
+  if (projectNumbers.length === 0) {
+    console.warn("No GitHub project numbers configured. Set GITHUB_PROJECT_NUMBERS env var.");
+  }
+
+  return { token, org, projectNumbers };
 }
 
 const app = express();
@@ -114,8 +137,11 @@ const zendesk = new ZendeskService(zendeskConfig);
 const sfConfig = loadSalesforceConfig();
 const salesforce = sfConfig ? new SalesforceService(sfConfig) : null;
 
+const ghConfig = loadGitHubConfig();
+const github = ghConfig ? new GitHubService(ghConfig) : null;
+
 const db = new DatabaseService();
-const sync = new SyncService(db, zendesk, salesforce);
+const sync = new SyncService(db, zendesk, salesforce, github);
 
 // Auth routes (no auth required)
 app.use("/api/auth", createAuthRoutes());
@@ -128,11 +154,28 @@ app.get("/api/health", (_req, res) => {
     status: "ok",
     timestamp: new Date().toISOString(),
     salesforce: salesforce ? "configured" : "not configured",
+    github: github ? "configured" : "not configured",
     auth: authEnabled ? "enabled" : "disabled",
     cache: {
       enabled: true,
       syncStatus,
     },
+  });
+});
+
+// Test endpoint for GitHub links (no auth, for debugging)
+app.get("/api/test/github-links", (_req, res) => {
+  const ticketId = parseInt((_req.query.ticketId as string) || "44641", 10);
+  const links = db.getGitHubLinksByTicketId(ticketId);
+  res.json({
+    ticketId,
+    linkCount: links.length,
+    links: links.map((l) => ({
+      repo: l.github_repo,
+      issue: l.github_issue_number,
+      status: l.project_status,
+      sprint: l.sprint,
+    })),
   });
 });
 
@@ -154,6 +197,9 @@ if (salesforce) {
   app.use("/api/salesforce", optionalAuth, createSalesforceRoutes(salesforce));
 }
 
+// GitHub routes (for development status)
+app.use("/api/github", optionalAuth, createGitHubRoutes(db));
+
 // Serve static frontend files in production
 const publicPath = path.join(__dirname, "..", "public");
 app.use(express.static(publicPath));
@@ -174,6 +220,11 @@ app.listen(PORT, async () => {
     console.log("Salesforce integration: enabled");
   } else {
     console.log("Salesforce integration: disabled (no credentials)");
+  }
+  if (github) {
+    console.log(`GitHub integration: enabled (org: ${ghConfig?.org}, projects: ${ghConfig?.projectNumbers?.join(", ") || "none"})`);
+  } else {
+    console.log("GitHub integration: disabled (no token)");
   }
   console.log("SQLite cache: enabled");
 

@@ -1,14 +1,15 @@
-import { useState } from "react";
-import type { ProductBacklog, ModuleSummary, Ticket } from "../types";
+import { useState, useMemo } from "react";
+import type { ProductBacklog, ModuleSummary, Ticket, GitHubDevelopmentStatus } from "../types";
 
 interface ProductBacklogCardProps {
   backlog: ProductBacklog;
   onModuleClick: (productName: string, moduleName: string, tickets: Ticket[]) => void;
   onFeaturesClick?: (productName: string, moduleName: string, tickets: Ticket[]) => void;
   onBugsClick?: (productName: string, moduleName: string, tickets: Ticket[]) => void;
+  githubStatusByTicketId?: Map<number, GitHubDevelopmentStatus[]>;
 }
 
-export function ProductBacklogCard({ backlog, onModuleClick, onFeaturesClick, onBugsClick }: ProductBacklogCardProps) {
+export function ProductBacklogCard({ backlog, onModuleClick, onFeaturesClick, onBugsClick, githubStatusByTicketId }: ProductBacklogCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -32,6 +33,7 @@ export function ProductBacklogCard({ backlog, onModuleClick, onFeaturesClick, on
               onClick={() => onModuleClick(backlog.productName, module.moduleName, module.tickets)}
               onFeaturesClick={onFeaturesClick ? () => onFeaturesClick(backlog.productName, module.moduleName, module.features.tickets) : undefined}
               onBugsClick={onBugsClick ? () => onBugsClick(backlog.productName, module.moduleName, module.bugs.tickets) : undefined}
+              githubStatusByTicketId={githubStatusByTicketId}
             />
           ))}
         </div>
@@ -46,12 +48,29 @@ interface ModuleRowProps {
   onClick: () => void;
   onFeaturesClick?: () => void;
   onBugsClick?: () => void;
+  githubStatusByTicketId?: Map<number, GitHubDevelopmentStatus[]>;
 }
 
-function ModuleRow({ module, onClick, onFeaturesClick, onBugsClick }: ModuleRowProps) {
+function ModuleRow({ module, onClick, onFeaturesClick, onBugsClick, githubStatusByTicketId }: ModuleRowProps) {
   const featurePercent = module.features.total > 0
     ? Math.round((module.features.completed / module.features.total) * 100)
     : 0;
+
+  // Aggregate GitHub statuses for tickets in this module
+  const githubStatuses = useMemo(() => {
+    if (!githubStatusByTicketId) return [];
+
+    const statuses: GitHubDevelopmentStatus[] = [];
+    for (const ticket of module.tickets) {
+      const ticketStatuses = githubStatusByTicketId.get(ticket.id);
+      if (ticketStatuses) {
+        statuses.push(...ticketStatuses);
+      }
+    }
+    return statuses;
+  }, [module.tickets, githubStatusByTicketId]);
+
+  const hasGitHubStatus = githubStatuses.length > 0;
 
   const handleFeaturesClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -78,6 +97,23 @@ function ModuleRow({ module, onClick, onFeaturesClick, onBugsClick }: ModuleRowP
         <span className={`module-status status-${module.status.toLowerCase().replace(/\s+/g, "-")}`}>
           {module.status}
         </span>
+      </div>
+
+      {/* Status rows */}
+      <div className="module-status-rows">
+        <div className="status-row zendesk-status">
+          <span className="status-row-label">Helpdesk Status (Zendesk):</span>
+          <span className={`status-row-value status-${module.status.toLowerCase().replace(/\s+/g, "-")}`}>
+            {module.status}
+          </span>
+        </div>
+
+        {hasGitHubStatus && (
+          <div className="status-row github-status">
+            <span className="status-row-label">Development Status (GitHub):</span>
+            <GitHubStatusSummary statuses={githubStatuses} />
+          </div>
+        )}
       </div>
 
       <div className="module-metrics">
@@ -120,5 +156,53 @@ function ModuleRow({ module, onClick, onFeaturesClick, onBugsClick }: ModuleRowP
         </div>
       </div>
     </div>
+  );
+}
+
+// GitHub Status Summary Component
+interface GitHubStatusSummaryProps {
+  statuses: GitHubDevelopmentStatus[];
+}
+
+function GitHubStatusSummary({ statuses }: GitHubStatusSummaryProps) {
+  // Deduplicate by GitHub URL (same issue may appear multiple times)
+  const uniqueStatuses = useMemo(() => {
+    const seen = new Set<string>();
+    return statuses.filter((s) => {
+      const key = s.githubUrl || `${s.repoName}#${s.issueNumber}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [statuses]);
+
+  const handleLinkClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering module row click
+  };
+
+  return (
+    <span className="github-status-summary">
+      <span className="github-issue-links">
+        {uniqueStatuses.map((status, idx) => (
+          <a
+            key={status.githubUrl || `${status.repoName}-${status.issueNumber}-${idx}`}
+            href={status.githubUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`github-issue-link status-${(status.projectStatus || "unknown").toLowerCase().replace(/\s+/g, "-")}`}
+            title={`${status.repoName}#${status.issueNumber}${status.sprint ? ` | ${status.sprint}` : ""}${status.projectStatus ? ` | ${status.projectStatus}` : ""}`}
+            onClick={handleLinkClick}
+          >
+            <span className="github-issue-repo">{status.repoName}</span>
+            <span className="github-issue-number">#{status.issueNumber}</span>
+            {status.projectStatus && (
+              <span className={`github-issue-status status-${status.projectStatus.toLowerCase().replace(/\s+/g, "-")}`}>
+                {status.projectStatus}
+              </span>
+            )}
+          </a>
+        ))}
+      </span>
+    </span>
   );
 }

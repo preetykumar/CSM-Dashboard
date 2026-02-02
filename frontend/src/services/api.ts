@@ -1,4 +1,4 @@
-import type { CustomerSummary, DetailedCustomerSummary, Organization, Ticket, CSMPortfolio, EnhancedCustomerSummary } from "../types";
+import type { CustomerSummary, DetailedCustomerSummary, Organization, Ticket, CSMPortfolio, EnhancedCustomerSummary, GitHubDevelopmentStatus } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -101,4 +101,41 @@ export async function fetchTicketsByProductModule(
   if (!res.ok) throw new Error("Failed to fetch tickets");
   const data = await res.json();
   return data.tickets;
+}
+
+// GitHub Development Status API
+export async function fetchGitHubStatusForTickets(
+  ticketIds: number[]
+): Promise<Map<number, GitHubDevelopmentStatus[]>> {
+  if (ticketIds.length === 0) {
+    return new Map();
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/github/tickets/status`, {
+      ...fetchOptions,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ticketIds }),
+    });
+
+    if (!res.ok) {
+      console.warn("Failed to fetch GitHub statuses:", res.status);
+      return new Map();
+    }
+
+    const data = await res.json();
+    const linksMap = new Map<number, GitHubDevelopmentStatus[]>();
+
+    if (data.links) {
+      for (const [ticketId, statuses] of Object.entries(data.links)) {
+        linksMap.set(parseInt(ticketId, 10), statuses as GitHubDevelopmentStatus[]);
+      }
+    }
+
+    return linksMap;
+  } catch (error) {
+    console.warn("Error fetching GitHub statuses:", error);
+    return new Map();
+  }
 }

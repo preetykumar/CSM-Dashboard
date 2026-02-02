@@ -51,6 +51,21 @@ export interface SyncStatus {
   record_count: number;
 }
 
+export interface CachedGitHubLink {
+  id?: number;
+  zendesk_ticket_id: number;
+  github_issue_number: number;
+  github_repo: string;
+  github_project_title: string | null;
+  project_status: string | null;
+  sprint: string | null;
+  milestone: string | null;
+  release_version: string | null;
+  github_url: string | null;
+  github_updated_at: string | null;
+  cached_at?: string;
+}
+
 export class DatabaseService {
   private db: Database.Database;
 
@@ -118,6 +133,25 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
       CREATE INDEX IF NOT EXISTS idx_tickets_updated ON tickets(updated_at);
       CREATE INDEX IF NOT EXISTS idx_csm_email ON csm_assignments(csm_email);
+
+      CREATE TABLE IF NOT EXISTS github_issue_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        zendesk_ticket_id INTEGER NOT NULL,
+        github_issue_number INTEGER NOT NULL,
+        github_repo TEXT NOT NULL,
+        github_project_title TEXT,
+        project_status TEXT,
+        sprint TEXT,
+        milestone TEXT,
+        release_version TEXT,
+        github_url TEXT,
+        github_updated_at TEXT,
+        cached_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(zendesk_ticket_id, github_issue_number, github_repo)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_github_links_ticket ON github_issue_links(zendesk_ticket_id);
+      CREATE INDEX IF NOT EXISTS idx_github_links_repo ON github_issue_links(github_repo);
     `);
 
     // Migration: Add new columns if they don't exist (for existing databases)
@@ -430,6 +464,60 @@ export class DatabaseService {
     return row?.last_sync || null;
   }
 
+  // GitHub Issue Links
+  upsertGitHubLinks(links: CachedGitHubLink[]): void {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO github_issue_links
+      (zendesk_ticket_id, github_issue_number, github_repo, github_project_title, project_status, sprint, milestone, release_version, github_url, github_updated_at, cached_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+    const transaction = this.db.transaction((links: CachedGitHubLink[]) => {
+      for (const link of links) {
+        stmt.run(
+          link.zendesk_ticket_id,
+          link.github_issue_number,
+          link.github_repo,
+          link.github_project_title,
+          link.project_status,
+          link.sprint,
+          link.milestone,
+          link.release_version,
+          link.github_url,
+          link.github_updated_at
+        );
+      }
+    });
+    transaction(links);
+  }
+
+  getGitHubLinksByTicketId(ticketId: number): CachedGitHubLink[] {
+    return this.db.prepare("SELECT * FROM github_issue_links WHERE zendesk_ticket_id = ?").all(ticketId) as CachedGitHubLink[];
+  }
+
+  getGitHubLinksByTicketIds(ticketIds: number[]): Map<number, CachedGitHubLink[]> {
+    if (ticketIds.length === 0) return new Map();
+
+    const placeholders = ticketIds.map(() => "?").join(",");
+    const rows = this.db.prepare(`SELECT * FROM github_issue_links WHERE zendesk_ticket_id IN (${placeholders})`).all(...ticketIds) as CachedGitHubLink[];
+
+    const linkMap = new Map<number, CachedGitHubLink[]>();
+    for (const row of rows) {
+      const existing = linkMap.get(row.zendesk_ticket_id) || [];
+      existing.push(row);
+      linkMap.set(row.zendesk_ticket_id, existing);
+    }
+    return linkMap;
+  }
+
+  clearGitHubLinks(): void {
+    this.db.prepare("DELETE FROM github_issue_links").run();
+  }
+
+  getAllTicketIds(): number[] {
+    const rows = this.db.prepare("SELECT id FROM tickets").all() as { id: number }[];
+    return rows.map((r) => r.id);
+  }
+
   // Utility
   clearAll(): void {
     this.db.exec(`
@@ -437,6 +525,7 @@ export class DatabaseService {
       DELETE FROM organizations;
       DELETE FROM csm_assignments;
       DELETE FROM sync_status;
+      DELETE FROM github_issue_links;
     `);
   }
 

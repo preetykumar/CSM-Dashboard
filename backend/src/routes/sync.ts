@@ -58,6 +58,17 @@ export function createSyncRoutes(sync: SyncService): Router {
     }
   });
 
+  // Sync GitHub links only
+  router.post("/github", async (_req: Request, res: Response) => {
+    try {
+      const count = await sync.syncGitHubLinks();
+      res.json({ message: "GitHub links synced", count });
+    } catch (error) {
+      console.error("Error syncing GitHub links:", error);
+      res.status(500).json({ error: "Failed to sync GitHub links" });
+    }
+  });
+
   // Get sync status
   router.get("/status", (_req: Request, res: Response) => {
     try {
