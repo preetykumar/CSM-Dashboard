@@ -60,16 +60,44 @@ function loadZendeskConfig() {
 }
 
 function loadSalesforceConfig() {
+  const authType = process.env.SF_AUTH_TYPE || "client_credentials";
+  const loginUrl = process.env.SF_LOGIN_URL || "https://login.salesforce.com";
   const clientId = process.env.SF_CLIENT_ID;
-  const clientSecret = process.env.SF_CLIENT_SECRET;
-  const loginUrl = process.env.SF_LOGIN_URL || "https://test.salesforce.com";
 
-  if (!clientId || !clientSecret) {
-    console.warn("Salesforce credentials not configured. SF features will be disabled.");
-    return null;
+  if (authType === "jwt") {
+    // JWT Bearer Flow (production)
+    const username = process.env.SF_USERNAME;
+    const privateKeyPath = process.env.SF_PRIVATE_KEY_PATH;
+
+    if (!clientId || !username || !privateKeyPath) {
+      console.warn("Salesforce JWT credentials not configured. SF features will be disabled.");
+      console.warn("Required: SF_CLIENT_ID, SF_USERNAME, SF_PRIVATE_KEY_PATH");
+      return null;
+    }
+
+    return {
+      authType: "jwt" as const,
+      clientId,
+      username,
+      privateKeyPath,
+      loginUrl,
+    };
+  } else {
+    // Client Credentials Flow (sandbox)
+    const clientSecret = process.env.SF_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+      console.warn("Salesforce credentials not configured. SF features will be disabled.");
+      return null;
+    }
+
+    return {
+      authType: "client_credentials" as const,
+      clientId,
+      clientSecret,
+      loginUrl,
+    };
   }
-
-  return { clientId, clientSecret, loginUrl };
 }
 
 function loadGitHubConfig() {

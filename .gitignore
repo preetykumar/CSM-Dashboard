@@ -10,6 +10,10 @@ dist/
 *.sqlite
 backend/data/
 
+# Private keys (never commit!)
+backend/keys/*.pem
+*.pem
+
 # IDE
 .idea/
 .vscode/

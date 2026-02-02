@@ -1,10 +1,27 @@
 import axios, { AxiosInstance } from "axios";
+import jwt from "jsonwebtoken";
+import fs from "fs";
+import path from "path";
 
-interface SalesforceConfig {
+// Support both client credentials (sandbox) and JWT (production) auth
+interface SalesforceConfigBase {
+  loginUrl: string; // e.g., https://login.salesforce.com for production
+}
+
+interface ClientCredentialsConfig extends SalesforceConfigBase {
+  authType: "client_credentials";
   clientId: string;
   clientSecret: string;
-  loginUrl: string; // e.g., https://test.salesforce.com for sandbox
 }
+
+interface JWTConfig extends SalesforceConfigBase {
+  authType: "jwt";
+  clientId: string; // Consumer Key
+  username: string; // SF username
+  privateKeyPath: string; // Path to PEM file
+}
+
+export type SalesforceConfig = ClientCredentialsConfig | JWTConfig;
 
 interface TokenResponse {
   access_token: string;
@@ -64,12 +81,21 @@ export class SalesforceService {
       return;
     }
 
-    console.log("Authenticating with Salesforce...");
+    console.log(`Authenticating with Salesforce (${this.config.authType})...`);
 
     const params = new URLSearchParams();
-    params.append("grant_type", "client_credentials");
-    params.append("client_id", this.config.clientId);
-    params.append("client_secret", this.config.clientSecret);
+
+    if (this.config.authType === "jwt") {
+      // JWT Bearer Flow
+      const assertion = this.createJWTAssertion();
+      params.append("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer");
+      params.append("assertion", assertion);
+    } else {
+      // Client Credentials Flow (sandbox)
+      params.append("grant_type", "client_credentials");
+      params.append("client_id", this.config.clientId);
+      params.append("client_secret", this.config.clientSecret);
+    }
 
     try {
       const response = await this.client.post<TokenResponse>(
@@ -95,6 +121,31 @@ export class SalesforceService {
       }
       throw error;
     }
+  }
+
+  private createJWTAssertion(): string {
+    if (this.config.authType !== "jwt") {
+      throw new Error("JWT assertion requires JWT config");
+    }
+
+    // Read private key
+    const privateKeyPath = path.resolve(this.config.privateKeyPath);
+    if (!fs.existsSync(privateKeyPath)) {
+      throw new Error(`Private key file not found: ${privateKeyPath}`);
+    }
+    const privateKey = fs.readFileSync(privateKeyPath, "utf8");
+
+    // Create JWT claims
+    const now = Math.floor(Date.now() / 1000);
+    const claims = {
+      iss: this.config.clientId, // Consumer Key
+      sub: this.config.username, // SF username
+      aud: this.config.loginUrl, // Login URL
+      exp: now + 300, // 5 minutes expiry
+    };
+
+    // Sign and return JWT
+    return jwt.sign(claims, privateKey, { algorithm: "RS256" });
   }
 
   private async apiCall<T>(method: "get" | "post", endpoint: string, data?: any): Promise<T> {

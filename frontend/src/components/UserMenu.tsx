@@ -13,9 +13,9 @@ export function UserMenu() {
     <div className="user-menu">
       <button className="user-menu-trigger" onClick={() => setShowMenu(!showMenu)}>
         {user.picture ? (
-          <img src={user.picture} alt={user.name} className="user-avatar" />
+          <img src={user.picture} alt="" className="user-avatar" />
         ) : (
-          <div className="user-avatar-placeholder">{user.name.charAt(0)}</div>
+          <div className="user-avatar-placeholder" aria-hidden="true">{user.name.charAt(0)}</div>
         )}
         <span className="user-name">{user.name}</span>
       </button>
