@@ -122,6 +122,7 @@ const nameAliases = {
   'bristol-myers squibb': 'bms',
   'ion': 'iongroup',
   'on location experiences': 'onlocationexp',
+  'british american shared services (gsd) limited (bat)': 'british american tobacco',
 };
 
 // Extract company name from domain (e.g., "accenture.com" -> "accenture")
