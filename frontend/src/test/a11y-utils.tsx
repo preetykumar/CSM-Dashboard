@@ -1,20 +1,16 @@
 import { ReactElement } from "react";
 import { render, RenderOptions } from "@testing-library/react";
 import { axe, toHaveNoViolations } from "jest-axe";
-import type { AxeResults } from "axe-core";
 import { expect } from "vitest";
 
 // Extend expect with axe matchers
 expect.extend(toHaveNoViolations);
 
-// Type for axe configuration
-interface AxeOptions {
-  rules?: Record<string, { enabled: boolean }>;
-  runOnly?: {
-    type: "tag" | "rule";
-    values: string[];
-  };
-}
+// Type for axe configuration - use any to avoid version conflicts
+type AxeOptions = Parameters<typeof axe>[1];
+
+// Type for axe results - use the actual return type to avoid conflicts
+type AxeResults = Awaited<ReturnType<typeof axe>>;
 
 /**
  * Renders a component and runs axe accessibility checks
@@ -76,9 +72,9 @@ ${nodes}`;
 /**
  * Common axe rules to run for WCAG 2.1 AA compliance
  */
-export const wcag21AAConfig: AxeOptions = {
+export const wcag21AAConfig = {
   runOnly: {
-    type: "tag",
+    type: "tag" as const,
     values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"],
   },
 };
@@ -86,9 +82,9 @@ export const wcag21AAConfig: AxeOptions = {
 /**
  * Best practices config including additional rules
  */
-export const bestPracticesConfig: AxeOptions = {
+export const bestPracticesConfig = {
   runOnly: {
-    type: "tag",
+    type: "tag" as const,
     values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "best-practice"],
   },
 };
