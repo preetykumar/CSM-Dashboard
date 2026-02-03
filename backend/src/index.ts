@@ -68,10 +68,11 @@ function loadSalesforceConfig() {
     // JWT Bearer Flow (production)
     const username = process.env.SF_USERNAME;
     const privateKeyPath = process.env.SF_PRIVATE_KEY_PATH;
+    const privateKey = process.env.SF_PRIVATE_KEY; // Direct key content for Cloud Run
 
-    if (!clientId || !username || !privateKeyPath) {
+    if (!clientId || !username || (!privateKeyPath && !privateKey)) {
       console.warn("Salesforce JWT credentials not configured. SF features will be disabled.");
-      console.warn("Required: SF_CLIENT_ID, SF_USERNAME, SF_PRIVATE_KEY_PATH");
+      console.warn("Required: SF_CLIENT_ID, SF_USERNAME, and either SF_PRIVATE_KEY or SF_PRIVATE_KEY_PATH");
       return null;
     }
 
@@ -80,6 +81,7 @@ function loadSalesforceConfig() {
       clientId,
       username,
       privateKeyPath,
+      privateKey,
       loginUrl,
     };
   } else {

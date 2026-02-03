@@ -18,7 +18,8 @@ interface JWTConfig extends SalesforceConfigBase {
   authType: "jwt";
   clientId: string; // Consumer Key
   username: string; // SF username
-  privateKeyPath: string; // Path to PEM file
+  privateKeyPath?: string; // Path to PEM file (for local dev)
+  privateKey?: string; // Direct PEM content (for Cloud Run)
 }
 
 export type SalesforceConfig = ClientCredentialsConfig | JWTConfig;
@@ -128,12 +129,21 @@ export class SalesforceService {
       throw new Error("JWT assertion requires JWT config");
     }
 
-    // Read private key
-    const privateKeyPath = path.resolve(this.config.privateKeyPath);
-    if (!fs.existsSync(privateKeyPath)) {
-      throw new Error(`Private key file not found: ${privateKeyPath}`);
+    // Get private key - either directly from config or from file
+    let privateKey: string;
+    if (this.config.privateKey) {
+      // Use direct key content (for Cloud Run)
+      privateKey = this.config.privateKey;
+    } else if (this.config.privateKeyPath) {
+      // Read from file (for local dev)
+      const privateKeyPath = path.resolve(this.config.privateKeyPath);
+      if (!fs.existsSync(privateKeyPath)) {
+        throw new Error(`Private key file not found: ${privateKeyPath}`);
+      }
+      privateKey = fs.readFileSync(privateKeyPath, "utf8");
+    } else {
+      throw new Error("JWT config requires either privateKey or privateKeyPath");
     }
-    const privateKey = fs.readFileSync(privateKeyPath, "utf8");
 
     // Create JWT claims
     const now = Math.floor(Date.now() / 1000);
