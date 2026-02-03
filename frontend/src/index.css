@@ -551,7 +551,300 @@ header .hint {
   font-size: 0.85rem;
 }
 
-/* View Toggle */
+/* Search with Autocomplete */
+.search-container {
+  position: relative;
+  margin: 0.75rem 0;
+  max-width: 400px;
+}
+
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-input {
+  width: 100%;
+  padding: 0.6rem 2.5rem 0.6rem 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  background: white;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.search-input::placeholder {
+  color: #94a3b8;
+}
+
+.search-clear {
+  position: absolute;
+  right: 8px;
+  background: #e2e8f0;
+  border: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.search-clear:hover {
+  background: #cbd5e1;
+  color: #334155;
+}
+
+.search-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-top: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  max-height: 320px;
+  overflow-y: auto;
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0 0;
+}
+
+.search-suggestion-item {
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.15s;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.search-suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.search-suggestion-item:hover {
+  background: #f8fafc;
+}
+
+.suggestion-name {
+  font-weight: 500;
+  color: #334155;
+}
+
+.suggestion-tickets {
+  font-size: 0.75rem;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+}
+
+/* Main Tab Navigation */
+.main-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin: 1rem 0 0.5rem 0;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 0;
+}
+
+.main-tabs button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+}
+
+.main-tabs button:hover {
+  color: #667eea;
+  background: #f8fafc;
+}
+
+.main-tabs button.active {
+  color: #667eea;
+  border-bottom-color: #667eea;
+}
+
+/* Sub-tabs (within Support Tickets) */
+.sub-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.sub-tabs button {
+  padding: 0.5rem 1rem;
+  border: 2px solid #667eea;
+  background: white;
+  color: #667eea;
+  font-size: 0.85rem;
+  font-weight: 500;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.sub-tabs button:hover {
+  background: #f0f0ff;
+}
+
+.sub-tabs button.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: transparent;
+}
+
+/* Smart Filters */
+.smart-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  flex-wrap: wrap;
+}
+
+.smart-filters .filter-label,
+.alphabet-nav .filter-label {
+  color: #64748b;
+  font-size: 0.85rem;
+  font-weight: 500;
+  margin-right: 0.25rem;
+}
+
+.filter-btn {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.filter-btn:hover {
+  border-color: #667eea;
+  background: #f8fafc;
+}
+
+.filter-btn.active {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+}
+
+.filter-btn .badge {
+  padding: 0.1rem 0.4rem;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.filter-btn .badge.urgent {
+  background: #ef4444;
+  color: white;
+}
+
+.filter-btn .badge.high {
+  background: #f97316;
+  color: white;
+}
+
+.filter-btn.active .badge {
+  background: rgba(255, 255, 255, 0.3);
+  color: white;
+}
+
+/* Alphabet Navigation */
+.alphabet-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0.5rem 0 0.75rem 0;
+  flex-wrap: wrap;
+}
+
+.alpha-btn {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid #e2e8f0;
+  background: white;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 36px;
+  text-align: center;
+}
+
+.alpha-btn:hover {
+  border-color: #667eea;
+  background: #f8fafc;
+}
+
+.alpha-btn.active {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+}
+
+/* Results Summary */
+.results-summary {
+  color: #64748b;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.no-results {
+  color: #64748b;
+  font-style: italic;
+  text-align: center;
+  padding: 2rem;
+}
+
+/* Coming Soon Placeholder */
+.coming-soon {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #64748b;
+}
+
+.coming-soon h2 {
+  color: #334155;
+  margin-bottom: 0.5rem;
+}
+
+/* View Toggle (legacy, keeping for backwards compatibility) */
 .view-toggle {
   display: flex;
   gap: 0.5rem;
