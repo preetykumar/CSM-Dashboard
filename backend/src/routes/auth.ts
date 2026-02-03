@@ -1,6 +1,23 @@
 import { Router, Request, Response, NextFunction } from "express";
 import passport from "passport";
 
+// Admin users who can trigger syncs and see all data
+const ADMIN_EMAILS = [
+  "michelle.viguerie@deque.com",
+  "katile.olsen@deque.com",
+  "neel.sinha@deque.com",
+  "preety.kumar@deque.com",
+  "sujasree.kurapati@deque.com",
+  "anik.ganguly@deque.com",
+  "dylan.barrell@deque.com",
+  "mike.farrell@deque.com",
+];
+
+function isAdmin(email: string | undefined): boolean {
+  if (!email) return false;
+  return ADMIN_EMAILS.some((admin) => admin.toLowerCase() === email.toLowerCase());
+}
+
 export function createAuthRoutes(): Router {
   const router = Router();
   const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
@@ -29,14 +46,17 @@ export function createAuthRoutes(): Router {
   // Get current user
   router.get("/me", (req: Request, res: Response) => {
     if (req.isAuthenticated && req.isAuthenticated()) {
+      const user = req.user as { email?: string };
       res.json({
         authenticated: true,
         user: req.user,
+        isAdmin: isAdmin(user?.email),
       });
     } else {
       res.json({
         authenticated: false,
         user: null,
+        isAdmin: false,
       });
     }
   });

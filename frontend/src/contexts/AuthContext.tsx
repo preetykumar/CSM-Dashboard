@@ -5,6 +5,7 @@ interface AuthContextType {
   user: AuthUser | null;
   authenticated: boolean;
   authEnabled: boolean;
+  isAdmin: boolean;
   loading: boolean;
   login: () => void;
   logout: () => Promise<void>;
@@ -16,6 +17,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [authEnabled, setAuthEnabled] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -26,11 +28,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthEnabled(config.authEnabled);
         setAuthenticated(status.authenticated);
         setUser(status.user);
+        setIsAdmin(status.isAdmin);
       } catch (error) {
         console.error("Error checking auth:", error);
         setAuthEnabled(false);
         setAuthenticated(false);
         setUser(null);
+        setIsAdmin(false);
       } finally {
         setLoading(false);
       }
@@ -47,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await logoutApi();
     setAuthenticated(false);
     setUser(null);
+    setIsAdmin(false);
   };
 
   return (
@@ -55,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         authenticated,
         authEnabled,
+        isAdmin,
         loading,
         login,
         logout,

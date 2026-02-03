@@ -11,6 +11,7 @@ export interface AuthUser {
 export interface AuthStatus {
   authenticated: boolean;
   user: AuthUser | null;
+  isAdmin: boolean;
 }
 
 export interface AuthConfig {
@@ -24,7 +25,7 @@ export async function getAuthStatus(): Promise<AuthStatus> {
     credentials: "include",
   });
   if (!res.ok) {
-    return { authenticated: false, user: null };
+    return { authenticated: false, user: null, isAdmin: false };
   }
   return res.json();
 }

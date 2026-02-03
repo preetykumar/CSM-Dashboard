@@ -199,3 +199,38 @@ export async function deleteChatConversation(conversationId: string): Promise<vo
   });
   if (!res.ok) throw new Error("Failed to delete conversation");
 }
+
+// ==================
+// Sync APIs (Admin only)
+// ==================
+
+export interface SyncStatusItem {
+  type: string;
+  last_sync: string;
+  status: string;
+  record_count: number;
+  error_message: string | null;
+}
+
+export interface SyncStatus {
+  status: SyncStatusItem[];
+  inProgress: boolean;
+}
+
+export async function fetchSyncStatus(): Promise<SyncStatus> {
+  const res = await fetch(`${API_BASE}/sync/status`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch sync status");
+  return res.json();
+}
+
+export async function triggerFullSync(): Promise<{ message: string; status: string }> {
+  const res = await fetch(`${API_BASE}/sync`, {
+    ...fetchOptions,
+    method: "POST",
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: "Failed to trigger sync" }));
+    throw new Error(error.error || "Failed to trigger sync");
+  }
+  return res.json();
+}
