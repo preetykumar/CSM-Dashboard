@@ -1,6 +1,7 @@
 import { ReactElement } from "react";
 import { render, RenderOptions } from "@testing-library/react";
-import { axe, toHaveNoViolations, AxeResults } from "jest-axe";
+import { axe, toHaveNoViolations } from "jest-axe";
+import type { AxeResults } from "axe-core";
 import { expect } from "vitest";
 
 // Extend expect with axe matchers
@@ -58,9 +59,9 @@ export function formatViolations(violations: AxeResults["violations"]): string {
   }
 
   return violations
-    .map((violation) => {
+    .map((violation: AxeResults["violations"][number]) => {
       const nodes = violation.nodes
-        .map((node) => `    - ${node.html}\n      ${node.failureSummary}`)
+        .map((node: AxeResults["violations"][number]["nodes"][number]) => `    - ${node.html}\n      ${node.failureSummary}`)
         .join("\n");
 
       return `

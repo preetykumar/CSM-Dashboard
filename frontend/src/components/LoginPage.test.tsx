@@ -28,6 +28,7 @@ describe("LoginPage", () => {
         user: null,
         authenticated: false,
         authEnabled: true,
+        isAdmin: false,
         logout: vi.fn(),
       });
 
