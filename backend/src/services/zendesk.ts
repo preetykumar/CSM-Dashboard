@@ -593,6 +593,8 @@ export class ZendeskService {
     const allOrgs: Organization[] = [];
     let page = 1;
 
+    console.log("Fetching all Zendesk organizations...");
+
     while (true) {
       const data = await this.apiCall<{ organizations: Organization[]; next_page: string | null }>(
         "get",
@@ -601,11 +603,15 @@ export class ZendeskService {
       );
       allOrgs.push(...data.organizations);
 
+      if (page % 5 === 0) {
+        console.log(`  Fetched ${allOrgs.length} organizations (page ${page})...`);
+      }
+
       if (!data.next_page) break;
       page++;
-      if (page > 10) break;
     }
 
+    console.log(`Fetched ${allOrgs.length} total organizations`);
     return allOrgs;
   }
 
