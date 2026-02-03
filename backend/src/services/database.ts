@@ -453,35 +453,64 @@ export class DatabaseService {
   }
 
   getCSMPortfolios(): { csm_email: string; csm_name: string; org_ids: number[] }[] {
+    // Group by csm_name to consolidate CSMs with multiple Salesforce IDs/emails
+    // Prefer @deque.com emails, fall back to any email
     const rows = this.db.prepare(`
-      SELECT csm_email, csm_name, GROUP_CONCAT(zendesk_org_id) as org_ids
+      SELECT
+        csm_name,
+        GROUP_CONCAT(DISTINCT zendesk_org_id) as org_ids,
+        GROUP_CONCAT(DISTINCT csm_email) as emails
       FROM csm_assignments
       WHERE zendesk_org_id IS NOT NULL
-      GROUP BY csm_email, csm_name
+      GROUP BY csm_name
       ORDER BY csm_name
     `).all() as any[];
 
-    return rows.map((row) => ({
-      csm_email: row.csm_email,
-      csm_name: row.csm_name,
-      org_ids: row.org_ids ? row.org_ids.split(",").map(Number) : [],
-    }));
+    return rows.map((row) => {
+      // Pick the best email (prefer @deque.com)
+      const emails = row.emails ? row.emails.split(",") : [];
+      const dequeEmail = emails.find((e: string) => e.toLowerCase().endsWith("@deque.com"));
+      const csm_email = dequeEmail || emails[0] || "";
+
+      return {
+        csm_email,
+        csm_name: row.csm_name,
+        org_ids: row.org_ids ? row.org_ids.split(",").map(Number) : [],
+      };
+    });
   }
 
   // Get portfolio for a specific CSM by email
+  // Finds CSM by email, then returns ALL their accounts (even if they have multiple Salesforce IDs)
   getCSMPortfolioByEmail(email: string): { csm_email: string; csm_name: string; org_ids: number[] } | null {
+    // First, find the CSM name for this email
+    const csmName = this.db.prepare(`
+      SELECT csm_name FROM csm_assignments WHERE LOWER(csm_email) = LOWER(?) LIMIT 1
+    `).get(email) as { csm_name: string } | undefined;
+
+    if (!csmName) return null;
+
+    // Then get all accounts for this CSM (by name, to include all their Salesforce IDs)
     const rows = this.db.prepare(`
-      SELECT csm_email, csm_name, GROUP_CONCAT(zendesk_org_id) as org_ids
+      SELECT
+        csm_name,
+        GROUP_CONCAT(DISTINCT zendesk_org_id) as org_ids,
+        GROUP_CONCAT(DISTINCT csm_email) as emails
       FROM csm_assignments
-      WHERE zendesk_org_id IS NOT NULL AND LOWER(csm_email) = LOWER(?)
-      GROUP BY csm_email, csm_name
-    `).all(email) as any[];
+      WHERE zendesk_org_id IS NOT NULL AND csm_name = ?
+      GROUP BY csm_name
+    `).all(csmName.csm_name) as any[];
 
     if (rows.length === 0) return null;
 
     const row = rows[0];
+    // Prefer @deque.com email
+    const emails = row.emails ? row.emails.split(",") : [];
+    const dequeEmail = emails.find((e: string) => e.toLowerCase().endsWith("@deque.com"));
+    const csm_email = dequeEmail || emails[0] || email;
+
     return {
-      csm_email: row.csm_email,
+      csm_email,
       csm_name: row.csm_name,
       org_ids: row.org_ids ? row.org_ids.split(",").map(Number) : [],
     };
