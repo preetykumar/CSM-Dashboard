@@ -155,6 +155,8 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
       CREATE INDEX IF NOT EXISTS idx_tickets_updated ON tickets(updated_at);
       CREATE INDEX IF NOT EXISTS idx_csm_email ON csm_assignments(csm_email);
+      CREATE INDEX IF NOT EXISTS idx_csm_name ON csm_assignments(csm_name);
+      CREATE INDEX IF NOT EXISTS idx_csm_org ON csm_assignments(zendesk_org_id);
 
       CREATE TABLE IF NOT EXISTS github_issue_links (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
