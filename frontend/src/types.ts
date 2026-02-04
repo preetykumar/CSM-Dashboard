@@ -68,6 +68,21 @@ export interface DetailedCustomerSummary extends CustomerSummary {
   };
 }
 
+// Minimal ticket data for CSM portfolio view (performance optimization)
+export interface MinimalTicket {
+  id: number;
+  url: string;
+  subject?: string;
+  status: string;
+  priority?: string;
+  ticket_type?: string;
+  is_escalated?: boolean;
+  product?: string;
+  module?: string;
+  issue_subtype?: string;
+  updated_at: string;
+}
+
 // CSM Portfolio types
 export interface User {
   id: number;
@@ -79,7 +94,7 @@ export interface User {
 
 export interface CSMCustomerSummary {
   organization: Organization;
-  tickets: Ticket[];
+  tickets: MinimalTicket[];
   ticketStats: {
     total: number;
     new: number;

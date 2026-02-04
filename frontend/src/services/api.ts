@@ -103,6 +103,57 @@ export async function fetchTicketsByProductModule(
   return data.tickets;
 }
 
+// Product-grouped tickets API
+export interface ProductTicket {
+  id: number;
+  url: string;
+  subject?: string;
+  status: string;
+  priority?: string;
+  ticket_type?: string;
+  is_escalated: boolean;
+  product?: string;
+  module?: string;
+  issue_subtype?: string;
+  workflow_status?: string;
+  updated_at: string;
+  created_at: string;
+  organization_id: number;
+  organization_name: string;
+}
+
+export interface ProductSubtype {
+  subtype: string;
+  tickets: ProductTicket[];
+}
+
+export interface ProductType {
+  type: string;
+  totalTickets: number;
+  openTickets: number;
+  subtypes: ProductSubtype[];
+}
+
+export interface ProductGroup {
+  product: string;
+  totalTickets: number;
+  openTickets: number;
+  types: ProductType[];
+}
+
+export interface ProductsResponse {
+  products: ProductGroup[];
+  totalProducts: number;
+  totalTickets: number;
+  cached: boolean;
+}
+
+export async function fetchProducts(): Promise<ProductsResponse> {
+  const res = await fetch(`${API_BASE}/csm/products`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch products");
+  return res.json();
+}
+
 // GitHub Development Status API
 export async function fetchGitHubStatusForTickets(
   ticketIds: number[]

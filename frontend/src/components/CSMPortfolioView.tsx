@@ -3,7 +3,7 @@ import { fetchCSMPortfolios, fetchEnhancedCustomerSummary, fetchGitHubStatusForT
 import { VelocityBanner } from "./VelocityBanner";
 import { ProductBacklogCard } from "./ProductBacklogCard";
 import { QuarterlySummaryCard } from "./QuarterlySummaryCard";
-import type { CSMPortfolio, CSMCustomerSummary, Ticket, EnhancedCustomerSummary, GitHubDevelopmentStatus } from "../types";
+import type { CSMPortfolio, CSMCustomerSummary, Ticket, MinimalTicket, EnhancedCustomerSummary, GitHubDevelopmentStatus } from "../types";
 
 export function CSMPortfolioView() {
   const [portfolios, setPortfolios] = useState<CSMPortfolio[]>([]);
@@ -150,7 +150,7 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
   const [githubStatusMap, setGitHubStatusMap] = useState<Map<number, GitHubDevelopmentStatus[]> | null>(null);
   const [drilldownTickets, setDrilldownTickets] = useState<{
     title: string;
-    tickets: Ticket[];
+    tickets: (Ticket | MinimalTicket)[];
     grouped?: boolean;
   } | null>(null);
 
@@ -176,8 +176,18 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
 
       if (ticketIds.length > 0) {
         fetchGitHubStatusForTickets(ticketIds)
-          .then(setGitHubStatusMap)
+          .then((newMap) => {
+            // Ensure all requested tickets are in the map (empty array for those without links)
+            const completeMap = new Map<number, GitHubDevelopmentStatus[]>();
+            for (const id of ticketIds) {
+              completeMap.set(id, newMap.get(id) || []);
+            }
+            setGitHubStatusMap(completeMap);
+          })
           .catch((err) => console.error("Failed to load GitHub statuses:", err));
+      } else {
+        // No tickets to fetch, set empty map to prevent re-fetching
+        setGitHubStatusMap(new Map());
       }
     }
   }, [enhancedSummary, githubStatusMap]);
@@ -427,7 +437,7 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
   );
 }
 
-function TicketDetailRow({ ticket }: { ticket: Ticket }) {
+function TicketDetailRow({ ticket }: { ticket: Ticket | MinimalTicket }) {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -456,7 +466,7 @@ function TicketDetailRow({ ticket }: { ticket: Ticket }) {
       <td className="ticket-subtype">{ticket.issue_subtype || ticket.module || "-"}</td>
       <td className={`ticket-status status-${ticket.status}`}>{ticket.status}</td>
       <td className={`ticket-priority priority-${ticket.priority || "normal"}`}>{ticket.priority || "normal"}</td>
-      <td className="ticket-workflow">{ticket.workflow_status || "-"}</td>
+      <td className="ticket-workflow">{("workflow_status" in ticket ? ticket.workflow_status : null) || "-"}</td>
       <td className="ticket-updated">{formatDate(ticket.updated_at)}</td>
     </tr>
   );
@@ -467,18 +477,18 @@ interface ProductGroup {
   isPrimary: boolean;
   types: {
     typeName: string;
-    tickets: Ticket[];
+    tickets: (Ticket | MinimalTicket)[];
   }[];
 }
 
-function GroupedTicketView({ tickets }: { tickets: Ticket[] }) {
+function GroupedTicketView({ tickets }: { tickets: (Ticket | MinimalTicket)[] }) {
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
 
   // Group tickets by product, then by issue type
   // Primary product (customer's main product) is shown first, others under "Other Products"
   const groupedData: ProductGroup[] = (() => {
-    const productMap = new Map<string, Map<string, Ticket[]>>();
+    const productMap = new Map<string, Map<string, (Ticket | MinimalTicket)[]>>();
 
     for (const ticket of tickets) {
       const product = ticket.product || "Unassigned";
@@ -513,8 +523,8 @@ function GroupedTicketView({ tickets }: { tickets: Ticket[] }) {
     const typeOrder = ["Bug", "Feature", "Other"];
 
     // Helper to build types array for a product
-    const buildTypes = (typeMap: Map<string, Ticket[]>) => {
-      const types: { typeName: string; tickets: Ticket[] }[] = [];
+    const buildTypes = (typeMap: Map<string, (Ticket | MinimalTicket)[]>) => {
+      const types: { typeName: string; tickets: (Ticket | MinimalTicket)[] }[] = [];
       for (const typeName of typeOrder) {
         if (typeMap.has(typeName)) {
           types.push({ typeName, tickets: typeMap.get(typeName)! });

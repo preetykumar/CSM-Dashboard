@@ -84,14 +84,10 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   res.status(401).json({ error: "Authentication required", loginUrl: "/api/auth/google" });
 }
 
-// Middleware to check if auth is enabled (skip auth check if not configured)
+// Middleware that attaches user info if authenticated, but doesn't require it
+// Use this for endpoints that work for both authenticated and unauthenticated users
 export function optionalAuth(req: Request, res: Response, next: NextFunction) {
-  const authEnabled = process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET;
-
-  if (!authEnabled) {
-    // Auth not configured, allow all requests
-    return next();
-  }
-
-  return requireAuth(req, res, next);
+  // Always allow the request - user info will be available via req.user if authenticated
+  // The passport session middleware already attaches req.user if a valid session exists
+  return next();
 }

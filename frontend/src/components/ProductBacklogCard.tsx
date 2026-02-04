@@ -100,18 +100,14 @@ function ModuleRow({ module, onClick, onFeaturesClick, onBugsClick, githubStatus
       <div className="ticket-status-section">
         <div className="ticket-status-header">Ticket Status</div>
         <div className="ticket-status-rows">
-          <div className="status-row zendesk-status">
-            <span className="status-row-label">Helpdesk (Zendesk):</span>
-            <span className={`status-row-value status-${module.status.toLowerCase().replace(/\s+/g, "-")}`}>
-              {module.status}
-            </span>
-          </div>
-          {hasGitHubStatus && (
-            <div className="status-row github-status">
-              <span className="status-row-label">Development (GitHub):</span>
+          <div className="status-row github-status">
+            <span className="status-row-label">Development (GitHub):</span>
+            {hasGitHubStatus ? (
               <GitHubStatusSummary statuses={githubStatuses} />
-            </div>
-          )}
+            ) : (
+              <span className="no-github-links">No linked issues</span>
+            )}
+          </div>
         </div>
       </div>
 

@@ -3,6 +3,7 @@ import { fetchOrganizations, fetchCustomerSummary, fetchSyncStatus, triggerFullS
 import { CustomerSummaryCard } from "./components/CustomerSummaryCard";
 import { OrganizationDrilldown } from "./components/OrganizationDrilldown";
 import { CSMPortfolioView } from "./components/CSMPortfolioView";
+import { ProductView } from "./components/ProductView";
 import { TicketListModal } from "./components/TicketListModal";
 import { LoginPage } from "./components/LoginPage";
 import { UserMenu } from "./components/UserMenu";
@@ -12,7 +13,7 @@ import { ChatProvider } from "./contexts/ChatContext";
 import type { CustomerSummary, Organization } from "./types";
 
 type MainTab = "support" | "renewals" | "usage";
-type SupportSubTab = "customers" | "csm";
+type SupportSubTab = "customers" | "csm" | "product";
 type SmartFilter = "all" | "escalated" | "critical";
 type AlphabetRange = "all" | "A-D" | "E-H" | "I-L" | "M-P" | "Q-T" | "U-Z";
 
@@ -293,6 +294,12 @@ function Dashboard() {
               >
                 By CSM (QBR View)
               </button>
+              <button
+                className={supportSubTab === "product" ? "active" : ""}
+                onClick={() => setSupportSubTab("product")}
+              >
+                By Product
+              </button>
             </div>
 
             {supportSubTab === "customers" && (
@@ -385,6 +392,9 @@ function Dashboard() {
             {supportSubTab === "csm" && (
               <p className="hint">View tickets grouped by CSM and their customer portfolio</p>
             )}
+            {supportSubTab === "product" && (
+              <p className="hint">View tickets grouped by product, request type, and issue subtype</p>
+            )}
           </>
         )}
 
@@ -468,8 +478,10 @@ function Dashboard() {
                 />
               )}
             </>
-          ) : (
+          ) : supportSubTab === "csm" ? (
             <CSMPortfolioView />
+          ) : (
+            <ProductView />
           )}
         </>
       )}

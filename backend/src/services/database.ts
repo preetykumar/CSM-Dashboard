@@ -376,6 +376,10 @@ export class DatabaseService {
     return this.db.prepare("SELECT * FROM tickets WHERE organization_id = ? AND ticket_type = ? ORDER BY updated_at DESC").all(orgId, ticketType) as CachedTicket[];
   }
 
+  getAllTickets(): CachedTicket[] {
+    return this.db.prepare("SELECT * FROM tickets ORDER BY updated_at DESC").all() as CachedTicket[];
+  }
+
   getTicketStats(orgId: number): { total: number; new: number; open: number; pending: number; hold: number; solved: number; closed: number } {
     const row = this.db.prepare(`
       SELECT

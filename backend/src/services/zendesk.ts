@@ -247,7 +247,7 @@ export class ZendeskService {
       const value = this.getCustomFieldValue(ticket, moduleFieldId);
       if (value) return String(value);
     }
-    return "Helpdesk Status (Zendesk)";
+    return "General";
   }
 
   // Extract ticket type (bug or feature) from custom fields

@@ -208,6 +208,16 @@ header p {
   margin-right: 0.5rem;
 }
 
+.recent-tickets a.ticket-id {
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.recent-tickets a.ticket-id:hover {
+  color: #5a67d8;
+  text-decoration: underline;
+}
+
 .ticket-status {
   font-size: 0.7rem;
   padding: 0.15rem 0.5rem;
@@ -1418,7 +1428,7 @@ header .hint {
 }
 
 .login-footer p {
-  color: #999;
+  color: #666; /* Changed from #999 for WCAG 2.1 AA color contrast (5.74:1 vs required 4.5:1) */
   font-size: 0.8rem;
 }
 
@@ -2028,6 +2038,12 @@ header .hint {
 .status-row-value.status-backlogged {
   background: #fff3cd;
   color: #856404;
+}
+
+.no-github-links {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-style: italic;
 }
 
 /* GitHub Status Summary */
@@ -2674,4 +2690,507 @@ header .hint {
 .ticket-table td:nth-child(4) {
   min-width: 100px;
   max-width: 150px;
+}
+
+/* ============================================
+   Product View Styles (By Product Tab)
+   ============================================ */
+
+.product-view {
+  padding: 1rem 0;
+}
+
+.product-view-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.product-stats-summary {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.product-stats-summary .stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem 1.25rem;
+  background: #ffffff;
+  border-radius: 8px;
+  border: 2px solid #e5e7eb;
+  min-width: 100px;
+}
+
+.product-stats-summary .stat-item strong {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.2;
+}
+
+.product-stats-summary .stat-item .label {
+  font-size: 0.75rem;
+  color: #374151;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 0.25rem;
+  font-weight: 500;
+}
+
+.product-stats-summary .stat-item.open {
+  background: #7c2d12;
+  border-color: #7c2d12;
+}
+
+.product-stats-summary .stat-item.open strong {
+  color: #ffffff;
+}
+
+.product-stats-summary .stat-item.open .label {
+  color: #fed7aa;
+}
+
+.product-stats-summary .loading-github {
+  display: flex;
+  align-items: center;
+  font-size: 0.85rem;
+  color: #888;
+  font-style: italic;
+  padding-left: 1rem;
+}
+
+.product-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.product-controls .search-box {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+  max-width: 300px;
+}
+
+.product-controls .search-box input {
+  width: 100%;
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.product-controls .search-box input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.product-controls .clear-search {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  color: #999;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.product-controls .clear-search:hover {
+  color: #666;
+}
+
+.product-controls .status-filter {
+  display: flex;
+  gap: 0;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.product-controls .status-filter button {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: #fff;
+  color: #666;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.product-controls .status-filter button:not(:last-child) {
+  border-right: 1px solid #ddd;
+}
+
+.product-controls .status-filter button:hover {
+  background: #f5f5f5;
+}
+
+.product-controls .status-filter button.active {
+  background: #667eea;
+  color: #fff;
+}
+
+.product-controls .expand-controls {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.product-controls .expand-controls button {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.product-controls .expand-controls button:hover {
+  background: #f5f5f5;
+  border-color: #ccc;
+}
+
+.product-view .product-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.product-view .no-results {
+  text-align: center;
+  padding: 3rem;
+  color: #888;
+  font-size: 1.1rem;
+}
+
+/* Product Card */
+.product-view .product-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.product-view .product-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.product-view .product-header:hover {
+  opacity: 0.95;
+}
+
+.product-view .product-header .expand-icon {
+  font-size: 0.8rem;
+  width: 20px;
+}
+
+.product-view .product-header .product-name {
+  flex: 1;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.product-view .product-header .product-stats {
+  display: flex;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.product-view .product-header .product-stats .stat {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  color: #fff;
+}
+
+.product-view .product-header .product-stats .stat.total {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.product-view .product-header .product-stats .stat.open {
+  background: rgba(255, 255, 255, 0.25);
+  font-weight: 600;
+}
+
+.product-view .product-content {
+  padding: 0.5rem;
+}
+
+/* Type Section */
+.product-view .type-section {
+  margin: 0.5rem;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #e5e5e5;
+}
+
+.product-view .type-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #f8f9fa;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.product-view .type-header:hover {
+  background: #f0f0f0;
+}
+
+.product-view .type-header .expand-icon {
+  font-size: 0.7rem;
+  color: #888;
+  width: 16px;
+}
+
+.product-view .type-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.product-view .type-badge.bug {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.product-view .type-badge.feature {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.product-view .type-badge.other {
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
+.product-view .type-stats {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.product-view .type-content {
+  background: #fff;
+}
+
+/* Subtype Section */
+.product-view .subtype-section {
+  border-top: 1px solid #f0f0f0;
+}
+
+.product-view .subtype-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem 0.6rem 2rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.product-view .subtype-header:hover {
+  background: #fafafa;
+}
+
+.product-view .subtype-header .expand-icon {
+  font-size: 0.6rem;
+  color: #aaa;
+  width: 14px;
+}
+
+.product-view .subtype-name {
+  flex: 1;
+  font-size: 0.9rem;
+  color: #444;
+}
+
+.product-view .subtype-stats {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.product-view .subtype-content {
+  padding: 0 0.5rem 0.5rem 1.5rem;
+}
+
+/* Ticket Table in Product View */
+.product-view .ticket-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.product-view .ticket-table th {
+  text-align: left;
+  padding: 0.5rem;
+  background: #f8f9fa;
+  color: #666;
+  font-weight: 500;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.product-view .ticket-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.product-view .ticket-row {
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.product-view .ticket-row:hover {
+  background: #f8f9fa;
+}
+
+.product-view .ticket-row.escalated {
+  background: #fff5f5;
+}
+
+.product-view .ticket-row.escalated:hover {
+  background: #fee2e2;
+}
+
+.product-view .ticket-id {
+  white-space: nowrap;
+}
+
+.product-view .ticket-id a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+.product-view .ticket-id a:hover {
+  text-decoration: underline;
+}
+
+.product-view .escalation-indicator {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background: #dc2626;
+  color: #fff;
+  border-radius: 50%;
+  text-align: center;
+  line-height: 16px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  margin-left: 4px;
+}
+
+.product-view .ticket-subject {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-view .ticket-org {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.product-view .ticket-status {
+  text-transform: capitalize;
+  font-weight: 500;
+}
+
+.product-view .ticket-status.status-new { color: #dc2626; }
+.product-view .ticket-status.status-open { color: #f59e0b; }
+.product-view .ticket-status.status-pending { color: #8b5cf6; }
+.product-view .ticket-status.status-hold { color: #6b7280; }
+.product-view .ticket-status.status-solved { color: #10b981; }
+.product-view .ticket-status.status-closed { color: #059669; }
+
+.product-view .ticket-priority {
+  text-transform: capitalize;
+  font-size: 0.8rem;
+}
+
+.product-view .ticket-priority.priority-urgent { color: #dc2626; font-weight: 600; }
+.product-view .ticket-priority.priority-high { color: #f59e0b; font-weight: 600; }
+.product-view .ticket-priority.priority-normal { color: #6b7280; }
+.product-view .ticket-priority.priority-low { color: #9ca3af; }
+
+.product-view .ticket-github {
+  min-width: 80px;
+}
+
+.product-view .github-links {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.product-view .github-link {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.product-view .github-link.status-done {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.product-view .github-link.status-in-progress {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.product-view .github-link.status-backlog {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.product-view .github-link.status-unknown {
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
+.product-view .more-links {
+  font-size: 0.7rem;
+  color: #888;
+  padding: 2px 4px;
+}
+
+.product-view .no-github {
+  color: #ccc;
+}
+
+.product-view .ticket-updated {
+  white-space: nowrap;
+  color: #888;
+  font-size: 0.8rem;
 }

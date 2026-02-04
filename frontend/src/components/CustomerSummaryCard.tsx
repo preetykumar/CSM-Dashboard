@@ -97,13 +97,24 @@ export function CustomerSummaryCard({ summary, onClick, onStatusClick, onPriorit
           <div className="recent-section">
             <h3>Recent Tickets</h3>
             <ul className="recent-tickets">
-              {recentTickets.slice(0, 5).map((ticket) => (
-                <li key={ticket.id}>
-                  <span className="ticket-id">#{ticket.id}</span>
-                  {ticket.subject || "No subject"}
-                  <span className={`ticket-status ${ticket.status}`}>{ticket.status}</span>
-                </li>
-              ))}
+              {recentTickets.slice(0, 5).map((ticket) => {
+                const ticketUrl = ticket.url || `https://dequehelp.zendesk.com/agent/tickets/${ticket.id}`;
+                return (
+                  <li key={ticket.id}>
+                    <a
+                      href={ticketUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="ticket-id"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      #{ticket.id}
+                    </a>
+                    {ticket.subject || "No subject"}
+                    <span className={`ticket-status ${ticket.status}`}>{ticket.status}</span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}

@@ -94,6 +94,115 @@ export function createCachedRoutes(db: DatabaseService): Router {
     }
   });
 
+  // Get detailed customer summary with product breakdown
+  router.get("/:id/detailed", async (req: Request, res: Response) => {
+    try {
+      const orgId = parseInt(req.params.id, 10);
+      const org = db.getOrganization(orgId);
+
+      if (!org) {
+        res.status(404).json({ error: "Organization not found" });
+        return;
+      }
+
+      const tickets = db.getTicketsByOrganization(orgId);
+      const ticketStats = db.getTicketStats(orgId);
+      const priorityBreakdown = db.getPriorityBreakdown(orgId);
+      const recentTickets = tickets
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+        .slice(0, 10);
+
+      // Build product breakdown
+      const productMap = new Map<string, {
+        product: string;
+        total: number;
+        featureRequests: number;
+        problemReports: number;
+        other: number;
+        openTickets: number;
+        tickets: CachedTicket[];
+      }>();
+
+      let totalFeatureRequests = 0;
+      let totalProblemReports = 0;
+      let totalOther = 0;
+
+      for (const ticket of tickets) {
+        const product = ticket.product || "Unknown Product";
+        const ticketType = ticket.ticket_type || "other";
+
+        if (!productMap.has(product)) {
+          productMap.set(product, {
+            product,
+            total: 0,
+            featureRequests: 0,
+            problemReports: 0,
+            other: 0,
+            openTickets: 0,
+            tickets: [],
+          });
+        }
+
+        const productStats = productMap.get(product)!;
+        productStats.total++;
+        productStats.tickets.push(ticket);
+
+        // Count by type
+        if (ticketType === "feature") {
+          productStats.featureRequests++;
+          totalFeatureRequests++;
+        } else if (ticketType === "bug") {
+          productStats.problemReports++;
+          totalProblemReports++;
+        } else {
+          productStats.other++;
+          totalOther++;
+        }
+
+        // Count open tickets
+        if (["new", "open", "pending", "hold"].includes(ticket.status)) {
+          productStats.openTickets++;
+        }
+      }
+
+      // Convert to array and sort by total tickets
+      const productBreakdown = Array.from(productMap.values())
+        .map((p) => ({
+          product: p.product,
+          total: p.total,
+          featureRequests: p.featureRequests,
+          problemReports: p.problemReports,
+          other: p.other,
+          openTickets: p.openTickets,
+          tickets: p.tickets.map((t) => mapCachedTicketToDetailed(t)),
+        }))
+        .sort((a, b) => b.total - a.total);
+
+      res.json({
+        organization: {
+          id: org.id,
+          name: org.name,
+          domain_names: JSON.parse(org.domain_names || "[]"),
+          salesforce_account_name: org.salesforce_account_name || undefined,
+          created_at: org.created_at,
+          updated_at: org.updated_at,
+        },
+        ticketStats,
+        priorityBreakdown,
+        recentTickets: recentTickets.map((t) => mapCachedTicketToDetailed(t)),
+        productBreakdown,
+        requestTypeBreakdown: {
+          featureRequests: totalFeatureRequests,
+          problemReports: totalProblemReports,
+          other: totalOther,
+        },
+      });
+    } catch (error) {
+      console.error("Error fetching detailed customer summary:", error);
+      res.status(500).json({ error: "Failed to fetch detailed customer summary" });
+    }
+  });
+
   // Get tickets by status
   router.get("/:id/tickets/status/:status", async (req: Request, res: Response) => {
     try {
@@ -198,6 +307,215 @@ export function createCachedRoutes(db: DatabaseService): Router {
     } catch (error) {
       console.error("Error fetching enhanced customer summary:", error);
       res.status(500).json({ error: "Failed to fetch customer summary" });
+    }
+  });
+
+  // Map granular product names to top-level product categories
+  function getTopLevelProduct(rawProduct: string | null | undefined): string {
+    if (!rawProduct) return "Other";
+    const product = rawProduct.toLowerCase().trim();
+
+    // axe Monitor
+    if (product.includes("monitor") || product.includes("comply") || product === "30minwarning" ||
+        product.includes("auto_upgrade") || product.includes("auto-upgrade")) {
+      return "axe Monitor";
+    }
+
+    // axe Auditor
+    if (product.includes("auditor") || product.includes("assure") || product === "audit") {
+      return "axe Auditor";
+    }
+
+    // axe DevTools (includes all variations)
+    if (product.includes("devtools") || product.includes("axepro") || product.includes("axe_pro") ||
+        product.includes("axe-pro") || product.includes("watcher") || product.includes("linter") ||
+        product.includes("attest") || product.includes("agt") || product === "html" ||
+        product.includes("axe_beta")) {
+      return "axe DevTools";
+    }
+
+    // axe Reports
+    if (product.includes("report")) {
+      return "axe Reports";
+    }
+
+    // Deque University
+    if (product.includes("university") || product === "dequers") {
+      return "Deque University";
+    }
+
+    // axe Core / Open Source
+    if (product.includes("axe_core") || product.includes("axe-core") || product.includes("open_source") ||
+        product.includes("ruleset")) {
+      return "axe Core";
+    }
+
+    // axe Account Portal
+    if (product.includes("account-portal") || product.includes("account_portal")) {
+      return "axe Account Portal";
+    }
+
+    // axe Expert / Consulting
+    if (product.includes("expert") || product.includes("consult") || product.includes("assessment")) {
+      return "axe Expert Services";
+    }
+
+    // axe Mobile (standalone)
+    if (product === "mobile" || product === "ios" || product === "android") {
+      return "axe DevTools";
+    }
+
+    // Jira Integration
+    if (product.includes("jira")) {
+      return "Jira Integration";
+    }
+
+    // axe-con
+    if (product.includes("axe-con") || product.includes("axecon")) {
+      return "axe-con";
+    }
+
+    // Access requests / Account support
+    if (product.includes("access_request") || product.includes("access_removal") ||
+        product.includes("account_support") || product.includes("license") ||
+        product.includes("make_a_request")) {
+      return "Account & Access";
+    }
+
+    // General/Other
+    if (product === "other" || product === "deque" || product === "helpdesk" ||
+        product === "help_desk" || product === "internal" || product.startsWith("content_cue") ||
+        product.includes("email") || product.includes("documentation")) {
+      return "Other";
+    }
+
+    // Fallback - keep original if no match but capitalize
+    return "Other";
+  }
+
+  // Get all tickets grouped by product, then by request type, then by issue subtype
+  router.get("/products", async (_req: Request, res: Response) => {
+    try {
+      const allTickets = db.getAllTickets();
+      const orgs = db.getOrganizations();
+      const orgMap = new Map(orgs.map((o) => [o.id, o]));
+
+      // Group tickets: Product -> Request Type -> Issue Subtype
+      const productMap = new Map<string, {
+        product: string;
+        totalTickets: number;
+        openTickets: number;
+        types: Map<string, {
+          type: string;
+          totalTickets: number;
+          openTickets: number;
+          subtypes: Map<string, {
+            subtype: string;
+            tickets: CachedTicket[];
+          }>;
+        }>;
+      }>();
+
+      for (const ticket of allTickets) {
+        const product = getTopLevelProduct(ticket.product);
+        const ticketType = ticket.ticket_type === "bug" ? "Bug" :
+                           ticket.ticket_type === "feature" ? "Feature" : "Other";
+        // Clean up legacy "Helpdesk Status (Zendesk)" values
+        const cleanedSubtype = cleanModuleValue(ticket.issue_subtype);
+        const cleanedModule = cleanModuleValue(ticket.module);
+        const subtype = cleanedSubtype || cleanedModule || "General";
+        const isOpen = ["new", "open", "pending", "hold"].includes(ticket.status);
+
+        // Initialize product if not exists
+        if (!productMap.has(product)) {
+          productMap.set(product, {
+            product,
+            totalTickets: 0,
+            openTickets: 0,
+            types: new Map(),
+          });
+        }
+        const productData = productMap.get(product)!;
+        productData.totalTickets++;
+        if (isOpen) productData.openTickets++;
+
+        // Initialize type if not exists
+        if (!productData.types.has(ticketType)) {
+          productData.types.set(ticketType, {
+            type: ticketType,
+            totalTickets: 0,
+            openTickets: 0,
+            subtypes: new Map(),
+          });
+        }
+        const typeData = productData.types.get(ticketType)!;
+        typeData.totalTickets++;
+        if (isOpen) typeData.openTickets++;
+
+        // Initialize subtype if not exists
+        if (!typeData.subtypes.has(subtype)) {
+          typeData.subtypes.set(subtype, {
+            subtype,
+            tickets: [],
+          });
+        }
+        typeData.subtypes.get(subtype)!.tickets.push(ticket);
+      }
+
+      // Convert to array format with tickets mapped to detailed format
+      const products = Array.from(productMap.values())
+        .map((p) => ({
+          product: p.product,
+          totalTickets: p.totalTickets,
+          openTickets: p.openTickets,
+          types: Array.from(p.types.values())
+            .map((t) => ({
+              type: t.type,
+              totalTickets: t.totalTickets,
+              openTickets: t.openTickets,
+              subtypes: Array.from(t.subtypes.values())
+                .map((s) => ({
+                  subtype: s.subtype,
+                  tickets: s.tickets.map((ticket) => {
+                    const org = orgMap.get(ticket.organization_id);
+                    return {
+                      id: ticket.id,
+                      url: `https://dequehelp.zendesk.com/agent/tickets/${ticket.id}`,
+                      subject: ticket.subject,
+                      status: ticket.status,
+                      priority: ticket.priority,
+                      ticket_type: ticket.ticket_type,
+                      is_escalated: ticket.is_escalated === 1,
+                      product: ticket.product,
+                      module: ticket.module,
+                      issue_subtype: ticket.issue_subtype,
+                      workflow_status: ticket.workflow_status || getDefaultStatus(ticket.status),
+                      updated_at: ticket.updated_at,
+                      created_at: ticket.created_at,
+                      organization_id: ticket.organization_id,
+                      organization_name: org?.salesforce_account_name || org?.name || "Unknown",
+                    };
+                  }),
+                }))
+                .sort((a, b) => b.tickets.length - a.tickets.length),
+            }))
+            .sort((a, b) => {
+              // Sort Bug > Feature > Other
+              const order = { Bug: 0, Feature: 1, Other: 2 };
+              return (order[a.type as keyof typeof order] ?? 3) - (order[b.type as keyof typeof order] ?? 3);
+            }),
+        }))
+        .sort((a, b) => b.totalTickets - a.totalTickets);
+
+      res.json({
+        products,
+        totalProducts: products.length,
+        totalTickets: allTickets.length,
+        cached: true,
+      });
+    } catch (error) {
+      console.error("Error fetching products:", error);
+      res.status(500).json({ error: "Failed to fetch products" });
     }
   });
 
@@ -562,8 +880,19 @@ function getDefaultStatus(status: string): string {
   }
 }
 
+// Helper: Clean up module/subtype values - remove legacy placeholder
+function cleanModuleValue(value: string | null | undefined): string | undefined {
+  if (!value || value === "Helpdesk Status (Zendesk)") {
+    return undefined;
+  }
+  return value;
+}
+
 // Helper: Map cached ticket to detailed ticket object with all fields
 function mapCachedTicketToDetailed(t: CachedTicket): any {
+  const cleanedModule = cleanModuleValue(t.module);
+  const cleanedSubtype = cleanModuleValue(t.issue_subtype);
+
   return {
     id: t.id,
     url: `https://dequehelp.zendesk.com/agent/tickets/${t.id}`,
@@ -579,10 +908,10 @@ function mapCachedTicketToDetailed(t: CachedTicket): any {
     updated_at: t.updated_at,
     // Enhanced fields
     product: t.product,
-    module: t.module,
+    module: cleanedModule,
     ticket_type: t.ticket_type,
     workflow_status: t.workflow_status || getDefaultStatus(t.status),
-    issue_subtype: t.issue_subtype || t.module || "Helpdesk Status (Zendesk)",
+    issue_subtype: cleanedSubtype || cleanedModule || "General",
     is_escalated: t.is_escalated === 1,
   };
 }
