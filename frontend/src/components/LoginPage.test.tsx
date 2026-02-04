@@ -245,7 +245,8 @@ describe("LoginPage", () => {
       // 1. Have aria-hidden="true"
       // 2. Have role="presentation" or role="none"
       // 3. Not be focusable
-      const isHidden =
+      // Check if SVG is properly hidden from assistive tech
+      const hasHidingAttribute =
         svg?.getAttribute("aria-hidden") === "true" ||
         svg?.getAttribute("role") === "presentation" ||
         svg?.getAttribute("role") === "none" ||
@@ -253,6 +254,7 @@ describe("LoginPage", () => {
 
       // If not explicitly hidden, the button text provides the accessible name
       // so the icon is supplementary (acceptable)
+      expect(hasHidingAttribute || button.textContent?.includes("Sign in")).toBe(true);
       expect(button).toHaveAccessibleName(/sign in with google/i);
     });
 
@@ -782,7 +784,6 @@ describe("LoginPage", () => {
 
       // Verify no animations are forced (checking for animation/transition CSS)
       const button = screen.getByRole("button", { name: /sign in with google/i });
-      const styles = window.getComputedStyle(button);
 
       // Component should work regardless of motion preferences
       expect(button).toBeInTheDocument();
