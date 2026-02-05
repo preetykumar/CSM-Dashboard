@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Full-stack Zendesk dashboard for customer ticket summaries",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "workspaces": [
     "backend",
     "frontend"

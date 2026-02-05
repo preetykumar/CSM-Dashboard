@@ -285,3 +285,139 @@ export async function triggerFullSync(): Promise<{ message: string; status: stri
   }
   return res.json();
 }
+
+// ==================
+// Amplitude Usage Analytics APIs
+// ==================
+
+export interface AmplitudeProduct {
+  name: string;
+  slug: string;
+  projectId: string;
+}
+
+export interface AmplitudeUsageDay {
+  date: string;
+  activeUsers: number;
+  newUsers: number;
+}
+
+export interface AmplitudeUsageData {
+  product: string;
+  projectId: string;
+  period: string;
+  startDate: string;
+  endDate: string;
+  dailyUsage: AmplitudeUsageDay[];
+  totalActiveUsers: number;
+  totalNewUsers: number;
+  topEvents: { eventType: string; count: number }[];
+}
+
+export interface AmplitudeUsageSummary {
+  slug?: string;
+  product: string;
+  last7Days: { activeUsers: number; newUsers: number };
+  last30Days: { activeUsers: number; newUsers: number };
+  error?: string;
+}
+
+export async function fetchAmplitudeProducts(): Promise<AmplitudeProduct[]> {
+  const res = await fetch(`${API_BASE}/amplitude/products`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch Amplitude products");
+  const data = await res.json();
+  return data.products;
+}
+
+export async function fetchAmplitudeUsage(productSlug: string, days: number = 30): Promise<AmplitudeUsageData> {
+  const res = await fetch(`${API_BASE}/amplitude/usage/${productSlug}?days=${days}`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch Amplitude usage data");
+  return res.json();
+}
+
+export async function fetchAmplitudeUsageSummary(productSlug: string): Promise<AmplitudeUsageSummary> {
+  const res = await fetch(`${API_BASE}/amplitude/summary/${productSlug}`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch Amplitude usage summary");
+  return res.json();
+}
+
+export async function fetchAllAmplitudeSummaries(): Promise<AmplitudeUsageSummary[]> {
+  const res = await fetch(`${API_BASE}/amplitude/summary`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch Amplitude summaries");
+  const data = await res.json();
+  return data.summaries;
+}
+
+// Organization-filtered Amplitude APIs
+export interface AmplitudeOrgUsageSummary extends AmplitudeUsageSummary {
+  organization: string;
+}
+
+export interface AmplitudeOrgUsageResponse {
+  organization: string;
+  summaries: AmplitudeOrgUsageSummary[];
+}
+
+export async function fetchAmplitudeUsageByOrg(organization: string): Promise<AmplitudeOrgUsageResponse> {
+  const res = await fetch(`${API_BASE}/amplitude/org/${encodeURIComponent(organization)}`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch organization usage data");
+  return res.json();
+}
+
+export async function fetchAmplitudeProductUsageByOrg(
+  productSlug: string,
+  organization: string,
+  days: number = 30
+): Promise<AmplitudeUsageData & { organization: string }> {
+  const res = await fetch(
+    `${API_BASE}/amplitude/usage/${productSlug}/org/${encodeURIComponent(organization)}?days=${days}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch organization product usage data");
+  return res.json();
+}
+
+// ==================
+// Salesforce License/Subscription APIs
+// ==================
+
+export interface EnterpriseSubscription {
+  id: string;
+  name: string;
+  accountId: string;
+  productType: string;
+  licenseCount: number;
+  assignedSeats: number;
+  percentageAssigned: number;
+  environment: string;
+  type: string;
+  startDate: string;
+  endDate: string;
+  monitorPageCount?: number;
+  monitorProjectCount?: number;
+}
+
+export interface SubscriptionsResponse {
+  subscriptions: EnterpriseSubscription[];
+  count: number;
+}
+
+export async function fetchEnterpriseSubscriptionsByName(accountName: string): Promise<SubscriptionsResponse> {
+  const res = await fetch(
+    `${API_BASE}/salesforce/subscriptions/account/${encodeURIComponent(accountName)}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch enterprise subscriptions");
+  return res.json();
+}
+
+export interface AccountsWithSubscriptionsResponse {
+  accountNames: string[];
+  count: number;
+}
+
+export async function fetchAccountsWithSubscriptions(): Promise<AccountsWithSubscriptionsResponse> {
+  const res = await fetch(`${API_BASE}/salesforce/accounts-with-subscriptions`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch accounts with subscriptions");
+  return res.json();
+}

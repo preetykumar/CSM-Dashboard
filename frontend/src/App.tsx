@@ -8,12 +8,16 @@ import { TicketListModal } from "./components/TicketListModal";
 import { LoginPage } from "./components/LoginPage";
 import { UserMenu } from "./components/UserMenu";
 import { ChatWidget } from "./components/chat";
+import { CustomerUsageView } from "./components/CustomerUsageView";
+import { CSMUsageView } from "./components/CSMUsageView";
+import { Pagination, usePagination } from "./components/Pagination";
 import { useAuth } from "./contexts/AuthContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import type { CustomerSummary, Organization } from "./types";
 
-type MainTab = "support" | "renewals" | "usage";
+type MainTab = "support" | "usage" | "renewals";
 type SupportSubTab = "customers" | "csm" | "product";
+type UsageSubTab = "customers" | "csm";
 type SmartFilter = "all" | "escalated" | "critical";
 type AlphabetRange = "all" | "A-D" | "E-H" | "I-L" | "M-P" | "Q-T" | "U-Z";
 
@@ -38,6 +42,7 @@ function Dashboard() {
   const { isAdmin } = useAuth();
   const [mainTab, setMainTab] = useState<MainTab>("support");
   const [supportSubTab, setSupportSubTab] = useState<SupportSubTab>("customers");
+  const [usageSubTab, setUsageSubTab] = useState<UsageSubTab>("customers");
   const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
   const [alphabetRange, setAlphabetRange] = useState<AlphabetRange>("all");
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -56,6 +61,10 @@ function Dashboard() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSearchOrg, setSelectedSearchOrg] = useState<Organization | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // Pagination state for By Customer view
+  const [pageSize, setPageSize] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Load sync status for admins
   useEffect(() => {
@@ -182,6 +191,14 @@ function Dashboard() {
     return { escalated, critical };
   }, [organizations, summaries]);
 
+  // Apply pagination to filtered orgs
+  const paginatedOrgs = usePagination(filteredAndSortedOrgs, pageSize, currentPage);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [smartFilter, alphabetRange, selectedSearchOrg]);
+
   // Search suggestions
   const searchSuggestions = useMemo(() => {
     if (!searchQuery.trim() || searchQuery.length < 2) return [];
@@ -265,16 +282,16 @@ function Dashboard() {
             Support Tickets
           </button>
           <button
+            className={mainTab === "usage" ? "active" : ""}
+            onClick={() => setMainTab("usage")}
+          >
+            Usage Analytics
+          </button>
+          <button
             className={mainTab === "renewals" ? "active" : ""}
             onClick={() => setMainTab("renewals")}
           >
             Renewals
-          </button>
-          <button
-            className={mainTab === "usage" ? "active" : ""}
-            onClick={() => setMainTab("usage")}
-          >
-            Usage Data
           </button>
         </div>
 
@@ -398,6 +415,33 @@ function Dashboard() {
           </>
         )}
 
+        {/* Usage Analytics Sub-tabs */}
+        {mainTab === "usage" && (
+          <>
+            <div className="sub-tabs">
+              <button
+                className={usageSubTab === "customers" ? "active" : ""}
+                onClick={() => setUsageSubTab("customers")}
+              >
+                By Customer
+              </button>
+              <button
+                className={usageSubTab === "csm" ? "active" : ""}
+                onClick={() => setUsageSubTab("csm")}
+              >
+                By CSM (QBR View)
+              </button>
+            </div>
+
+            {usageSubTab === "customers" && (
+              <p className="hint">View product usage metrics by customer organization</p>
+            )}
+            {usageSubTab === "csm" && (
+              <p className="hint">View product usage metrics grouped by CSM portfolio</p>
+            )}
+          </>
+        )}
+
         {mainTab === "support" && supportSubTab === "customers" && loadingProgress.total > 0 && loadingProgress.loaded < loadingProgress.total && (
           <div className="progress-bar">
             <div
@@ -413,92 +457,97 @@ function Dashboard() {
 
       {error && <div className="error">{error}</div>}
 
-      {/* Support Tickets Tab Content */}
-      {mainTab === "support" && (
-        <>
-          {supportSubTab === "customers" ? (
-            <>
-              {loadingOrgs ? (
-                <div className="loading">Loading organizations...</div>
-              ) : (
-                <>
-                  <div className="results-summary">
-                    Showing {filteredAndSortedOrgs.length} of {organizations.length} accounts
-                    {smartFilter !== "all" && ` (${smartFilter})`}
-                    {alphabetRange !== "all" && ` • ${alphabetRange}`}
+      {/* Support Tickets Tab Content - By Customer view stays mounted to preserve state */}
+      <div style={{ display: mainTab === "support" && supportSubTab === "customers" ? "block" : "none" }}>
+        {loadingOrgs ? (
+          <div className="loading">Loading organizations...</div>
+        ) : (
+          <>
+            <Pagination
+              totalItems={filteredAndSortedOrgs.length}
+              pageSize={pageSize}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
+            <div className="results-summary">
+              Showing {paginatedOrgs.length} of {filteredAndSortedOrgs.length} accounts
+              {smartFilter !== "all" && ` (${smartFilter})`}
+              {alphabetRange !== "all" && ` • ${alphabetRange}`}
+            </div>
+            <div className="summaries-grid">
+              {paginatedOrgs.map((org) => {
+                const summary = summaries.get(org.id);
+                if (summary) {
+                  return (
+                    <CustomerSummaryCard
+                      key={org.id}
+                      summary={summary}
+                      onClick={() => handleOrgClick(org)}
+                      onStatusClick={(status) => handleStatusClick(org, status)}
+                      onPriorityClick={(priority) => handlePriorityClick(org, priority)}
+                    />
+                  );
+                }
+                return (
+                  <div key={org.id} className="summary-card loading-card">
+                    <div className="summary-card-header">
+                      <h2>{org.name}</h2>
+                      <div className="total-tickets">Loading...</div>
+                    </div>
                   </div>
-                  <div className="summaries-grid">
-                    {filteredAndSortedOrgs.map((org) => {
-                      const summary = summaries.get(org.id);
-                      if (summary) {
-                        return (
-                          <CustomerSummaryCard
-                            key={org.id}
-                            summary={summary}
-                            onClick={() => handleOrgClick(org)}
-                            onStatusClick={(status) => handleStatusClick(org, status)}
-                            onPriorityClick={(priority) => handlePriorityClick(org, priority)}
-                          />
-                        );
-                      }
-                      return (
-                        <div key={org.id} className="summary-card loading-card">
-                          <div className="summary-card-header">
-                            <h2>{org.name}</h2>
-                            <div className="total-tickets">Loading...</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {filteredAndSortedOrgs.length === 0 && organizations.length > 0 && (
-                      <p className="no-results">No accounts match the current filters.</p>
-                    )}
-                    {organizations.length === 0 && !error && (
-                      <p>No customer data found. Make sure your Zendesk credentials are configured.</p>
-                    )}
-                  </div>
-                </>
+                );
+              })}
+              {filteredAndSortedOrgs.length === 0 && organizations.length > 0 && (
+                <p className="no-results">No accounts match the current filters.</p>
               )}
+              {organizations.length === 0 && !error && (
+                <p>No customer data found. Make sure your Zendesk credentials are configured.</p>
+              )}
+            </div>
+          </>
+        )}
 
-              {selectedOrg && (
-                <OrganizationDrilldown
-                  orgId={selectedOrg.id}
-                  orgName={selectedOrg.name}
-                  onClose={() => setSelectedOrg(null)}
-                />
-              )}
+        {selectedOrg && (
+          <OrganizationDrilldown
+            orgId={selectedOrg.id}
+            orgName={selectedOrg.name}
+            onClose={() => setSelectedOrg(null)}
+          />
+        )}
 
-              {ticketFilter && (
-                <TicketListModal
-                  orgId={ticketFilter.orgId}
-                  orgName={ticketFilter.orgName}
-                  filterType={ticketFilter.filterType}
-                  filterValue={ticketFilter.filterValue}
-                  onClose={() => setTicketFilter(null)}
-                />
-              )}
-            </>
-          ) : supportSubTab === "csm" ? (
-            <CSMPortfolioView />
-          ) : (
-            <ProductView />
-          )}
-        </>
-      )}
+        {ticketFilter && (
+          <TicketListModal
+            orgId={ticketFilter.orgId}
+            orgName={ticketFilter.orgName}
+            filterType={ticketFilter.filterType}
+            filterValue={ticketFilter.filterValue}
+            onClose={() => setTicketFilter(null)}
+          />
+        )}
+      </div>
+
+      {/* Support Tickets - CSM and Product views */}
+      <div style={{ display: mainTab === "support" && supportSubTab === "csm" ? "block" : "none" }}>
+        <CSMPortfolioView />
+      </div>
+      <div style={{ display: mainTab === "support" && supportSubTab === "product" ? "block" : "none" }}>
+        <ProductView />
+      </div>
+
+      {/* Usage Analytics Tab Content - Components stay mounted to preserve state */}
+      <div style={{ display: mainTab === "usage" && usageSubTab === "customers" ? "block" : "none" }}>
+        <CustomerUsageView />
+      </div>
+      <div style={{ display: mainTab === "usage" && usageSubTab === "csm" ? "block" : "none" }}>
+        <CSMUsageView />
+      </div>
 
       {/* Renewals Tab Content - Coming Soon */}
       {mainTab === "renewals" && (
         <div className="coming-soon">
           <h2>Renewals</h2>
           <p>Renewal tracking coming soon.</p>
-        </div>
-      )}
-
-      {/* Usage Data Tab Content - Coming Soon */}
-      {mainTab === "usage" && (
-        <div className="coming-soon">
-          <h2>Usage Data</h2>
-          <p>Usage analytics coming soon.</p>
         </div>
       )}
 

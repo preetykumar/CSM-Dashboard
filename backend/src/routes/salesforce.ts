@@ -34,5 +34,50 @@ export function createSalesforceRoutes(salesforce: SalesforceService): Router {
     }
   });
 
+  router.get("/describe/:objectName", async (req: Request, res: Response) => {
+    try {
+      const describe = await salesforce.describeObject(req.params.objectName);
+      const fields = describe.fields.map((f: any) => `${f.name} (${f.type}): ${f.label}`);
+      res.json({ objectName: req.params.objectName, fields, count: fields.length });
+    } catch (error) {
+      console.error(`Error describing object ${req.params.objectName}:`, error);
+      res.status(500).json({ error: `Failed to describe object ${req.params.objectName}` });
+    }
+  });
+
+  // Get enterprise subscriptions by account name
+  router.get("/subscriptions/account/:accountName", async (req: Request, res: Response) => {
+    try {
+      const accountName = decodeURIComponent(req.params.accountName);
+      const subscriptions = await salesforce.getEnterpriseSubscriptionsByAccountName(accountName);
+      res.json({ subscriptions, count: subscriptions.length });
+    } catch (error) {
+      console.error(`Error fetching subscriptions for ${req.params.accountName}:`, error);
+      res.status(500).json({ error: "Failed to fetch enterprise subscriptions" });
+    }
+  });
+
+  // Get enterprise subscriptions by account ID
+  router.get("/subscriptions/id/:accountId", async (req: Request, res: Response) => {
+    try {
+      const subscriptions = await salesforce.getEnterpriseSubscriptionsByAccountId(req.params.accountId);
+      res.json({ subscriptions, count: subscriptions.length });
+    } catch (error) {
+      console.error(`Error fetching subscriptions for account ${req.params.accountId}:`, error);
+      res.status(500).json({ error: "Failed to fetch enterprise subscriptions" });
+    }
+  });
+
+  // Get all account names with active subscriptions
+  router.get("/accounts-with-subscriptions", async (_req: Request, res: Response) => {
+    try {
+      const accountNames = await salesforce.getAccountsWithActiveSubscriptions();
+      res.json({ accountNames, count: accountNames.length });
+    } catch (error) {
+      console.error("Error fetching accounts with subscriptions:", error);
+      res.status(500).json({ error: "Failed to fetch accounts with subscriptions" });
+    }
+  });
+
   return router;
 }

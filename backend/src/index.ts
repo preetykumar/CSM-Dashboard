@@ -26,6 +26,7 @@ import { createAuthRoutes } from "./routes/auth.js";
 import { createGitHubRoutes } from "./routes/github.js";
 import { AgentService } from "./services/agent.js";
 import { createAgentRoutes } from "./routes/agent.js";
+import { createAmplitudeRoutes } from "./routes/amplitude.js";
 
 dotenv.config();
 
@@ -136,6 +137,100 @@ function loadAnthropicConfig() {
   return { apiKey, model, maxTokens };
 }
 
+function loadAmplitudeConfig() {
+  // Amplitude products configuration
+  // Each product needs: name, projectId, apiKey, secretKey, orgId
+  const products = [];
+  const orgId = process.env.AMPLITUDE_ORG_ID;
+
+  if (!orgId) {
+    console.warn("Amplitude org ID not configured. Usage analytics will be disabled.");
+    return null;
+  }
+
+  // Axe DevTools for Web
+  const axeDevToolsApiKey = process.env.AMPLITUDE_AXE_DEVTOOLS_API_KEY;
+  const axeDevToolsSecretKey = process.env.AMPLITUDE_AXE_DEVTOOLS_SECRET_KEY;
+  const axeDevToolsProjectId = process.env.AMPLITUDE_AXE_DEVTOOLS_PROJECT_ID;
+
+  if (axeDevToolsApiKey && axeDevToolsSecretKey && axeDevToolsProjectId) {
+    products.push({
+      name: "Axe DevTools for Web",
+      projectId: axeDevToolsProjectId,
+      apiKey: axeDevToolsApiKey,
+      secretKey: axeDevToolsSecretKey,
+      orgId,
+    });
+  }
+
+  // Axe Account Portal
+  const axeAccountPortalApiKey = process.env.AMPLITUDE_AXE_ACCOUNT_PORTAL_API_KEY;
+  const axeAccountPortalSecretKey = process.env.AMPLITUDE_AXE_ACCOUNT_PORTAL_SECRET_KEY;
+  const axeAccountPortalProjectId = process.env.AMPLITUDE_AXE_ACCOUNT_PORTAL_PROJECT_ID;
+
+  if (axeAccountPortalApiKey && axeAccountPortalSecretKey && axeAccountPortalProjectId) {
+    products.push({
+      name: "Axe Account Portal",
+      projectId: axeAccountPortalProjectId,
+      apiKey: axeAccountPortalApiKey,
+      secretKey: axeAccountPortalSecretKey,
+      orgId,
+    });
+  }
+
+  // Axe Assistant
+  const axeAssistantApiKey = process.env.AMPLITUDE_AXE_ASSISTANT_API_KEY;
+  const axeAssistantSecretKey = process.env.AMPLITUDE_AXE_ASSISTANT_SECRET_KEY;
+  const axeAssistantProjectId = process.env.AMPLITUDE_AXE_ASSISTANT_PROJECT_ID;
+
+  if (axeAssistantApiKey && axeAssistantSecretKey && axeAssistantProjectId) {
+    products.push({
+      name: "Axe Assistant",
+      projectId: axeAssistantProjectId,
+      apiKey: axeAssistantApiKey,
+      secretKey: axeAssistantSecretKey,
+      orgId,
+    });
+  }
+
+  // Axe Auditor
+  const axeAuditorApiKey = process.env.AMPLITUDE_AXE_AUDITOR_API_KEY;
+  const axeAuditorSecretKey = process.env.AMPLITUDE_AXE_AUDITOR_SECRET_KEY;
+  const axeAuditorProjectId = process.env.AMPLITUDE_AXE_AUDITOR_PROJECT_ID;
+
+  if (axeAuditorApiKey && axeAuditorSecretKey && axeAuditorProjectId) {
+    products.push({
+      name: "Axe Auditor",
+      projectId: axeAuditorProjectId,
+      apiKey: axeAuditorApiKey,
+      secretKey: axeAuditorSecretKey,
+      orgId,
+    });
+  }
+
+  // Developer Hub
+  const developerHubApiKey = process.env.AMPLITUDE_DEVELOPER_HUB_API_KEY;
+  const developerHubSecretKey = process.env.AMPLITUDE_DEVELOPER_HUB_SECRET_KEY;
+  const developerHubProjectId = process.env.AMPLITUDE_DEVELOPER_HUB_PROJECT_ID;
+
+  if (developerHubApiKey && developerHubSecretKey && developerHubProjectId) {
+    products.push({
+      name: "Developer Hub",
+      projectId: developerHubProjectId,
+      apiKey: developerHubApiKey,
+      secretKey: developerHubSecretKey,
+      orgId,
+    });
+  }
+
+  if (products.length === 0) {
+    console.warn("No Amplitude products configured. Usage analytics will be disabled.");
+    return null;
+  }
+
+  return products;
+}
+
 const app = express();
 
 // CORS configuration to allow credentials
@@ -195,6 +290,9 @@ const agent = anthropicConfig ? new AgentService(db, zendesk, anthropicConfig) :
 // Auth routes (no auth required)
 app.use("/api/auth", createAuthRoutes());
 
+// Load Amplitude config early for health check
+const amplitudeProducts = loadAmplitudeConfig();
+
 // Health check (no auth required)
 app.get("/api/health", (_req, res) => {
   const syncStatus = sync.getSyncStatus();
@@ -205,6 +303,7 @@ app.get("/api/health", (_req, res) => {
     salesforce: salesforce ? "configured" : "not configured",
     github: github ? "configured" : "not configured",
     agent: agent ? "configured" : "not configured",
+    amplitude: amplitudeProducts ? `configured (${amplitudeProducts.length} products)` : "not configured",
     auth: authEnabled ? "enabled" : "disabled",
     cache: {
       enabled: true,
@@ -255,6 +354,11 @@ if (agent) {
   app.use("/api/agent", optionalAuth, createAgentRoutes(agent));
 }
 
+// Amplitude usage analytics routes
+if (amplitudeProducts) {
+  app.use("/api/amplitude", optionalAuth, createAmplitudeRoutes(amplitudeProducts));
+}
+
 // Serve static frontend files in production
 const publicPath = path.join(__dirname, "..", "public");
 app.use(express.static(publicPath));
@@ -286,17 +390,29 @@ app.listen(PORT, async () => {
   } else {
     console.log("AI Agent: disabled (no ANTHROPIC_API_KEY)");
   }
+  if (amplitudeProducts) {
+    console.log(`Amplitude analytics: enabled (${amplitudeProducts.length} product(s))`);
+  } else {
+    console.log("Amplitude analytics: disabled (no credentials)");
+  }
   console.log("SQLite cache: enabled");
 
-  // Check if cache is empty and trigger initial sync
+  // Check cache status and sync
   const orgs = db.getOrganizations();
   if (orgs.length === 0) {
-    console.log("Cache is empty. Starting initial sync...");
+    console.log("Cache is empty. Starting full initial sync...");
     sync.syncAll().catch((error) => {
       console.error("Initial sync failed:", error);
     });
   } else {
     console.log(`Cache contains ${orgs.length} organizations`);
+    // Always sync CSM assignments on startup to update org-to-SF-account mappings
+    if (salesforce) {
+      console.log("Syncing CSM assignments to update org mappings...");
+      sync.syncCSMAssignments().catch((error) => {
+        console.error("CSM sync failed:", error);
+      });
+    }
   }
 
   // Schedule automatic nightly sync

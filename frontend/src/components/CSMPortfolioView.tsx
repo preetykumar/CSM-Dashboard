@@ -1,9 +1,75 @@
 import { useEffect, useState } from "react";
-import { fetchCSMPortfolios, fetchEnhancedCustomerSummary, fetchGitHubStatusForTickets } from "../services/api";
+import { fetchCSMPortfolios, fetchEnhancedCustomerSummary, fetchGitHubStatusForTickets, fetchEnterpriseSubscriptionsByName, EnterpriseSubscription } from "../services/api";
 import { VelocityBanner } from "./VelocityBanner";
 import { ProductBacklogCard } from "./ProductBacklogCard";
 import { QuarterlySummaryCard } from "./QuarterlySummaryCard";
-import type { CSMPortfolio, CSMCustomerSummary, Ticket, MinimalTicket, EnhancedCustomerSummary, GitHubDevelopmentStatus } from "../types";
+import { LicenseBanner } from "./LicenseBanner";
+import { Pagination, usePagination } from "./Pagination";
+import type { CSMPortfolio, CSMCustomerSummary, Ticket, MinimalTicket, EnhancedCustomerSummary, GitHubDevelopmentStatus, Organization } from "../types";
+
+// Consolidated customer that groups multiple Zendesk orgs by SF account name
+interface ConsolidatedCustomerSummary {
+  accountName: string;
+  organizations: Organization[];
+  // Aggregated data from all organizations in this account
+  ticketStats: { total: number; open: number; pending: number; solved: number; closed: number };
+  priorityBreakdown: { urgent: number; high: number; normal: number; low: number };
+  featureRequests: number;
+  problemReports: number;
+  escalations: number;
+  tickets: (Ticket | MinimalTicket)[];
+  // Keep reference to primary organization for enhanced summary fetching
+  primaryOrgId: number;
+}
+
+// Consolidate customers within a portfolio by SF account name
+function consolidateCustomerSummaries(customers: CSMCustomerSummary[]): ConsolidatedCustomerSummary[] {
+  const accountMap = new Map<string, CSMCustomerSummary[]>();
+
+  for (const customer of customers) {
+    const org = customer.organization;
+    const accountName = org.salesforce_account_name || org.name;
+    const existing = accountMap.get(accountName) || [];
+    existing.push(customer);
+    accountMap.set(accountName, existing);
+  }
+
+  // Convert map to consolidated summaries
+  return Array.from(accountMap.entries())
+    .map(([accountName, customerGroup]) => {
+      // Aggregate all stats
+      const aggregated: ConsolidatedCustomerSummary = {
+        accountName,
+        organizations: customerGroup.map((c) => c.organization),
+        ticketStats: { total: 0, open: 0, pending: 0, solved: 0, closed: 0 },
+        priorityBreakdown: { urgent: 0, high: 0, normal: 0, low: 0 },
+        featureRequests: 0,
+        problemReports: 0,
+        escalations: 0,
+        tickets: [],
+        primaryOrgId: customerGroup[0].organization.id,
+      };
+
+      for (const customer of customerGroup) {
+        aggregated.ticketStats.total += customer.ticketStats.total;
+        aggregated.ticketStats.open += customer.ticketStats.open;
+        aggregated.ticketStats.pending += customer.ticketStats.pending;
+        aggregated.ticketStats.solved += customer.ticketStats.solved;
+        aggregated.ticketStats.closed += customer.ticketStats.closed;
+        aggregated.priorityBreakdown.urgent += customer.priorityBreakdown.urgent;
+        aggregated.priorityBreakdown.high += customer.priorityBreakdown.high;
+        aggregated.priorityBreakdown.normal += customer.priorityBreakdown.normal;
+        aggregated.priorityBreakdown.low += customer.priorityBreakdown.low;
+        aggregated.featureRequests += customer.featureRequests;
+        aggregated.problemReports += customer.problemReports;
+        aggregated.escalations += customer.escalations;
+        aggregated.tickets = [...aggregated.tickets, ...customer.tickets];
+      }
+
+      return aggregated;
+    })
+    .sort((a, b) => a.accountName.localeCompare(b.accountName));
+}
 
 export function CSMPortfolioView() {
   const [portfolios, setPortfolios] = useState<CSMPortfolio[]>([]);
@@ -12,6 +78,11 @@ export function CSMPortfolioView() {
   const [expandedCSM, setExpandedCSM] = useState<number | null>(null);
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [pageSize, setPageSize] = useState(50);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Apply pagination to portfolios
+  const paginatedPortfolios = usePagination(portfolios, pageSize, currentPage);
 
   useEffect(() => {
     async function loadPortfolios() {
@@ -53,8 +124,15 @@ export function CSMPortfolioView() {
           <span className="admin-info">Viewing all {portfolios.length} CSM portfolios</span>
         </div>
       )}
+      <Pagination
+        totalItems={portfolios.length}
+        pageSize={pageSize}
+        currentPage={currentPage}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={setPageSize}
+      />
       <div className="csm-list">
-        {portfolios.map((portfolio) => (
+        {paginatedPortfolios.map((portfolio) => (
           <CSMCard
             key={portfolio.csm.id}
             portfolio={portfolio}
@@ -88,7 +166,10 @@ function CSMCard({
   expandedCustomer,
   onCustomerToggle,
 }: CSMCardProps) {
-  const { csm, customers, totalTickets, openTickets, totalCustomers } = portfolio;
+  const { csm, customers, totalTickets, openTickets } = portfolio;
+
+  // Consolidate customers by SF account name
+  const consolidatedCustomers = consolidateCustomerSummaries(customers);
 
   return (
     <div className={`csm-card ${expanded ? "expanded" : ""}`}>
@@ -99,7 +180,7 @@ function CSMCard({
         </div>
         <div className="csm-stats">
           <div className="csm-stat">
-            <span className="value">{totalCustomers}</span>
+            <span className="value">{consolidatedCustomers.length}</span>
             <span className="label">Customers</span>
           </div>
           <div className="csm-stat">
@@ -116,13 +197,13 @@ function CSMCard({
 
       {expanded && (
         <div className="csm-customers">
-          {customers.length === 0 ? (
+          {consolidatedCustomers.length === 0 ? (
             <p className="no-customers">No customer tickets found</p>
           ) : (
-            customers.map((customer) => {
-              const key = `${csm.id}-${customer.organization.id}`;
+            consolidatedCustomers.map((customer) => {
+              const key = `${csm.id}-${customer.accountName}`;
               return (
-                <CustomerCard
+                <ConsolidatedCustomerCard
                   key={key}
                   customer={customer}
                   expanded={expandedCustomer === key}
@@ -137,33 +218,43 @@ function CSMCard({
   );
 }
 
-interface CustomerCardProps {
-  customer: CSMCustomerSummary;
+interface ConsolidatedCustomerCardProps {
+  customer: ConsolidatedCustomerSummary;
   expanded: boolean;
   onToggle: () => void;
 }
 
-function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
-  const { organization, ticketStats, priorityBreakdown, featureRequests, problemReports, escalations, tickets } = customer;
+function ConsolidatedCustomerCard({ customer, expanded, onToggle }: ConsolidatedCustomerCardProps) {
+  const { accountName, organizations, ticketStats, priorityBreakdown, featureRequests, problemReports, escalations, tickets, primaryOrgId } = customer;
   const [enhancedSummary, setEnhancedSummary] = useState<EnhancedCustomerSummary | null>(null);
   const [loadingEnhanced, setLoadingEnhanced] = useState(false);
   const [githubStatusMap, setGitHubStatusMap] = useState<Map<number, GitHubDevelopmentStatus[]> | null>(null);
+  const [subscriptions, setSubscriptions] = useState<EnterpriseSubscription[]>([]);
+  const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
   const [drilldownTickets, setDrilldownTickets] = useState<{
     title: string;
     tickets: (Ticket | MinimalTicket)[];
     grouped?: boolean;
   } | null>(null);
 
-  // Fetch enhanced summary when expanded
+  // Fetch enhanced summary and subscriptions when expanded
   useEffect(() => {
     if (expanded && !enhancedSummary && !loadingEnhanced) {
       setLoadingEnhanced(true);
-      fetchEnhancedCustomerSummary(organization.id)
+      fetchEnhancedCustomerSummary(primaryOrgId)
         .then(setEnhancedSummary)
         .catch((err) => console.error("Failed to load enhanced summary:", err))
         .finally(() => setLoadingEnhanced(false));
     }
-  }, [expanded, enhancedSummary, loadingEnhanced, organization.id]);
+
+    if (expanded && subscriptions.length === 0 && !loadingSubscriptions) {
+      setLoadingSubscriptions(true);
+      fetchEnterpriseSubscriptionsByName(accountName)
+        .then((data) => setSubscriptions(data.subscriptions))
+        .catch((err) => console.error("Failed to load subscriptions:", err))
+        .finally(() => setLoadingSubscriptions(false));
+    }
+  }, [expanded, enhancedSummary, loadingEnhanced, primaryOrgId, subscriptions.length, loadingSubscriptions, accountName]);
 
   // Fetch GitHub statuses when enhanced summary is loaded
   useEffect(() => {
@@ -306,9 +397,9 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
     <div className={`customer-card ${expanded ? "expanded" : ""}`}>
       <div className="customer-header" onClick={onToggle}>
         <div className="customer-info">
-          <h4>{organization.salesforce_account_name || organization.name}</h4>
-          {organization.salesforce_account_name && organization.salesforce_account_name !== organization.name && (
-            <span className="zendesk-org-name">Zendesk: {organization.name}</span>
+          <h4>{accountName}</h4>
+          {organizations.length > 1 && (
+            <span className="org-count">({organizations.length} Zendesk orgs)</span>
           )}
           <span className="ticket-count">{ticketStats.total} tickets</span>
         </div>
@@ -354,6 +445,14 @@ function CustomerCard({ customer, expanded, onToggle }: CustomerCardProps) {
 
       {expanded && (
         <div className="customer-details">
+          {/* License Banner */}
+          <LicenseBanner
+            subscriptions={subscriptions}
+            loading={loadingSubscriptions}
+            accountName={!loadingSubscriptions && subscriptions.length === 0 ? accountName : undefined}
+            compact
+          />
+
           {loadingEnhanced ? (
             <div className="loading-enhanced">Loading detailed summary...</div>
           ) : enhancedSummary ? (

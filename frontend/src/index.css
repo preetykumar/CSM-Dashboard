@@ -86,6 +86,85 @@ header p {
   gap: 1.5rem;
 }
 
+/* Two-panel layout for By Customer view */
+.customer-panels {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.customer-panel {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 1.5rem;
+  min-height: 400px;
+}
+
+.customer-panel .panel-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.tickets-panel {
+  background: white;
+}
+
+.tickets-panel .summaries-grid {
+  max-height: calc(100vh - 350px);
+  overflow-y: auto;
+}
+
+.usage-panel {
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
+  border: 1px solid #e0e0e0;
+}
+
+.usage-content {
+  padding: 1rem;
+}
+
+.coming-soon-text {
+  color: #666;
+  font-style: italic;
+  margin-bottom: 1.5rem;
+}
+
+.usage-features-preview {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.usage-features-preview li {
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+  background: white;
+  border-radius: 8px;
+  color: #555;
+  font-size: 0.9rem;
+  border-left: 3px solid #667eea;
+}
+
+.usage-features-preview li:hover {
+  background: #f0f4ff;
+}
+
+/* Responsive: stack panels on smaller screens */
+@media (max-width: 1200px) {
+  .customer-panels {
+    grid-template-columns: 1fr;
+  }
+
+  .usage-panel {
+    order: -1; /* Put usage panel on top on mobile */
+  }
+}
+
 .summary-card {
   background: white;
   border-radius: 12px;
@@ -1033,6 +1112,14 @@ header .hint {
   font-size: 0.8rem;
   color: #666;
   margin-left: 0.5rem;
+}
+
+/* Org count badge for consolidated accounts */
+.org-count {
+  font-size: 0.75rem;
+  color: #888;
+  margin-left: 0.5rem;
+  font-style: italic;
 }
 
 .customer-info .zendesk-org-name {
@@ -3193,4 +3280,1064 @@ header .hint {
   white-space: nowrap;
   color: #888;
   font-size: 0.8rem;
+}
+
+/* ============================================
+   Amplitude Usage Panel Styles
+   ============================================ */
+
+.usage-panel {
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e8eb 100%);
+  border: 1px solid #e0e0e0;
+}
+
+.usage-loading,
+.usage-error,
+.usage-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: #666;
+}
+
+.usage-error {
+  color: #e74c3c;
+}
+
+.usage-error-hint,
+.usage-hint {
+  font-size: 0.85rem;
+  color: #999;
+  margin-top: 0.5rem;
+}
+
+.usage-summaries {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.usage-product-card {
+  background: white;
+  border-radius: 8px;
+  padding: 1rem;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.usage-product-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-color: #e0e0e0;
+}
+
+.usage-product-card.selected {
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+}
+
+.usage-product-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 0.75rem 0;
+}
+
+.usage-product-error {
+  color: #e74c3c;
+  font-size: 0.85rem;
+}
+
+.usage-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.usage-metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.usage-metric .metric-label {
+  font-size: 0.8rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.metric-values {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.metric-value {
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.metric-value.active {
+  color: #667eea;
+}
+
+.metric-value.new {
+  color: #27ae60;
+}
+
+.usage-project-id {
+  display: block;
+  font-size: 0.7rem;
+  color: #999;
+  margin-top: 0.75rem;
+}
+
+/* Usage Detail Section */
+.usage-detail {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e0e0e0;
+}
+
+.usage-detail-loading {
+  text-align: center;
+  color: #666;
+  padding: 1rem;
+}
+
+.usage-detail-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 0.75rem 0;
+}
+
+.usage-chart {
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+  height: 100px;
+  padding: 0.5rem 0;
+}
+
+.usage-day {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.usage-bar {
+  width: 100%;
+  border-radius: 2px;
+  min-height: 2px;
+  transition: height 0.3s ease;
+}
+
+.usage-bar.active {
+  background: #667eea;
+}
+
+.usage-bar.new {
+  background: #27ae60;
+  max-height: 30px;
+}
+
+.usage-day-label {
+  font-size: 0.6rem;
+  color: #888;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.usage-legend {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 0.75rem;
+}
+
+.usage-legend .legend-item {
+  font-size: 0.75rem;
+  color: #666;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.usage-legend .legend-item::before {
+  content: "";
+  width: 12px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.usage-legend .legend-item.active::before {
+  background: #667eea;
+}
+
+.usage-legend .legend-item.new::before {
+  background: #27ae60;
+}
+
+/* Full-width Usage View (separate tab) */
+.usage-main {
+  padding: 1rem 0;
+}
+
+.usage-full-view {
+  background: #fff;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.usage-full-view .usage-summaries {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 1.5rem;
+}
+
+.usage-full-view .usage-product-card {
+  padding: 1.5rem;
+}
+
+.usage-full-view .usage-detail {
+  margin-top: 2rem;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.usage-full-view .usage-chart {
+  height: 200px;
+}
+
+.usage-full-view .usage-bar {
+  min-width: 24px;
+}
+
+/* ==========================================
+   Dual-Panel Layout (Support Tickets + Usage)
+   ========================================== */
+
+.dual-panel-layout {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 1.5rem;
+  margin-top: 1rem;
+}
+
+.tickets-panel {
+  overflow-y: auto;
+  max-height: calc(100vh - 320px);
+  padding-right: 0.5rem;
+}
+
+.summary-card-wrapper {
+  cursor: pointer;
+  border-radius: 12px;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.summary-card-wrapper:hover {
+  transform: translateY(-2px);
+}
+
+.summary-card-wrapper.focused {
+  box-shadow: 0 0 0 3px #667eea, 0 4px 12px rgba(102, 126, 234, 0.3);
+  border-radius: 12px;
+}
+
+.summary-card-wrapper.focused .summary-card {
+  border-color: transparent;
+}
+
+.summary-card-wrapper:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px #667eea, 0 4px 12px rgba(102, 126, 234, 0.3);
+  border-radius: 12px;
+}
+
+.summary-card-wrapper:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+/* Organization Usage Panel (Side Panel) */
+.org-usage-panel {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  height: fit-content;
+  max-height: calc(100vh - 320px);
+  overflow-y: auto;
+  position: sticky;
+  top: 1rem;
+}
+
+.org-usage-panel .panel-header {
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 0.75rem;
+}
+
+.org-usage-panel .panel-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0;
+}
+
+.org-usage-panel .panel-subtitle {
+  display: block;
+  font-size: 0.85rem;
+  color: #666;
+  margin-top: 0.25rem;
+}
+
+.org-usage-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.org-usage-card {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 1rem;
+  transition: background-color 0.2s ease;
+}
+
+.org-usage-card:hover {
+  background: #f0f2f5;
+}
+
+.org-usage-card.no-data {
+  opacity: 0.6;
+}
+
+.org-usage-product-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 0.75rem 0;
+}
+
+.org-usage-error {
+  color: #dc3545;
+  font-size: 0.85rem;
+}
+
+.org-usage-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.org-usage-period {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.period-label {
+  color: #666;
+  font-weight: 500;
+}
+
+.period-values {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.metric-active {
+  color: #667eea;
+  font-weight: 500;
+}
+
+.metric-new {
+  color: #27ae60;
+  font-weight: 500;
+}
+
+.org-usage-project-id {
+  display: block;
+  font-size: 0.75rem;
+  color: #999;
+  margin-top: 0.5rem;
+}
+
+.org-usage-no-data {
+  font-size: 0.8rem;
+  color: #999;
+  font-style: italic;
+  margin-top: 0.5rem;
+}
+
+.org-usage-note {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: #e8f4fd;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #0066cc;
+}
+
+.org-usage-note strong {
+  font-weight: 600;
+}
+
+/* Responsive: Stack panels on smaller screens */
+@media (max-width: 1200px) {
+  .dual-panel-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .org-usage-panel {
+    position: static;
+    max-height: none;
+  }
+
+  .tickets-panel {
+    max-height: none;
+  }
+}
+
+/* ==================== */
+/* Usage Views (By Customer & By CSM) */
+/* ==================== */
+
+.usage-view {
+  padding: 1rem 0;
+}
+
+/* Aggregate Usage Section */
+.usage-aggregate-section {
+  margin-bottom: 2rem;
+}
+
+.usage-aggregate-section h2 {
+  font-size: 1.25rem;
+  color: #1a1a2e;
+  margin-bottom: 1rem;
+}
+
+.usage-products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.usage-products-grid.compact {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.75rem;
+}
+
+.usage-product-card {
+  background: white;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.usage-product-card.compact {
+  padding: 0.75rem;
+}
+
+.usage-product-card.no-data {
+  opacity: 0.6;
+  background: #f8f9fa;
+}
+
+.usage-product-card h3 {
+  font-size: 1rem;
+  color: #1a1a2e;
+  margin-bottom: 0.75rem;
+  border-bottom: 2px solid #667eea;
+  padding-bottom: 0.5rem;
+}
+
+.usage-product-card h4 {
+  font-size: 0.875rem;
+  color: #1a1a2e;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.25rem;
+}
+
+.usage-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.usage-metrics.compact {
+  flex-direction: row;
+  gap: 1rem;
+}
+
+.usage-period {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.usage-metrics.compact .usage-period {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.period-label {
+  font-size: 0.75rem;
+  color: #666;
+  text-transform: uppercase;
+}
+
+.period-values {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.metric-active {
+  font-weight: 600;
+  color: #667eea;
+}
+
+.metric-new {
+  font-size: 0.85rem;
+  color: #27ae60;
+}
+
+.usage-error {
+  color: #c00;
+  font-size: 0.875rem;
+}
+
+.usage-no-data {
+  color: #999;
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+.usage-loading {
+  color: #666;
+  font-size: 0.875rem;
+  padding: 1rem;
+  text-align: center;
+}
+
+/* Customer Usage Section */
+.usage-customer-section {
+  margin-top: 2rem;
+}
+
+.usage-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.usage-section-header h2 {
+  font-size: 1.25rem;
+  color: #1a1a2e;
+}
+
+.usage-search {
+  position: relative;
+}
+
+.usage-search-input {
+  padding: 0.5rem 2rem 0.5rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  width: 250px;
+}
+
+.usage-search-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.usage-search-clear {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  color: #999;
+  cursor: pointer;
+}
+
+.usage-search-clear:hover {
+  color: #666;
+}
+
+/* Customer List */
+.usage-customer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.usage-customer-card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.usage-customer-card.expanded {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.usage-customer-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: white;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.9rem;
+  transition: background-color 0.2s;
+}
+
+.usage-customer-header:hover {
+  background: #f8f9fa;
+}
+
+.usage-customer-header .expand-icon {
+  margin-right: 0.75rem;
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.usage-customer-header .customer-name {
+  flex: 1;
+  font-weight: 500;
+  color: #1a1a2e;
+}
+
+.usage-customer-header .expand-hint {
+  font-size: 0.75rem;
+  color: #999;
+  margin-right: 0.5rem;
+}
+
+.usage-customer-content {
+  padding: 1rem;
+  border-top: 1px solid #eee;
+  background: #fafafa;
+}
+
+/* License Banner */
+.license-banner {
+  background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+  border: 1px solid #d0d9f0;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.license-banner-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin-bottom: 0.75rem;
+}
+
+.license-table-container {
+  overflow-x: auto;
+}
+
+.license-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.license-table th,
+.license-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e5f0;
+}
+
+.license-table th {
+  font-weight: 600;
+  color: #555;
+  background: rgba(255, 255, 255, 0.5);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.license-table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.license-table .product-name {
+  font-weight: 500;
+  color: #1a1a2e;
+}
+
+.license-table .license-count,
+.license-table .assigned-seats {
+  font-family: monospace;
+  text-align: right;
+}
+
+.license-table .percentage {
+  font-weight: 500;
+  text-align: right;
+}
+
+.license-table .percentage.low {
+  color: #e67700;
+}
+
+.license-table .percentage.high {
+  color: #2e7d32;
+}
+
+.license-table tr.low-usage {
+  background: rgba(255, 193, 7, 0.1);
+}
+
+.license-table tr.high-usage {
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.license-table .environment {
+  color: #666;
+  font-size: 0.8rem;
+}
+
+.license-table .monitor-pages,
+.license-table .monitor-projects {
+  font-family: monospace;
+  text-align: right;
+  color: #555;
+}
+
+/* License Groups */
+.license-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.license-group {
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+
+.license-group-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4a5568;
+  margin: 0 0 0.5rem 0;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #e0e5f0;
+}
+
+.license-banner.compact .license-groups {
+  gap: 0.75rem;
+}
+
+.license-banner.compact .license-group {
+  padding: 0.5rem;
+}
+
+.license-banner.compact .license-group-title {
+  font-size: 0.8rem;
+  margin-bottom: 0.35rem;
+}
+
+/* CSM Usage Section */
+.usage-csm-section {
+  margin-top: 2rem;
+}
+
+.usage-csm-section h2 {
+  font-size: 1.25rem;
+  color: #1a1a2e;
+  margin-bottom: 1rem;
+}
+
+.csm-usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.csm-usage-card {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.csm-usage-card.expanded {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.csm-usage-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: white;
+}
+
+.csm-usage-header:hover {
+  opacity: 0.95;
+}
+
+.csm-usage-header .csm-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.csm-usage-header .csm-name {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.csm-usage-header .csm-email {
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+.csm-usage-header .csm-stats {
+  margin-right: 1rem;
+}
+
+.csm-usage-header .csm-stats .stat {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+}
+
+.csm-usage-header .expand-icon {
+  font-size: 0.9rem;
+}
+
+.csm-usage-content {
+  padding: 1rem;
+  background: #f8f9fa;
+}
+
+.csm-customers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.customer-usage-card {
+  background: white;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.customer-usage-card.expanded {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.customer-usage-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: white;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.875rem;
+}
+
+.customer-usage-header:hover {
+  background: #fafafa;
+}
+
+.customer-usage-header .customer-name {
+  flex: 1;
+  font-weight: 500;
+  color: #1a1a2e;
+}
+
+.customer-usage-header .expand-hint {
+  font-size: 0.75rem;
+  color: #999;
+  margin-right: 0.5rem;
+}
+
+.customer-usage-header .expand-icon {
+  color: #666;
+  font-size: 0.75rem;
+}
+
+.customer-usage-content {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #eee;
+  background: #fafafa;
+}
+
+.no-customers {
+  color: #666;
+  font-style: italic;
+  padding: 1rem;
+  text-align: center;
+}
+
+.no-results {
+  color: #666;
+  padding: 2rem;
+  text-align: center;
+}
+
+/* Admin banner in CSM Usage */
+.csm-usage-view .admin-banner {
+  margin-bottom: 1rem;
+}
+
+/* Pagination */
+.pagination-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.pagination-info {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.pagination-size {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pagination-size label {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.pagination-size-select {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  background: white;
+  cursor: pointer;
+}
+
+.pagination-size-select:hover {
+  border-color: #667eea;
+}
+
+.pagination-size-select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.pagination-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pagination-btn {
+  padding: 0.35rem 0.65rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #333;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: #667eea;
+  border-color: #667eea;
+  color: white;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagination-page-info {
+  font-size: 0.85rem;
+  color: #666;
+  padding: 0 0.5rem;
+  white-space: nowrap;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .usage-section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .usage-search-input {
+    width: 100%;
+  }
+
+  .usage-products-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .usage-products-grid.compact {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pagination-container {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pagination-controls {
+    justify-content: space-between;
+  }
 }

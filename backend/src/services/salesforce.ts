@@ -62,6 +62,38 @@ export interface CSMAssignment {
   csmEmail: string;
 }
 
+export interface EnterpriseSubscription {
+  id: string;
+  name: string;
+  accountId: string;
+  productType: string;
+  licenseCount: number;
+  assignedSeats: number;
+  percentageAssigned: number;
+  environment: string;
+  type: string;
+  startDate: string;
+  endDate: string;
+  monitorPageCount?: number;
+  monitorProjectCount?: number;
+}
+
+interface SFEnterpriseSubscription {
+  Id: string;
+  Name: string;
+  Account__c: string;
+  Product_Type__c: string;
+  License_Count__c: number;
+  Assigned_Seats__c: number;
+  Percentage_Assigned__c: number;
+  Environment__c: string;
+  Type__c: string;
+  Start_Date__c: string;
+  End_Date__c: string;
+  Monitor_Page_Count__c?: number;
+  Monitor_Project_Count__c?: number;
+}
+
 export class SalesforceService {
   private config: SalesforceConfig;
   private accessToken: string | null = null;
@@ -262,6 +294,117 @@ export class SalesforceService {
         success: false,
         message: error instanceof Error ? error.message : "Unknown error",
       };
+    }
+  }
+
+  async getEnterpriseSubscriptionsByAccountName(accountName: string): Promise<EnterpriseSubscription[]> {
+    console.log(`Fetching enterprise subscriptions for account: ${accountName}`);
+
+    // Escape single quotes in account name for SOQL
+    const escapedName = accountName.replace(/'/g, "\\'");
+
+    try {
+      const subscriptions = await this.query<SFEnterpriseSubscription>(`
+        SELECT Id, Name, Account__c, Product_Type__c, License_Count__c, Assigned_Seats__c,
+               Percentage_Assigned__c, Environment__c, Type__c, Start_Date__c, End_Date__c,
+               Monitor_Page_Count__c, Monitor_Project_Count__c
+        FROM Enterprise_Subscription__c
+        WHERE Account__r.Name = '${escapedName}'
+        AND Type__c = 'paid'
+        AND End_Date__c >= TODAY
+        ORDER BY Product_Type__c
+      `);
+
+      console.log(`Found ${subscriptions.length} active paid subscriptions for ${accountName}`);
+
+      return subscriptions.map((sub) => ({
+        id: sub.Id,
+        name: sub.Name,
+        accountId: sub.Account__c,
+        productType: sub.Product_Type__c,
+        licenseCount: sub.License_Count__c || 0,
+        assignedSeats: sub.Assigned_Seats__c || 0,
+        percentageAssigned: sub.Percentage_Assigned__c || 0,
+        environment: sub.Environment__c || "default",
+        type: sub.Type__c,
+        startDate: sub.Start_Date__c,
+        endDate: sub.End_Date__c,
+        monitorPageCount: sub.Monitor_Page_Count__c,
+        monitorProjectCount: sub.Monitor_Project_Count__c,
+      }));
+    } catch (error) {
+      console.error(`Error fetching subscriptions for ${accountName}:`, error);
+      throw error;
+    }
+  }
+
+  async getEnterpriseSubscriptionsByAccountId(accountId: string): Promise<EnterpriseSubscription[]> {
+    console.log(`Fetching enterprise subscriptions for account ID: ${accountId}`);
+
+    try {
+      const subscriptions = await this.query<SFEnterpriseSubscription>(`
+        SELECT Id, Name, Account__c, Product_Type__c, License_Count__c, Assigned_Seats__c,
+               Percentage_Assigned__c, Environment__c, Type__c, Start_Date__c, End_Date__c,
+               Monitor_Page_Count__c, Monitor_Project_Count__c
+        FROM Enterprise_Subscription__c
+        WHERE Account__c = '${accountId}'
+        AND Type__c = 'paid'
+        AND End_Date__c >= TODAY
+        ORDER BY Product_Type__c
+      `);
+
+      console.log(`Found ${subscriptions.length} active paid subscriptions for account ${accountId}`);
+
+      return subscriptions.map((sub) => ({
+        id: sub.Id,
+        name: sub.Name,
+        accountId: sub.Account__c,
+        productType: sub.Product_Type__c,
+        licenseCount: sub.License_Count__c || 0,
+        assignedSeats: sub.Assigned_Seats__c || 0,
+        percentageAssigned: sub.Percentage_Assigned__c || 0,
+        environment: sub.Environment__c || "default",
+        type: sub.Type__c,
+        startDate: sub.Start_Date__c,
+        endDate: sub.End_Date__c,
+        monitorPageCount: sub.Monitor_Page_Count__c,
+        monitorProjectCount: sub.Monitor_Project_Count__c,
+      }));
+    } catch (error) {
+      console.error(`Error fetching subscriptions for account ${accountId}:`, error);
+      throw error;
+    }
+  }
+
+  async getAccountsWithActiveSubscriptions(): Promise<string[]> {
+    console.log("Fetching all accounts with active subscriptions...");
+
+    try {
+      // Query all subscriptions and extract unique account names
+      // Using a simple query without GROUP BY to avoid SOQL aggregation issues with related fields
+      const results = await this.query<{ Account__r: { Name: string } | null }>(`
+        SELECT Account__r.Name
+        FROM Enterprise_Subscription__c
+        WHERE Type__c = 'paid'
+        AND End_Date__c >= TODAY
+        AND Account__r.Name != null
+      `);
+
+      // Extract unique account names
+      const accountNameSet = new Set<string>();
+      for (const r of results) {
+        if (r.Account__r?.Name) {
+          accountNameSet.add(r.Account__r.Name);
+        }
+      }
+
+      const accountNames = Array.from(accountNameSet);
+      console.log(`Found ${accountNames.length} accounts with active subscriptions`);
+
+      return accountNames;
+    } catch (error) {
+      console.error("Error fetching accounts with subscriptions:", error);
+      throw error;
     }
   }
 }

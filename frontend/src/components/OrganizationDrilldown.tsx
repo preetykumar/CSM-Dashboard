@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { fetchDetailedCustomerSummary } from "../services/api";
+import { fetchDetailedCustomerSummary, fetchEnterpriseSubscriptionsByName, EnterpriseSubscription } from "../services/api";
+import { LicenseBanner } from "./LicenseBanner";
 import type { DetailedCustomerSummary, ProductStats, Ticket } from "../types";
 
 interface Props {
@@ -14,6 +15,8 @@ export function OrganizationDrilldown({ orgId, orgName, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
   const [ticketFilter, setTicketFilter] = useState<"all" | "feature" | "problem">("all");
+  const [subscriptions, setSubscriptions] = useState<EnterpriseSubscription[]>([]);
+  const [loadingSubscriptions, setLoadingSubscriptions] = useState(true);
 
   useEffect(() => {
     async function loadDetails() {
@@ -28,8 +31,21 @@ export function OrganizationDrilldown({ orgId, orgName, onClose }: Props) {
       }
     }
 
+    async function loadSubscriptions() {
+      try {
+        setLoadingSubscriptions(true);
+        const data = await fetchEnterpriseSubscriptionsByName(orgName);
+        setSubscriptions(data.subscriptions);
+      } catch (err) {
+        console.error("Failed to load subscriptions:", err);
+      } finally {
+        setLoadingSubscriptions(false);
+      }
+    }
+
     loadDetails();
-  }, [orgId]);
+    loadSubscriptions();
+  }, [orgId, orgName]);
 
   const filterTickets = (tickets: Ticket[], filter: typeof ticketFilter): Ticket[] => {
     if (filter === "all") return tickets;
@@ -76,6 +92,13 @@ export function OrganizationDrilldown({ orgId, orgName, onClose }: Props) {
 
         {summary && (
           <div className="drilldown-content">
+            {/* License Banner */}
+            <LicenseBanner
+              subscriptions={subscriptions}
+              loading={loadingSubscriptions}
+              accountName={!loadingSubscriptions && subscriptions.length === 0 ? orgName : undefined}
+            />
+
             {/* Request Type Overview */}
             <section className="request-type-overview">
               <h3>Request Type Breakdown</h3>

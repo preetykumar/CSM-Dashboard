@@ -177,64 +177,65 @@ export class SyncService {
         }
       }
 
-      // Fallback: Build name map for ALL orgs (used when SF ID doesn't match)
-      const orgNameMap = new Map<string, CachedOrganization>();
-      for (const org of orgs) {
-        const orgNameLower = org.name.toLowerCase().trim();
-        // Skip very short names that would cause false matches
-        if (orgNameLower.length >= 3) {
-          orgNameMap.set(orgNameLower, org);
-        }
-        const normalized = orgNameLower
-          .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
-          .trim();
-        // Only add normalized version if it's meaningful (not empty and at least 3 chars)
-        if (normalized.length >= 3 && normalized !== orgNameLower) {
-          orgNameMap.set(normalized, org);
-        }
-      }
-
-      console.log(`Matching using ${sfIdToOrg.size} orgs with Salesforce ID, ${orgNameMap.size} orgs by name`);
+      console.log(`Matching using ${sfIdToOrg.size} orgs with Salesforce ID, ${orgs.length} total orgs`);
 
       let matchedBySfId = 0;
       let matchedByName = 0;
+      let additionalOrgsMapped = 0;
 
       // Match Salesforce accounts to Zendesk organizations
       const cachedAssignments: CachedCSMAssignment[] = assignments.map((a) => {
-        let zendeskOrg: CachedOrganization | undefined;
+        let primaryZendeskOrg: CachedOrganization | undefined;
 
         // Primary: Match by Salesforce Account ID
-        zendeskOrg = sfIdToOrg.get(a.accountId);
-        if (zendeskOrg) {
+        primaryZendeskOrg = sfIdToOrg.get(a.accountId);
+        if (primaryZendeskOrg) {
           matchedBySfId++;
           // Update the org's salesforce_account_name for display
-          this.db.updateOrganizationSfAccountName(zendeskOrg.id, a.accountName);
-        } else {
-          // Fallback: Match by name (for orgs without Salesforce ID in Zendesk)
-          const accountNameLower = a.accountName.toLowerCase().trim();
-          const accountNameNormalized = accountNameLower
+          this.db.updateOrganizationSfAccountName(primaryZendeskOrg.id, a.accountName);
+        }
+
+        // ALSO find ALL orgs whose name contains or is contained by the SF account name
+        // This handles cases like "ADP" SF account matching "ADP -Corp", "ADP Enterprise", "ADP, Inc.", etc.
+        const accountNameLower = a.accountName.toLowerCase().trim();
+        const accountNameNormalized = accountNameLower
+          .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
+          .trim();
+
+        // Find all matching orgs by name pattern
+        for (const org of orgs) {
+          // Skip if already matched by SF ID or is the primary match
+          if (org.salesforce_id === a.accountId) continue;
+          if (primaryZendeskOrg && org.id === primaryZendeskOrg.id) continue;
+
+          const orgNameLower = org.name.toLowerCase().trim();
+          const orgNameNormalized = orgNameLower
             .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
+            .replace(/\s*-\s*(corp|enterprise|wfn|llc|inc)$/i, "")
             .trim();
 
-          zendeskOrg = orgNameMap.get(accountNameLower) || orgNameMap.get(accountNameNormalized);
+          // Match criteria:
+          // 1. Exact match (normalized)
+          // 2. Org name starts with SF account name (e.g., "ADP -Corp" starts with "ADP")
+          // 3. Org name contains SF account name as a word boundary (for longer names)
+          // Escape special regex characters in account name for word boundary matching
+          const escapedAccountName = accountNameNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const isMatch =
+            orgNameNormalized === accountNameNormalized ||
+            orgNameLower === accountNameLower ||
+            (accountNameNormalized.length >= 3 && orgNameNormalized.startsWith(accountNameNormalized)) ||
+            (accountNameNormalized.length >= 4 && new RegExp(`\\b${escapedAccountName}\\b`, 'i').test(orgNameLower));
 
-          // Try partial matching as last resort (only for meaningful matches)
-          if (!zendeskOrg && accountNameNormalized.length >= 5) {
-            for (const [orgName, org] of orgNameMap) {
-              // Only match if both strings are substantial and one contains the other
-              if (orgName.length >= 5 && (
-                orgName.includes(accountNameNormalized) || accountNameNormalized.includes(orgName)
-              )) {
-                zendeskOrg = org;
-                break;
-              }
+          if (isMatch) {
+            // Update this org's salesforce_account_name
+            this.db.updateOrganizationSfAccountName(org.id, a.accountName);
+            additionalOrgsMapped++;
+
+            // If no primary match yet, use this as the primary
+            if (!primaryZendeskOrg) {
+              primaryZendeskOrg = org;
+              matchedByName++;
             }
-          }
-
-          if (zendeskOrg) {
-            matchedByName++;
-            // Also update SF account name for name-matched orgs
-            this.db.updateOrganizationSfAccountName(zendeskOrg.id, a.accountName);
           }
         }
 
@@ -244,7 +245,7 @@ export class SyncService {
           csm_id: a.csmId,
           csm_name: a.csmName,
           csm_email: a.csmEmail,
-          zendesk_org_id: zendeskOrg?.id || null,
+          zendesk_org_id: primaryZendeskOrg?.id || null,
         };
       });
 
@@ -254,6 +255,7 @@ export class SyncService {
       console.log(`Synced ${assignments.length} CSM assignments:`);
       console.log(`  - ${matchedBySfId} matched by Salesforce ID`);
       console.log(`  - ${matchedByName} matched by name (fallback)`);
+      console.log(`  - ${additionalOrgsMapped} additional orgs mapped to SF accounts`);
       console.log(`  - ${assignments.length - matchedCount} unmatched`);
 
       this.db.updateSyncStatus("csm_assignments", "success", assignments.length);
