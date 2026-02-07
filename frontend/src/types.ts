@@ -46,6 +46,10 @@ export interface CustomerSummary {
     high: number;
     urgent: number;
   };
+  escalations: number;
+  escalatedTickets: Ticket[];
+  criticalDefects: number;
+  criticalTickets: Ticket[];
   recentTickets: Ticket[];
 }
 

@@ -3,7 +3,7 @@ import { fetchProducts, fetchGitHubStatusForTickets } from "../services/api";
 import type { ProductGroup, ProductType, ProductSubtype, ProductTicket } from "../services/api";
 import type { GitHubDevelopmentStatus } from "../types";
 
-type StatusFilter = "all" | "open" | "closed";
+type StatusFilter = "all" | "open" | "new" | "pending" | "hold" | "closed";
 
 export function ProductView() {
   const [products, setProducts] = useState<ProductGroup[]>([]);
@@ -91,6 +91,12 @@ export function ProductView() {
             tickets = tickets.filter((t) => ["new", "open", "pending", "hold"].includes(t.status));
           } else if (statusFilter === "closed") {
             tickets = tickets.filter((t) => ["solved", "closed"].includes(t.status));
+          } else if (statusFilter === "new") {
+            tickets = tickets.filter((t) => t.status === "new");
+          } else if (statusFilter === "pending") {
+            tickets = tickets.filter((t) => t.status === "pending");
+          } else if (statusFilter === "hold") {
+            tickets = tickets.filter((t) => t.status === "hold");
           }
 
           // Apply search filter
@@ -119,6 +125,24 @@ export function ProductView() {
       return { ...product, types: filteredTypes, totalTickets, openTickets };
     }).filter((p) => p.types.length > 0);
   }, [products, statusFilter, searchQuery]);
+
+  // Calculate individual status counts from original products (for badges)
+  const statusCounts = useMemo(() => {
+    let newCount = 0, pendingCount = 0, holdCount = 0, openCount = 0;
+    for (const product of products) {
+      for (const type of product.types) {
+        for (const subtype of type.subtypes) {
+          for (const ticket of subtype.tickets) {
+            if (ticket.status === "new") newCount++;
+            else if (ticket.status === "pending") pendingCount++;
+            else if (ticket.status === "hold") holdCount++;
+            else if (ticket.status === "open") openCount++;
+          }
+        }
+      }
+    }
+    return { new: newCount, pending: pendingCount, hold: holdCount, open: openCount };
+  }, [products]);
 
   const toggleProduct = (product: string) => {
     setExpandedProducts((prev) => {
@@ -189,6 +213,7 @@ export function ProductView() {
     return <div className="error">{error}</div>;
   }
 
+  // Calculate counts from filtered products
   const totalTickets = filteredProducts.reduce((sum, p) => sum + p.totalTickets, 0);
   const totalOpen = filteredProducts.reduce((sum, p) => sum + p.openTickets, 0);
 
@@ -236,6 +261,24 @@ export function ProductView() {
               onClick={() => setStatusFilter("open")}
             >
               Open
+            </button>
+            <button
+              className={`status-badge-btn new ${statusFilter === "new" ? "active" : ""}`}
+              onClick={() => setStatusFilter("new")}
+            >
+              New <span className="badge">{statusCounts.new}</span>
+            </button>
+            <button
+              className={`status-badge-btn pending ${statusFilter === "pending" ? "active" : ""}`}
+              onClick={() => setStatusFilter("pending")}
+            >
+              Pending <span className="badge">{statusCounts.pending}</span>
+            </button>
+            <button
+              className={`status-badge-btn hold ${statusFilter === "hold" ? "active" : ""}`}
+              onClick={() => setStatusFilter("hold")}
+            >
+              Hold <span className="badge">{statusCounts.hold}</span>
             </button>
             <button
               className={statusFilter === "closed" ? "active" : ""}
@@ -472,22 +515,20 @@ function TicketRow({ ticket, githubStatuses }: TicketRowProps) {
       <td className="ticket-github">
         {githubStatuses && githubStatuses.length > 0 ? (
           <div className="github-links">
-            {githubStatuses.slice(0, 2).map((gh, idx) => (
+            {githubStatuses.map((gh, idx) => (
               <a
                 key={idx}
                 href={gh.githubUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`github-link status-${gh.projectStatus?.toLowerCase().replace(/\s+/g, "-") || "unknown"}`}
+                className={`github-status-pill status-${gh.projectStatus?.toLowerCase().replace(/\s+/g, "-") || "unknown"}`}
                 onClick={(e) => e.stopPropagation()}
-                title={`${gh.repoName}#${gh.issueNumber}: ${gh.projectStatus || "Unknown status"}`}
+                title={`${gh.repoName}#${gh.issueNumber}`}
               >
-                {gh.projectStatus || "Linked"}
+                <span className="gh-icon">GH</span>
+                <span className="gh-status">{gh.projectStatus || "Linked"}</span>
               </a>
             ))}
-            {githubStatuses.length > 2 && (
-              <span className="more-links">+{githubStatuses.length - 2}</span>
-            )}
           </div>
         ) : (
           <span className="no-github">-</span>

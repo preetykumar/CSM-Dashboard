@@ -737,10 +737,26 @@ export class ZendeskService {
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       .slice(0, 10);
 
+    // Get escalated tickets (only open/active tickets)
+    const escalatedTickets = tickets.filter(
+      (t) => t.is_escalated && !["solved", "closed"].includes(t.status)
+    );
+    const escalations = escalatedTickets.length;
+
+    // Get critical tickets (urgent + high priority, only open/active tickets)
+    const criticalTickets = tickets.filter(
+      (t) => (t.priority === "urgent" || t.priority === "high") && !["solved", "closed"].includes(t.status)
+    );
+    const criticalDefects = criticalTickets.length;
+
     return {
       organization,
       ticketStats,
       priorityBreakdown,
+      escalations,
+      escalatedTickets,
+      criticalDefects,
+      criticalTickets,
       recentTickets,
     };
   }
@@ -774,6 +790,18 @@ export class ZendeskService {
     const recentTickets = tickets
       .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
       .slice(0, 10);
+
+    // Get escalated tickets (only open/active tickets)
+    const escalatedTickets = tickets.filter(
+      (t) => t.is_escalated && !["solved", "closed"].includes(t.status)
+    );
+    const escalations = escalatedTickets.length;
+
+    // Get critical tickets (urgent + high priority, only open/active tickets)
+    const criticalTickets = tickets.filter(
+      (t) => (t.priority === "urgent" || t.priority === "high") && !["solved", "closed"].includes(t.status)
+    );
+    const criticalDefects = criticalTickets.length;
 
     // Build product breakdown
     const productMap = new Map<string, ProductStats>();
@@ -824,6 +852,10 @@ export class ZendeskService {
       organization,
       ticketStats,
       priorityBreakdown,
+      escalations,
+      escalatedTickets,
+      criticalDefects,
+      criticalTickets,
       recentTickets,
       productBreakdown,
       requestTypeBreakdown: {

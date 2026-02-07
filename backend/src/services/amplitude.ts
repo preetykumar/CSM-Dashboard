@@ -72,6 +72,33 @@ interface EventData {
   count: number;
 }
 
+// Event segmentation response from Amplitude
+interface EventSegmentationResponse {
+  data: {
+    series: number[][];
+    seriesLabels: string[]; // Array of labels (e.g., domain names)
+    seriesCollapsed: Array<Array<{ setId: string; value: string | number }>>;
+    xValues: string[];
+  };
+}
+
+// Processed domain usage data
+export interface DomainUsageData {
+  domain: string;
+  uniqueUsers: number;
+  eventCount: number;
+}
+
+// Quarterly usage summary
+export interface QuarterlyUsage {
+  quarter: string; // e.g., "Q1 2026"
+  startDate: string;
+  endDate: string;
+  domains: DomainUsageData[];
+  totalUniqueUsers: number;
+  totalEventCount: number;
+}
+
 interface UsageResponse {
   product: string;
   projectId: string;
@@ -187,6 +214,13 @@ export class AmplitudeService {
    */
   async getEventList(): Promise<{ data: Array<{ name: string }> }> {
     return this.request("/events/list");
+  }
+
+  /**
+   * Get list of user properties in the project
+   */
+  async getUserPropertyList(): Promise<{ data: Array<{ user_property: string }> }> {
+    return this.request("/userproperty/list");
   }
 
   /**
@@ -497,6 +531,167 @@ export class AmplitudeService {
       return result;
     } catch (error) {
       console.error(`Error fetching usage summary for org ${organization}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get quarter date range
+   * @param quarterOffset 0 = current quarter, -1 = previous quarter
+   */
+  private getQuarterDateRange(quarterOffset: number = 0): { start: Date; end: Date; label: string } {
+    const now = new Date();
+    const currentQuarter = Math.floor(now.getMonth() / 3);
+    const targetQuarter = currentQuarter + quarterOffset;
+
+    let year = now.getFullYear();
+    let quarter = targetQuarter;
+
+    // Handle quarter wrapping
+    while (quarter < 0) {
+      quarter += 4;
+      year--;
+    }
+    while (quarter > 3) {
+      quarter -= 4;
+      year++;
+    }
+
+    const startMonth = quarter * 3;
+    const start = new Date(year, startMonth, 1);
+    const end = new Date(year, startMonth + 3, 0); // Last day of quarter
+
+    // If current quarter, end at today
+    if (quarterOffset === 0 && end > now) {
+      end.setTime(now.getTime());
+    }
+
+    return {
+      start,
+      end,
+      label: `Q${quarter + 1} ${year}`,
+    };
+  }
+
+  /**
+   * Query event segmentation API grouped by a property
+   * @param eventType The event to query (e.g., "analysis:complete")
+   * @param groupByProperty Property to group by (e.g., "gp:organization" or "up:referring_domain")
+   * @param startDate Start date
+   * @param endDate End date
+   */
+  async getEventSegmentation(
+    eventType: string,
+    groupByProperty: string,
+    startDate: Date,
+    endDate: Date
+  ): Promise<DomainUsageData[]> {
+    // Build the event segmentation request
+    // Amplitude Event Segmentation API uses JSON-encoded parameters
+    const e = JSON.stringify({
+      event_type: eventType,
+    });
+
+    const params: Record<string, string> = {
+      e,
+      start: this.formatDate(startDate),
+      end: this.formatDate(endDate),
+      m: "uniques", // Unique users
+      g: groupByProperty, // Group by property (must include prefix: gp:, up:, or ep:)
+      limit: "100", // Top 100 results
+    };
+
+    try {
+      const response = await this.request<EventSegmentationResponse>("/events/segmentation", params);
+
+      const results: DomainUsageData[] = [];
+      const seriesLabels = response.data?.seriesLabels || [];
+      const series = response.data?.series || [];
+
+      // seriesLabels contains the actual domain/org names as strings
+      // series contains the counts for each group
+      for (let i = 0; i < seriesLabels.length; i++) {
+        const domain = seriesLabels[i] || "unknown";
+        const counts = series[i] || [];
+        const totalCount = counts.reduce((sum, val) => sum + (val || 0), 0);
+
+        if (domain && domain !== "(none)" && totalCount > 0) {
+          results.push({
+            domain,
+            uniqueUsers: totalCount, // For uniques metric, this is unique users
+            eventCount: totalCount,
+          });
+        }
+      }
+
+      // Sort by unique users descending
+      results.sort((a, b) => b.uniqueUsers - a.uniqueUsers);
+
+      return results;
+    } catch (error) {
+      console.error(`Error fetching event segmentation for ${eventType}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get event usage by organization for current and previous quarter
+   * @param eventType The event to query (e.g., "analysis:complete")
+   * @param groupBy Property to group by (default: "gp:organization")
+   */
+  async getEventUsageByDomainQuarterly(
+    eventType: string,
+    groupBy: string = "gp:organization"
+  ): Promise<{
+    currentQuarter: QuarterlyUsage;
+    previousQuarter: QuarterlyUsage;
+  }> {
+    const cacheKey = `event:${this.projectId}:${eventType}:${groupBy}:quarterly`;
+    const cached = amplitudeCache.get<{
+      currentQuarter: QuarterlyUsage;
+      previousQuarter: QuarterlyUsage;
+    }>(cacheKey);
+
+    if (cached) {
+      console.log(`[Amplitude] Cache hit for quarterly event data: ${eventType}`);
+      return cached;
+    }
+
+    console.log(`[Amplitude] Fetching quarterly event data: ${eventType} grouped by ${groupBy}`);
+
+    const currentQ = this.getQuarterDateRange(0);
+    const previousQ = this.getQuarterDateRange(-1);
+
+    try {
+      const [currentData, previousData] = await Promise.all([
+        this.getEventSegmentation(eventType, groupBy, currentQ.start, currentQ.end),
+        this.getEventSegmentation(eventType, groupBy, previousQ.start, previousQ.end),
+      ]);
+
+      const result = {
+        currentQuarter: {
+          quarter: currentQ.label,
+          startDate: this.formatDate(currentQ.start),
+          endDate: this.formatDate(currentQ.end),
+          domains: currentData,
+          totalUniqueUsers: currentData.reduce((sum, d) => sum + d.uniqueUsers, 0),
+          totalEventCount: currentData.reduce((sum, d) => sum + d.eventCount, 0),
+        },
+        previousQuarter: {
+          quarter: previousQ.label,
+          startDate: this.formatDate(previousQ.start),
+          endDate: this.formatDate(previousQ.end),
+          domains: previousData,
+          totalUniqueUsers: previousData.reduce((sum, d) => sum + d.uniqueUsers, 0),
+          totalEventCount: previousData.reduce((sum, d) => sum + d.eventCount, 0),
+        },
+      };
+
+      // Cache for 30 minutes (quarterly data changes less frequently)
+      amplitudeCache.set(cacheKey, result, 30);
+      return result;
+    } catch (error) {
+      console.error(`Error fetching quarterly event usage for ${eventType}:`, error);
       throw error;
     }
   }

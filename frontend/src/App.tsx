@@ -145,15 +145,15 @@ function Dashboard() {
       filtered = filtered.filter((org) => {
         const summary = summaries.get(org.id);
         if (!summary) return false;
-        // Check if any recent ticket is escalated
-        return summary.recentTickets.some((t) => t.is_escalated);
+        // Check if organization has any escalated tickets
+        return summary.escalations > 0;
       });
     } else if (smartFilter === "critical") {
       filtered = filtered.filter((org) => {
         const summary = summaries.get(org.id);
         if (!summary) return false;
-        // Critical = urgent or high priority tickets
-        return summary.priorityBreakdown.urgent > 0 || summary.priorityBreakdown.high > 0;
+        // Critical = urgent or high priority active tickets (not solved/closed)
+        return summary.criticalDefects > 0;
       });
     }
 
@@ -185,8 +185,8 @@ function Dashboard() {
     organizations.forEach((org) => {
       const summary = summaries.get(org.id);
       if (!summary) return;
-      if (summary.recentTickets.some((t) => t.is_escalated)) escalated++;
-      if (summary.priorityBreakdown.urgent > 0 || summary.priorityBreakdown.high > 0) critical++;
+      if (summary.escalations > 0) escalated++;
+      if (summary.criticalDefects > 0) critical++;
     });
     return { escalated, critical };
   }, [organizations, summaries]);
@@ -486,6 +486,8 @@ function Dashboard() {
                       onClick={() => handleOrgClick(org)}
                       onStatusClick={(status) => handleStatusClick(org, status)}
                       onPriorityClick={(priority) => handlePriorityClick(org, priority)}
+                      isEscalatedView={smartFilter === "escalated"}
+                      isCriticalView={smartFilter === "critical"}
                     />
                   );
                 }

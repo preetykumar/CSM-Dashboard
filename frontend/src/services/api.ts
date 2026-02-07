@@ -421,3 +421,60 @@ export async function fetchAccountsWithSubscriptions(): Promise<AccountsWithSubs
   if (!res.ok) throw new Error("Failed to fetch accounts with subscriptions");
   return res.json();
 }
+
+// ==================
+// Amplitude Quarterly Event Usage APIs
+// ==================
+
+export interface DomainUsageData {
+  domain: string;
+  uniqueUsers: number;
+  eventCount: number;
+}
+
+export interface QuarterlyUsage {
+  quarter: string;
+  startDate: string;
+  endDate: string;
+  domains: DomainUsageData[];
+  totalUniqueUsers: number;
+  totalEventCount: number;
+}
+
+export interface QuarterlyEventUsageResponse {
+  product: string;
+  eventType: string;
+  groupBy: string;
+  currentQuarter: QuarterlyUsage;
+  previousQuarter: QuarterlyUsage;
+}
+
+export async function fetchQuarterlyEventUsage(
+  productSlug: string,
+  eventType?: string,
+  groupBy?: string
+): Promise<QuarterlyEventUsageResponse> {
+  const params = new URLSearchParams();
+  if (eventType) params.append("event", eventType);
+  if (groupBy) params.append("groupBy", groupBy);
+  const queryString = params.toString();
+  const url = `${API_BASE}/amplitude/events/${productSlug}/quarterly${queryString ? `?${queryString}` : ""}`;
+  const res = await fetch(url, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch quarterly event usage");
+  return res.json();
+}
+
+// ==================
+// Domain to Account Mapping API
+// ==================
+
+export interface DomainMappingResponse {
+  mapping: Record<string, string>;
+  count: number;
+}
+
+export async function fetchDomainMapping(): Promise<DomainMappingResponse> {
+  const res = await fetch(`${API_BASE}/organizations/domain-mapping`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch domain mapping");
+  return res.json();
+}

@@ -2,17 +2,16 @@ import { useState, useEffect, useMemo } from "react";
 import {
   fetchOrganizations,
   fetchAmplitudeProducts,
-  fetchAllAmplitudeSummaries,
   fetchAmplitudeUsageByOrg,
   fetchEnterpriseSubscriptionsByName,
   fetchAccountsWithSubscriptions,
   AmplitudeProduct,
-  AmplitudeUsageSummary,
   AmplitudeOrgUsageSummary,
   EnterpriseSubscription,
 } from "../services/api";
 import { LicenseBanner } from "./LicenseBanner";
 import { Pagination, usePagination } from "./Pagination";
+import { QuarterlyUsagePanel } from "./QuarterlyUsagePanel";
 import type { Organization } from "../types";
 
 // Consolidated account that groups multiple Zendesk orgs by SF account name
@@ -51,7 +50,6 @@ function consolidateOrganizations(orgs: Organization[]): ConsolidatedAccount[] {
 export function CustomerUsageView() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [products, setProducts] = useState<AmplitudeProduct[]>([]);
-  const [aggregateSummaries, setAggregateSummaries] = useState<AmplitudeUsageSummary[]>([]);
   const [accountsWithSubscriptions, setAccountsWithSubscriptions] = useState<Set<string>>(new Set());
   const [customerUsage, setCustomerUsage] = useState<Map<string, CustomerUsageData>>(new Map());
   const [loading, setLoading] = useState(true);
@@ -60,21 +58,20 @@ export function CustomerUsageView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
+  const [customerSectionExpanded, setCustomerSectionExpanded] = useState(false);
 
   // Load initial data
   useEffect(() => {
     async function loadData() {
       try {
         setLoading(true);
-        const [orgs, prods, summaries, accountsWithSubs] = await Promise.all([
+        const [orgs, prods, accountsWithSubs] = await Promise.all([
           fetchOrganizations(),
           fetchAmplitudeProducts(),
-          fetchAllAmplitudeSummaries(),
           fetchAccountsWithSubscriptions(),
         ]);
         setOrganizations(orgs);
         setProducts(prods);
-        setAggregateSummaries(summaries);
         setAccountsWithSubscriptions(new Set(accountsWithSubs.accountNames));
       } catch (err) {
         console.error("Failed to load data:", err);
@@ -197,78 +194,51 @@ export function CustomerUsageView() {
 
   return (
     <div className="usage-view">
-      {/* Aggregate Summary */}
-      <div className="usage-aggregate-section">
-        <h2>Aggregate Usage (All Organizations)</h2>
-        <div className="usage-products-grid">
-          {aggregateSummaries.map((summary) => (
-            <div key={summary.slug || summary.product} className="usage-product-card">
-              <h3>{summary.product}</h3>
-              {summary.error ? (
-                <p className="usage-error">Error loading data</p>
-              ) : (
-                <div className="usage-metrics">
-                  <div className="usage-period">
-                    <span className="period-label">Last 7 days</span>
-                    <div className="period-values">
-                      <span className="metric-active">
-                        {summary.last7Days.activeUsers.toLocaleString()} active
-                      </span>
-                      <span className="metric-new">
-                        +{summary.last7Days.newUsers.toLocaleString()} new
-                      </span>
-                    </div>
-                  </div>
-                  <div className="usage-period">
-                    <span className="period-label">Last 30 days</span>
-                    <div className="period-values">
-                      <span className="metric-active">
-                        {summary.last30Days.activeUsers.toLocaleString()} active
-                      </span>
-                      <span className="metric-new">
-                        +{summary.last30Days.newUsers.toLocaleString()} new
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Quarterly Event Usage */}
+      <QuarterlyUsagePanel defaultEvent="analysis:complete" />
 
-      {/* Customer List */}
-      <div className="usage-customer-section">
-        <div className="usage-section-header">
+      {/* Customer List - Collapsible */}
+      <div className="collapsible-section">
+        <button
+          className="collapsible-header"
+          onClick={() => setCustomerSectionExpanded(!customerSectionExpanded)}
+          aria-expanded={customerSectionExpanded}
+        >
+          <span className="expand-icon">{customerSectionExpanded ? "▼" : "▶"}</span>
           <h2>Usage by Customer</h2>
-          <div className="usage-search">
-            <input
-              type="text"
-              placeholder="Search customers..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="usage-search-input"
+          <span className="section-count">{filteredAccounts.length} customers</span>
+        </button>
+        {customerSectionExpanded && (
+          <div className="collapsible-content">
+            <div className="usage-customer-controls">
+              <div className="usage-search">
+                <input
+                  type="text"
+                  placeholder="Search customers..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="usage-search-input"
+                />
+                {searchQuery && (
+                  <button
+                    className="usage-search-clear"
+                    onClick={() => setSearchQuery("")}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <Pagination
+              totalItems={filteredAccounts.length}
+              pageSize={pageSize}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
             />
-            {searchQuery && (
-              <button
-                className="usage-search-clear"
-                onClick={() => setSearchQuery("")}
-              >
-                ×
-              </button>
-            )}
-          </div>
-        </div>
 
-        <Pagination
-          totalItems={filteredAccounts.length}
-          pageSize={pageSize}
-          currentPage={currentPage}
-          onPageChange={setCurrentPage}
-          onPageSizeChange={setPageSize}
-        />
-
-        <div className="usage-customer-list">
+            <div className="usage-customer-list">
           {filteredAccounts.length === 0 ? (
             <p className="no-results">
               {searchQuery ? "No customers match your search." : "No customers with active subscriptions found."}
@@ -358,7 +328,9 @@ export function CustomerUsageView() {
               );
             })
           )}
-        </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

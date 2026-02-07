@@ -36,6 +36,32 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     res.json({ products: productList });
   });
 
+  // GET /api/amplitude/properties/:product - List available user properties for a product
+  router.get("/properties/:product", async (req: Request, res: Response) => {
+    try {
+      const { product } = req.params;
+      const entry = services.get(product);
+      if (!entry) {
+        return res.status(404).json({
+          error: "Product not found",
+          available: Array.from(services.keys()),
+        });
+      }
+
+      const properties = await entry.service.getUserPropertyList();
+      res.json({
+        product: entry.config.name,
+        properties: properties.data?.map((p) => p.user_property) || [],
+      });
+    } catch (error) {
+      console.error("Error fetching user properties:", error);
+      res.status(500).json({
+        error: "Failed to fetch user properties",
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
   // GET /api/amplitude/usage/:product - Get usage data for a product
   router.get("/usage/:product", async (req: Request, res: Response) => {
     try {
@@ -171,6 +197,39 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       console.error("Error fetching org usage data:", error);
       res.status(500).json({
         error: "Failed to fetch organization usage data",
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // GET /api/amplitude/events/:product/quarterly - Get event usage by domain for current and previous quarter
+  router.get("/events/:product/quarterly", async (req: Request, res: Response) => {
+    try {
+      const { product } = req.params;
+      const eventType = (req.query.event as string) || "analysis:complete";
+      const groupBy = (req.query.groupBy as string) || "gp:initial_referring_domain";
+
+      const entry = services.get(product);
+      if (!entry) {
+        return res.status(404).json({
+          error: "Product not found",
+          available: Array.from(services.keys()),
+        });
+      }
+
+      const usage = await entry.service.getEventUsageByDomainQuarterly(eventType, groupBy);
+
+      res.json({
+        product: entry.config.name,
+        eventType,
+        groupBy,
+        currentQuarter: usage.currentQuarter,
+        previousQuarter: usage.previousQuarter,
+      });
+    } catch (error) {
+      console.error("Error fetching quarterly event usage:", error);
+      res.status(500).json({
+        error: "Failed to fetch quarterly event usage",
         details: error instanceof Error ? error.message : "Unknown error",
       });
     }

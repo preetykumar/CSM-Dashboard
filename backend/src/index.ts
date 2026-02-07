@@ -223,6 +223,96 @@ function loadAmplitudeConfig() {
     });
   }
 
+  // Axe Monitor
+  const axeMonitorApiKey = process.env.AMPLITUDE_AXE_MONITOR_API_KEY;
+  const axeMonitorSecretKey = process.env.AMPLITUDE_AXE_MONITOR_SECRET_KEY;
+  const axeMonitorProjectId = process.env.AMPLITUDE_AXE_MONITOR_PROJECT_ID;
+
+  if (axeMonitorApiKey && axeMonitorSecretKey && axeMonitorProjectId) {
+    products.push({
+      name: "Axe Monitor",
+      projectId: axeMonitorProjectId,
+      apiKey: axeMonitorApiKey,
+      secretKey: axeMonitorSecretKey,
+      orgId,
+    });
+  }
+
+  // Axe DevTools Mobile
+  const axeDevToolsMobileApiKey = process.env.AMPLITUDE_AXE_DEVTOOLS_MOBILE_API_KEY;
+  const axeDevToolsMobileSecretKey = process.env.AMPLITUDE_AXE_DEVTOOLS_MOBILE_SECRET_KEY;
+  const axeDevToolsMobileProjectId = process.env.AMPLITUDE_AXE_DEVTOOLS_MOBILE_PROJECT_ID;
+
+  if (axeDevToolsMobileApiKey && axeDevToolsMobileSecretKey && axeDevToolsMobileProjectId) {
+    products.push({
+      name: "Axe DevTools Mobile",
+      projectId: axeDevToolsMobileProjectId,
+      apiKey: axeDevToolsMobileApiKey,
+      secretKey: axeDevToolsMobileSecretKey,
+      orgId,
+    });
+  }
+
+  // Deque University
+  const dequeUniversityApiKey = process.env.AMPLITUDE_DEQUE_UNIVERSITY_API_KEY;
+  const dequeUniversitySecretKey = process.env.AMPLITUDE_DEQUE_UNIVERSITY_SECRET_KEY;
+  const dequeUniversityProjectId = process.env.AMPLITUDE_DEQUE_UNIVERSITY_PROJECT_ID;
+
+  if (dequeUniversityApiKey && dequeUniversitySecretKey && dequeUniversityProjectId) {
+    products.push({
+      name: "Deque University",
+      projectId: dequeUniversityProjectId,
+      apiKey: dequeUniversityApiKey,
+      secretKey: dequeUniversitySecretKey,
+      orgId,
+    });
+  }
+
+  // Axe Reports
+  const axeReportsApiKey = process.env.AMPLITUDE_AXE_REPORTS_API_KEY;
+  const axeReportsSecretKey = process.env.AMPLITUDE_AXE_REPORTS_SECRET_KEY;
+  const axeReportsProjectId = process.env.AMPLITUDE_AXE_REPORTS_PROJECT_ID;
+
+  if (axeReportsApiKey && axeReportsSecretKey && axeReportsProjectId) {
+    products.push({
+      name: "Axe Reports",
+      projectId: axeReportsProjectId,
+      apiKey: axeReportsApiKey,
+      secretKey: axeReportsSecretKey,
+      orgId,
+    });
+  }
+
+  // Axe Linter
+  const axeLinterApiKey = process.env.AMPLITUDE_AXE_LINTER_API_KEY;
+  const axeLinterSecretKey = process.env.AMPLITUDE_AXE_LINTER_SECRET_KEY;
+  const axeLinterProjectId = process.env.AMPLITUDE_AXE_LINTER_PROJECT_ID;
+
+  if (axeLinterApiKey && axeLinterSecretKey && axeLinterProjectId) {
+    products.push({
+      name: "Axe Linter",
+      projectId: axeLinterProjectId,
+      apiKey: axeLinterApiKey,
+      secretKey: axeLinterSecretKey,
+      orgId,
+    });
+  }
+
+  // Axe MCP Server
+  const axeMcpServerApiKey = process.env.AMPLITUDE_AXE_MCP_SERVER_API_KEY;
+  const axeMcpServerSecretKey = process.env.AMPLITUDE_AXE_MCP_SERVER_SECRET_KEY;
+  const axeMcpServerProjectId = process.env.AMPLITUDE_AXE_MCP_SERVER_PROJECT_ID;
+
+  if (axeMcpServerApiKey && axeMcpServerSecretKey && axeMcpServerProjectId) {
+    products.push({
+      name: "Axe MCP Server",
+      projectId: axeMcpServerProjectId,
+      apiKey: axeMcpServerApiKey,
+      secretKey: axeMcpServerSecretKey,
+      orgId,
+    });
+  }
+
   if (products.length === 0) {
     console.warn("No Amplitude products configured. Usage analytics will be disabled.");
     return null;

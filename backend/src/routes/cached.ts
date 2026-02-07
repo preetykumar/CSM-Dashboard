@@ -44,6 +44,22 @@ export function createCachedRoutes(db: DatabaseService): Router {
     }
   });
 
+  // Get domain to account name mapping
+  router.get("/domain-mapping", async (_req: Request, res: Response) => {
+    try {
+      const domainMap = db.getDomainToAccountMap();
+      // Convert Map to object for JSON serialization
+      const mapping: Record<string, string> = {};
+      domainMap.forEach((accountName, domain) => {
+        mapping[domain] = accountName;
+      });
+      res.json({ mapping, count: Object.keys(mapping).length });
+    } catch (error) {
+      console.error("Error fetching domain mapping:", error);
+      res.status(500).json({ error: "Failed to fetch domain mapping" });
+    }
+  });
+
   // Get organization summary
   router.get("/:id/summary", async (req: Request, res: Response) => {
     try {
@@ -57,7 +73,20 @@ export function createCachedRoutes(db: DatabaseService): Router {
 
       const ticketStats = db.getTicketStats(orgId);
       const priorityBreakdown = db.getPriorityBreakdown(orgId);
-      const recentTickets = db.getTicketsByOrganization(orgId).slice(0, 10);
+      const allTickets = db.getTicketsByOrganization(orgId);
+      const recentTickets = allTickets.slice(0, 10);
+
+      // Get escalated tickets (only open/active tickets)
+      const escalatedTicketsList = allTickets.filter(
+        (t) => t.is_escalated && !["solved", "closed"].includes(t.status)
+      );
+      const escalations = escalatedTicketsList.length;
+
+      // Get critical tickets (urgent + high priority, only open/active tickets)
+      const criticalTicketsList = allTickets.filter(
+        (t) => (t.priority === "urgent" || t.priority === "high") && !["solved", "closed"].includes(t.status)
+      );
+      const criticalDefects = criticalTicketsList.length;
 
       const summary: CustomerSummary = {
         organization: {
@@ -71,6 +100,37 @@ export function createCachedRoutes(db: DatabaseService): Router {
         },
         ticketStats,
         priorityBreakdown,
+        escalations,
+        escalatedTickets: escalatedTicketsList.map((t) => ({
+          id: t.id,
+          url: "",
+          subject: t.subject,
+          status: t.status,
+          priority: t.priority,
+          requester_id: t.requester_id,
+          submitter_id: t.requester_id,
+          assignee_id: t.assignee_id || undefined,
+          organization_id: t.organization_id,
+          tags: JSON.parse(t.tags || "[]"),
+          created_at: t.created_at,
+          updated_at: t.updated_at,
+          is_escalated: Boolean(t.is_escalated),
+        })),
+        criticalDefects,
+        criticalTickets: criticalTicketsList.map((t) => ({
+          id: t.id,
+          url: "",
+          subject: t.subject,
+          status: t.status,
+          priority: t.priority,
+          requester_id: t.requester_id,
+          submitter_id: t.requester_id,
+          assignee_id: t.assignee_id || undefined,
+          organization_id: t.organization_id,
+          tags: JSON.parse(t.tags || "[]"),
+          created_at: t.created_at,
+          updated_at: t.updated_at,
+        })),
         recentTickets: recentTickets.map((t) => ({
           id: t.id,
           url: "",

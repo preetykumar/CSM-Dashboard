@@ -505,7 +505,7 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
               <button onClick={() => setDrilldownTickets(null)}>Close</button>
             </div>
             {drilldownTickets.grouped ? (
-              <GroupedTicketView tickets={drilldownTickets.tickets} />
+              <GroupedTicketView tickets={drilldownTickets.tickets} githubStatusMap={githubStatusMap} />
             ) : (
               <div className="ticket-table-container">
                 <table className="ticket-table">
@@ -517,13 +517,13 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
                       <th>Subtype</th>
                       <th>Status</th>
                       <th>Priority</th>
-                      <th>Workflow</th>
+                      <th>GitHub</th>
                       <th>Updated</th>
                     </tr>
                   </thead>
                   <tbody>
                     {drilldownTickets.tickets.map((ticket) => (
-                      <TicketDetailRow key={ticket.id} ticket={ticket} />
+                      <TicketDetailRow key={ticket.id} ticket={ticket} githubStatuses={githubStatusMap?.get(ticket.id)} />
                     ))}
                   </tbody>
                 </table>
@@ -536,7 +536,7 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
   );
 }
 
-function TicketDetailRow({ ticket }: { ticket: Ticket | MinimalTicket }) {
+function TicketDetailRow({ ticket, githubStatuses }: { ticket: Ticket | MinimalTicket; githubStatuses?: GitHubDevelopmentStatus[] }) {
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -565,7 +565,28 @@ function TicketDetailRow({ ticket }: { ticket: Ticket | MinimalTicket }) {
       <td className="ticket-subtype">{ticket.issue_subtype || ticket.module || "-"}</td>
       <td className={`ticket-status status-${ticket.status}`}>{ticket.status}</td>
       <td className={`ticket-priority priority-${ticket.priority || "normal"}`}>{ticket.priority || "normal"}</td>
-      <td className="ticket-workflow">{("workflow_status" in ticket ? ticket.workflow_status : null) || "-"}</td>
+      <td className="ticket-github">
+        {githubStatuses && githubStatuses.length > 0 ? (
+          <div className="github-links">
+            {githubStatuses.map((gh, idx) => (
+              <a
+                key={idx}
+                href={gh.githubUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`github-status-pill status-${gh.projectStatus?.toLowerCase().replace(/\s+/g, "-") || "unknown"}`}
+                onClick={(e) => e.stopPropagation()}
+                title={`${gh.repoName}#${gh.issueNumber}`}
+              >
+                <span className="gh-icon">GH</span>
+                <span className="gh-status">{gh.projectStatus || "Linked"}</span>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <span className="no-github">-</span>
+        )}
+      </td>
       <td className="ticket-updated">{formatDate(ticket.updated_at)}</td>
     </tr>
   );
@@ -580,7 +601,7 @@ interface ProductGroup {
   }[];
 }
 
-function GroupedTicketView({ tickets }: { tickets: (Ticket | MinimalTicket)[] }) {
+function GroupedTicketView({ tickets, githubStatusMap }: { tickets: (Ticket | MinimalTicket)[]; githubStatusMap?: Map<number, GitHubDevelopmentStatus[]> | null }) {
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
 
@@ -721,27 +742,48 @@ function GroupedTicketView({ tickets }: { tickets: (Ticket | MinimalTicket)[] })
 
                       {typeExpanded && (
                         <div className="type-group-tickets">
-                          {type.tickets.map((ticket) => (
-                            <div
-                              key={ticket.id}
-                              className={`grouped-ticket-row ${ticket.is_escalated ? "escalated" : ""}`}
-                              onClick={() => {
-                                const url = ticket.url || `https://dequehelp.zendesk.com/agent/tickets/${ticket.id}`;
-                                window.open(url, "_blank");
-                              }}
-                            >
-                              <span className="ticket-id">
-                                #{ticket.id}
-                                {ticket.is_escalated && <span className="escalation-indicator" title="Escalated">!</span>}
-                              </span>
-                              <span className="ticket-subtype">{ticket.issue_subtype || ticket.module || "-"}</span>
-                              <span className="ticket-subject">{ticket.subject || "No subject"}</span>
-                              <span className={`ticket-priority priority-${ticket.priority || "normal"}`}>
-                                {ticket.priority || "normal"}
-                              </span>
-                              <span className="ticket-updated">{formatDate(ticket.updated_at)}</span>
-                            </div>
-                          ))}
+                          {type.tickets.map((ticket) => {
+                            const ticketGithubStatuses = githubStatusMap?.get(ticket.id);
+                            return (
+                              <div
+                                key={ticket.id}
+                                className={`grouped-ticket-row ${ticket.is_escalated ? "escalated" : ""}`}
+                                onClick={() => {
+                                  const url = ticket.url || `https://dequehelp.zendesk.com/agent/tickets/${ticket.id}`;
+                                  window.open(url, "_blank");
+                                }}
+                              >
+                                <span className="ticket-id">
+                                  #{ticket.id}
+                                  {ticket.is_escalated && <span className="escalation-indicator" title="Escalated">!</span>}
+                                </span>
+                                <span className="ticket-subtype">{ticket.issue_subtype || ticket.module || "-"}</span>
+                                <span className="ticket-subject">{ticket.subject || "No subject"}</span>
+                                <span className={`ticket-priority priority-${ticket.priority || "normal"}`}>
+                                  {ticket.priority || "normal"}
+                                </span>
+                                {ticketGithubStatuses && ticketGithubStatuses.length > 0 && (
+                                  <span className="ticket-github-pills">
+                                    {ticketGithubStatuses.map((gh, idx) => (
+                                      <a
+                                        key={idx}
+                                        href={gh.githubUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`github-status-pill status-${gh.projectStatus?.toLowerCase().replace(/\s+/g, "-") || "unknown"}`}
+                                        onClick={(e) => e.stopPropagation()}
+                                        title={`${gh.repoName}#${gh.issueNumber}`}
+                                      >
+                                        <span className="gh-icon">GH</span>
+                                        <span className="gh-status">{gh.projectStatus || "Linked"}</span>
+                                      </a>
+                                    ))}
+                                  </span>
+                                )}
+                                <span className="ticket-updated">{formatDate(ticket.updated_at)}</span>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

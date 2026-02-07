@@ -4,6 +4,12 @@ import { SalesforceService, CSMAssignment } from "./salesforce.js";
 import { GitHubService } from "./github.js";
 import type { Organization, Ticket } from "../types/index.js";
 
+// Helper function to normalize text by removing diacritical marks (accents)
+// e.g., "Nestlé" -> "nestle", "Café" -> "cafe"
+function normalizeAccents(text: string): string {
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 export class SyncService {
   private db: DatabaseService;
   private zendesk: ZendeskService;
@@ -197,7 +203,8 @@ export class SyncService {
 
         // ALSO find ALL orgs whose name contains or is contained by the SF account name
         // This handles cases like "ADP" SF account matching "ADP -Corp", "ADP Enterprise", "ADP, Inc.", etc.
-        const accountNameLower = a.accountName.toLowerCase().trim();
+        // Also normalizes accents so "Nestlé" matches "Nestle"
+        const accountNameLower = normalizeAccents(a.accountName.toLowerCase().trim());
         const accountNameNormalized = accountNameLower
           .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
           .trim();
@@ -208,14 +215,14 @@ export class SyncService {
           if (org.salesforce_id === a.accountId) continue;
           if (primaryZendeskOrg && org.id === primaryZendeskOrg.id) continue;
 
-          const orgNameLower = org.name.toLowerCase().trim();
+          const orgNameLower = normalizeAccents(org.name.toLowerCase().trim());
           const orgNameNormalized = orgNameLower
             .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
             .replace(/\s*-\s*(corp|enterprise|wfn|llc|inc)$/i, "")
             .trim();
 
           // Match criteria:
-          // 1. Exact match (normalized)
+          // 1. Exact match (normalized, including accent normalization)
           // 2. Org name starts with SF account name (e.g., "ADP -Corp" starts with "ADP")
           // 3. Org name contains SF account name as a word boundary (for longer names)
           // Escape special regex characters in account name for word boundary matching

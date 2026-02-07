@@ -323,6 +323,93 @@ header p {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
+/* Escalated View Styles */
+.summary-card.escalated-view .summary-card-header {
+  background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+}
+
+.summary-card.escalated-view .escalation-count {
+  font-size: 0.9rem;
+  opacity: 0.95;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Critical View Styles */
+.summary-card.critical-view .summary-card-header {
+  background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+}
+
+.summary-card.critical-view .critical-count {
+  font-size: 0.9rem;
+  opacity: 0.95;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Shared styles for special ticket lists (escalated and critical) */
+.special-tickets-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.special-ticket-item {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #eee;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.special-ticket-item:last-child {
+  border-bottom: none;
+}
+
+.escalated-view .special-ticket-item .ticket-link {
+  color: #dc2626;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.critical-view .special-ticket-item .ticket-link {
+  color: #ea580c;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.special-ticket-item .ticket-link:hover {
+  text-decoration: underline;
+}
+
+.special-ticket-item .ticket-status {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 12px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.special-ticket-item .ticket-subject {
+  color: #333;
+  flex: 1;
+  min-width: 0;
+}
+
+.no-tickets-message {
+  color: #666;
+  font-style: italic;
+  text-align: center;
+  padding: 1rem 0;
+}
+
 header .hint {
   font-size: 0.85rem;
   color: #888;
@@ -2685,6 +2772,17 @@ header .hint {
   text-overflow: ellipsis;
 }
 
+.grouped-ticket-row .ticket-github-pills {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.grouped-ticket-row .ticket-github-pills .github-status-pill {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+}
+
 /* ============================================
    Escalation Styles
    ============================================ */
@@ -2928,6 +3026,47 @@ header .hint {
 
 .product-controls .status-filter button.active {
   background: #667eea;
+  color: #fff;
+}
+
+/* Status badge buttons with counts */
+.product-controls .status-filter .status-badge-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.product-controls .status-filter .status-badge-btn .badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 10px;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.product-controls .status-filter .status-badge-btn.new .badge {
+  background: #fecaca;
+  color: #991b1b;
+}
+
+.product-controls .status-filter .status-badge-btn.pending .badge {
+  background: #fde68a;
+  color: #92400e;
+}
+
+.product-controls .status-filter .status-badge-btn.hold .badge {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.product-controls .status-filter .status-badge-btn.active .badge {
+  background: rgba(255, 255, 255, 0.3);
   color: #fff;
 }
 
@@ -3237,39 +3376,67 @@ header .hint {
   flex-wrap: wrap;
 }
 
-.product-view .github-link {
-  display: inline-block;
-  padding: 2px 6px;
-  border-radius: 3px;
+/* GitHub status pill styling */
+.product-view .github-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
   font-size: 0.7rem;
   text-decoration: none;
   font-weight: 500;
+  transition: all 0.15s;
 }
 
-.product-view .github-link.status-done {
+.product-view .github-status-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.product-view .github-status-pill .gh-icon {
+  font-weight: 700;
+  font-size: 0.65rem;
+  opacity: 0.7;
+}
+
+.product-view .github-status-pill .gh-status {
+  text-transform: capitalize;
+}
+
+/* Status-specific colors */
+.product-view .github-status-pill.status-done,
+.product-view .github-status-pill.status-released {
   background: #d1fae5;
   color: #059669;
 }
 
-.product-view .github-link.status-in-progress {
+.product-view .github-status-pill.status-in-progress {
   background: #dbeafe;
   color: #2563eb;
 }
 
-.product-view .github-link.status-backlog {
+.product-view .github-status-pill.status-ready-for-review,
+.product-view .github-status-pill.status-review {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.product-view .github-status-pill.status-backlog,
+.product-view .github-status-pill.status-todo {
   background: #f3f4f6;
   color: #6b7280;
 }
 
-.product-view .github-link.status-unknown {
-  background: #e5e7eb;
-  color: #6b7280;
+.product-view .github-status-pill.status-blocked {
+  background: #fee2e2;
+  color: #dc2626;
 }
 
-.product-view .more-links {
-  font-size: 0.7rem;
-  color: #888;
-  padding: 2px 4px;
+.product-view .github-status-pill.status-unknown,
+.product-view .github-status-pill.status-linked {
+  background: #e5e7eb;
+  color: #6b7280;
 }
 
 .product-view .no-github {
@@ -4340,4 +4507,425 @@ header .hint {
   .pagination-controls {
     justify-content: space-between;
   }
+}
+
+/* ==================
+   Quarterly Usage Panel
+   ================== */
+
+.quarterly-usage-panel {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin-bottom: 2rem;
+}
+
+/* Product Selector Bar */
+.product-selector-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #eee;
+  flex-wrap: wrap;
+}
+
+.product-selector-bar label {
+  font-weight: 500;
+  color: #666;
+}
+
+.product-selector-bar select {
+  padding: 0.5rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: white;
+}
+
+.product-selector-bar .event-info {
+  margin-left: auto;
+  color: #888;
+  font-size: 0.85rem;
+}
+
+.product-selector-bar .event-info code {
+  background: #f0f0f0;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-family: monospace;
+}
+
+/* Collapsible Sections */
+.collapsible-section {
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.collapsible-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  background: linear-gradient(135deg, #f8f9fa 0%, #f0f4ff 100%);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s;
+}
+
+.collapsible-header:hover {
+  background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
+}
+
+.collapsible-header .expand-icon {
+  color: #666;
+  font-size: 0.8rem;
+  width: 1rem;
+  flex-shrink: 0;
+}
+
+.collapsible-header h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1a1a2e;
+  margin: 0;
+  flex-grow: 1;
+}
+
+.collapsible-header .section-count {
+  color: #888;
+  font-size: 0.85rem;
+  font-weight: normal;
+}
+
+.collapsible-content {
+  padding: 1.5rem;
+  border-top: 1px solid #eee;
+}
+
+/* Usage Customer Controls */
+.usage-customer-controls {
+  margin-bottom: 1rem;
+}
+
+.quarterly-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.quarterly-header h3 {
+  font-size: 1.25rem;
+  color: #1a1a2e;
+  margin: 0;
+}
+
+.product-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.product-selector label {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.product-selector select {
+  padding: 0.5rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: white;
+  cursor: pointer;
+}
+
+.product-selector select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.event-info {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 1rem;
+}
+
+.event-info code {
+  background: #f0f0f0;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.quarterly-content {
+  margin-top: 1rem;
+}
+
+.quarterly-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2rem;
+}
+
+@media (max-width: 1024px) {
+  .quarterly-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.quarterly-section {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.quarterly-section h4 {
+  font-size: 1.1rem;
+  color: #1a1a2e;
+  margin-bottom: 0.25rem;
+}
+
+.quarterly-section .date-range {
+  font-size: 0.8rem;
+  color: #888;
+  margin-bottom: 1rem;
+}
+
+.quarterly-section .no-data {
+  color: #888;
+  font-style: italic;
+  text-align: center;
+  padding: 2rem;
+}
+
+.quarterly-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.quarterly-table th {
+  text-align: left;
+  padding: 0.75rem 0.5rem;
+  border-bottom: 2px solid #ddd;
+  color: #666;
+  font-weight: 600;
+}
+
+.quarterly-table th:not(:first-child) {
+  text-align: right;
+}
+
+.quarterly-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.quarterly-table .domain-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quarterly-table .numeric-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.quarterly-table tbody tr:hover {
+  background: #f0f4ff;
+}
+
+.quarterly-table tfoot {
+  background: #e8edf5;
+}
+
+.quarterly-table tfoot td {
+  padding: 0.75rem 0.5rem;
+  border-top: 2px solid #ddd;
+  border-bottom: none;
+}
+
+/* Quarterly Summary Comparison */
+.quarterly-summary {
+  margin-bottom: 2rem;
+  background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid #d0daf0;
+}
+
+.quarterly-comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.quarterly-comparison-table th {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  background: #1a1a2e;
+  color: white;
+  font-weight: 600;
+}
+
+.quarterly-comparison-table th:first-child {
+  border-radius: 8px 0 0 0;
+}
+
+.quarterly-comparison-table th:last-child {
+  border-radius: 0 8px 0 0;
+  text-align: right;
+}
+
+.quarterly-comparison-table th:not(:first-child):not(:last-child) {
+  text-align: right;
+}
+
+.quarterly-comparison-table td {
+  padding: 1rem;
+  border-bottom: 1px solid #ddd;
+  background: white;
+}
+
+.quarterly-comparison-table td:first-child {
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.quarterly-comparison-table td.numeric-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+.quarterly-comparison-table td.positive {
+  color: #28a745;
+}
+
+.quarterly-comparison-table td.negative {
+  color: #dc3545;
+}
+
+.quarterly-comparison-table tbody tr:last-child td:first-child {
+  border-radius: 0 0 0 8px;
+}
+
+.quarterly-comparison-table tbody tr:last-child td:last-child {
+  border-radius: 0 0 8px 0;
+}
+
+.quarterly-comparison-table tbody tr:hover td {
+  background: #f8f9fa;
+}
+
+/* Quarterly Accounts Section */
+.quarterly-accounts-section {
+  margin-top: 2rem;
+}
+
+.quarterly-accounts-section h4 {
+  font-size: 1.1rem;
+  color: #1a1a2e;
+  margin-bottom: 1rem;
+}
+
+.quarterly-accounts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.quarterly-accounts-table thead tr:first-child th {
+  background: #1a1a2e;
+  color: white;
+  padding: 0.75rem 0.5rem;
+  font-weight: 600;
+  text-align: center;
+  border-bottom: 1px solid #333;
+}
+
+.quarterly-accounts-table thead tr:first-child th:first-child {
+  text-align: left;
+  border-radius: 8px 0 0 0;
+}
+
+.quarterly-accounts-table thead tr:first-child th:last-child {
+  border-radius: 0 8px 0 0;
+}
+
+.quarterly-accounts-table thead tr:nth-child(2) th {
+  background: #2a2a4e;
+  color: #ccc;
+  padding: 0.5rem;
+  font-weight: 500;
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+.quarterly-accounts-table td {
+  padding: 0.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.quarterly-accounts-table .account-cell {
+  max-width: 250px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: #1a1a2e;
+}
+
+.quarterly-accounts-table .numeric-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #555;
+}
+
+.quarterly-accounts-table tbody tr:hover {
+  background: #f5f7ff;
+}
+
+.quarterly-accounts-table tbody tr:nth-child(even) {
+  background: #fafafa;
+}
+
+.quarterly-accounts-table tbody tr:nth-child(even):hover {
+  background: #f0f4ff;
+}
+
+.quarterly-accounts-table tfoot {
+  background: #e8edf5;
+}
+
+.quarterly-accounts-table tfoot td {
+  padding: 0.75rem 0.5rem;
+  border-top: 2px solid #ddd;
+  border-bottom: none;
+}
+
+.quarterly-accounts-table tfoot td:first-child {
+  border-radius: 0 0 0 8px;
+}
+
+.quarterly-accounts-table tfoot td:last-child {
+  border-radius: 0 0 8px 0;
 }

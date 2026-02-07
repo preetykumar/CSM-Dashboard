@@ -283,6 +283,24 @@ export class DatabaseService {
     return this.db.prepare("SELECT * FROM organizations ORDER BY name").all() as CachedOrganization[];
   }
 
+  // Get domain to account name mapping
+  getDomainToAccountMap(): Map<string, string> {
+    const orgs = this.getOrganizations();
+    const domainMap = new Map<string, string>();
+
+    for (const org of orgs) {
+      const accountName = org.salesforce_account_name || org.name;
+      const domains = JSON.parse(org.domain_names || "[]") as string[];
+
+      for (const domain of domains) {
+        // Map domain and subdomain patterns
+        domainMap.set(domain.toLowerCase(), accountName);
+      }
+    }
+
+    return domainMap;
+  }
+
   getOrganization(id: number): CachedOrganization | undefined {
     return this.db.prepare("SELECT * FROM organizations WHERE id = ?").get(id) as CachedOrganization | undefined;
   }
