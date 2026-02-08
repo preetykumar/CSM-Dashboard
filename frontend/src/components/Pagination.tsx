@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useId } from "react";
 
 interface PaginationProps {
   totalItems: number;
@@ -17,6 +17,7 @@ export function Pagination({
   onPageSizeChange,
   pageSizeOptions = [50, 100, 500],
 }: PaginationProps) {
+  const pageSizeId = useId();
   const totalPages = useMemo(() => {
     if (pageSize === -1) return 1; // "All" selected
     return Math.ceil(totalItems / pageSize);
@@ -52,9 +53,9 @@ export function Pagination({
 
       <div className="pagination-controls">
         <div className="pagination-size">
-          <label htmlFor="page-size">Show:</label>
+          <label htmlFor={pageSizeId}>Show:</label>
           <select
-            id="page-size"
+            id={pageSizeId}
             value={pageSize}
             onChange={handlePageSizeChange}
             className="pagination-size-select"

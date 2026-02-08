@@ -127,13 +127,13 @@ export function OrganizationUsagePanel({
       </div>
 
       <div className="org-usage-grid">
-        {displaySummaries.map((summary) => {
+        {displaySummaries.map((summary, index) => {
           const product = products.find((p) => p.slug === summary.slug);
           const hasData = summary.last7Days.activeUsers > 0 || summary.last30Days.activeUsers > 0;
 
           return (
             <div
-              key={summary.slug || summary.product}
+              key={summary.slug || summary.product || `summary-${index}`}
               className={`org-usage-card ${!hasData && isOrgView ? "no-data" : ""}`}
             >
               <h3 className="org-usage-product-name">{summary.product}</h3>

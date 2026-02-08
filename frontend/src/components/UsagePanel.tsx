@@ -104,13 +104,13 @@ export function UsagePanel({ className = "" }: UsagePanelProps) {
 
       {/* Product Summaries */}
       <div className="usage-summaries">
-        {summaries.map((summary) => {
+        {summaries.map((summary, index) => {
           const product = products.find((p) => p.slug === summary.slug);
           const isSelected = selectedProduct === summary.slug;
 
           return (
             <div
-              key={summary.slug || summary.product}
+              key={summary.slug || summary.product || `summary-${index}`}
               className={`usage-product-card ${isSelected ? "selected" : ""}`}
               onClick={() => setSelectedProduct(isSelected ? null : summary.slug || null)}
             >

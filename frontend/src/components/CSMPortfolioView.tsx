@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { fetchCSMPortfolios, fetchEnhancedCustomerSummary, fetchGitHubStatusForTickets, fetchEnterpriseSubscriptionsByName, EnterpriseSubscription } from "../services/api";
 import { VelocityBanner } from "./VelocityBanner";
 import { ProductBacklogCard } from "./ProductBacklogCard";
@@ -75,14 +75,19 @@ export function CSMPortfolioView() {
   const [portfolios, setPortfolios] = useState<CSMPortfolio[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedCSM, setExpandedCSM] = useState<number | null>(null);
+  const [expandedCSM, setExpandedCSM] = useState<string | null>(null);
   const [expandedCustomer, setExpandedCustomer] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Apply pagination to portfolios
-  const paginatedPortfolios = usePagination(portfolios, pageSize, currentPage);
+  // Sort portfolios alphabetically by CSM name
+  const sortedPortfolios = useMemo(() => {
+    return [...portfolios].sort((a, b) => a.csm.name.localeCompare(b.csm.name));
+  }, [portfolios]);
+
+  // Apply pagination to sorted portfolios
+  const paginatedPortfolios = usePagination(sortedPortfolios, pageSize, currentPage);
 
   useEffect(() => {
     async function loadPortfolios() {
@@ -134,11 +139,11 @@ export function CSMPortfolioView() {
       <div className="csm-list">
         {paginatedPortfolios.map((portfolio) => (
           <CSMCard
-            key={portfolio.csm.id}
+            key={portfolio.csm.email}
             portfolio={portfolio}
-            expanded={expandedCSM === portfolio.csm.id}
+            expanded={expandedCSM === portfolio.csm.email}
             onToggle={() =>
-              setExpandedCSM(expandedCSM === portfolio.csm.id ? null : portfolio.csm.id)
+              setExpandedCSM(expandedCSM === portfolio.csm.email ? null : portfolio.csm.email)
             }
             expandedCustomer={expandedCustomer}
             onCustomerToggle={(key) =>

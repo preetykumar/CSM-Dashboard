@@ -155,7 +155,7 @@ function loadAmplitudeConfig() {
 
   if (axeDevToolsApiKey && axeDevToolsSecretKey && axeDevToolsProjectId) {
     products.push({
-      name: "Axe DevTools for Web",
+      name: "Axe DevTools (Browser Extension)",
       projectId: axeDevToolsProjectId,
       apiKey: axeDevToolsApiKey,
       secretKey: axeDevToolsSecretKey,

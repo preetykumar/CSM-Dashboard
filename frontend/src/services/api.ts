@@ -447,6 +447,7 @@ export interface QuarterlyEventUsageResponse {
   groupBy: string;
   currentQuarter: QuarterlyUsage;
   previousQuarter: QuarterlyUsage;
+  twoQuartersAgo: QuarterlyUsage;
 }
 
 export async function fetchQuarterlyEventUsage(
@@ -476,5 +477,309 @@ export interface DomainMappingResponse {
 export async function fetchDomainMapping(): Promise<DomainMappingResponse> {
   const res = await fetch(`${API_BASE}/organizations/domain-mapping`, fetchOptions);
   if (!res.ok) throw new Error("Failed to fetch domain mapping");
+  return res.json();
+}
+
+// DevTools-specific metrics
+export interface DevToolsDomainMetrics {
+  domain: string;
+  visitors: number;
+  paidFeatureEvents: number;
+}
+
+export interface DevToolsMetricsResponse {
+  product: string;
+  period: string;
+  domains: DevToolsDomainMetrics[];
+}
+
+export async function fetchDevToolsMetrics(productSlug: string, days: number = 30): Promise<DevToolsMetricsResponse> {
+  const res = await fetch(`${API_BASE}/amplitude/devtools/${productSlug}/metrics?days=${days}`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch DevTools metrics");
+  return res.json();
+}
+
+// Quarterly product metrics
+export interface QuarterlyMetrics {
+  label: string;
+  pageViews: number;
+  timeSpentMinutes: number;
+}
+
+export interface QuarterlyProductMetricsResponse {
+  product: string;
+  currentQuarter: QuarterlyMetrics;
+  previousQuarter: QuarterlyMetrics;
+  twoQuartersAgo: QuarterlyMetrics;
+}
+
+export async function fetchQuarterlyProductMetrics(productSlug: string): Promise<QuarterlyProductMetricsResponse> {
+  const res = await fetch(`${API_BASE}/amplitude/quarterly/${productSlug}`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch quarterly product metrics");
+  return res.json();
+}
+
+export async function fetchQuarterlyMetricsByOrg(
+  productSlug: string,
+  organization: string
+): Promise<QuarterlyProductMetricsResponse> {
+  const res = await fetch(
+    `${API_BASE}/amplitude/quarterly/${productSlug}/org/${encodeURIComponent(organization)}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch quarterly org metrics");
+  return res.json();
+}
+
+// Quarterly login metrics
+export interface QuarterlyLoginMetrics {
+  label: string;
+  uniqueLogins: number;
+  totalLogins: number;
+  paidFeatureUsers: number;
+}
+
+export interface QuarterlyLoginsResponse {
+  product: string;
+  organization: string;
+  currentQuarter: QuarterlyLoginMetrics;
+  previousQuarter: QuarterlyLoginMetrics;
+  twoQuartersAgo: QuarterlyLoginMetrics;
+}
+
+export async function fetchQuarterlyLoginsByOrg(
+  productSlug: string,
+  organization: string
+): Promise<QuarterlyLoginsResponse> {
+  const res = await fetch(
+    `${API_BASE}/amplitude/quarterly/${productSlug}/logins/${encodeURIComponent(organization)}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch quarterly login metrics");
+  return res.json();
+}
+
+// Account Portal quarterly metrics
+export interface AccountPortalQuarterlyMetrics {
+  label: string;
+  jiraTestSuccess: number;
+  uniqueLogins: number;
+}
+
+export interface AccountPortalMetricsResponse {
+  product: string;
+  organization: string;
+  currentQuarter: AccountPortalQuarterlyMetrics;
+  previousQuarter: AccountPortalQuarterlyMetrics;
+  twoQuartersAgo: AccountPortalQuarterlyMetrics;
+}
+
+export async function fetchAccountPortalMetricsByOrg(
+  productSlug: string,
+  organization: string
+): Promise<AccountPortalMetricsResponse> {
+  const res = await fetch(
+    `${API_BASE}/amplitude/quarterly/${productSlug}/account-portal/${encodeURIComponent(organization)}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch account portal metrics");
+  return res.json();
+}
+
+// Axe Monitor quarterly metrics
+export interface AxeMonitorQuarterlyMetrics {
+  label: string;
+  scansStarted: number;
+  scanOverviewViews: number;
+  issuesPageLoads: number;
+  projectSummaryViews: number;
+}
+
+export interface AxeMonitorMetricsResponse {
+  product: string;
+  organization: string;
+  currentQuarter: AxeMonitorQuarterlyMetrics;
+  previousQuarter: AxeMonitorQuarterlyMetrics;
+  twoQuartersAgo: AxeMonitorQuarterlyMetrics;
+}
+
+export async function fetchAxeMonitorMetricsByOrg(
+  productSlug: string,
+  organization: string
+): Promise<AxeMonitorMetricsResponse> {
+  const res = await fetch(
+    `${API_BASE}/amplitude/quarterly/${productSlug}/axe-monitor/${encodeURIComponent(organization)}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch axe monitor metrics");
+  return res.json();
+}
+
+// Axe DevTools Mobile quarterly metrics
+export interface AxeDevToolsMobileQuarterlyMetrics {
+  label: string;
+  scansCreated: number;
+  dashboardViews: number;
+  resultsShared: number;
+  totalIssuesFound: number;
+  usersGettingResultsLocally: number;
+}
+
+export interface AxeDevToolsMobileMetricsResponse {
+  product: string;
+  organization: string;
+  currentQuarter: AxeDevToolsMobileQuarterlyMetrics;
+  previousQuarter: AxeDevToolsMobileQuarterlyMetrics;
+  twoQuartersAgo: AxeDevToolsMobileQuarterlyMetrics;
+}
+
+export async function fetchAxeDevToolsMobileMetricsByOrg(
+  productSlug: string,
+  organization: string
+): Promise<AxeDevToolsMobileMetricsResponse> {
+  const res = await fetch(
+    `${API_BASE}/amplitude/quarterly/${productSlug}/axe-devtools-mobile/${encodeURIComponent(organization)}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch axe devtools mobile metrics");
+  return res.json();
+}
+
+// Axe Assistant quarterly metrics
+export interface AxeAssistantQuarterlyMetrics {
+  label: string;
+  messagesSent: number;
+}
+
+export interface AxeAssistantMetricsResponse {
+  product: string;
+  organization: string;
+  currentQuarter: AxeAssistantQuarterlyMetrics;
+  previousQuarter: AxeAssistantQuarterlyMetrics;
+  twoQuartersAgo: AxeAssistantQuarterlyMetrics;
+}
+
+export async function fetchAxeAssistantMetricsByOrg(
+  productSlug: string,
+  organization: string
+): Promise<AxeAssistantMetricsResponse> {
+  const res = await fetch(
+    `${API_BASE}/amplitude/quarterly/${productSlug}/axe-assistant/${encodeURIComponent(organization)}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch axe assistant metrics");
+  return res.json();
+}
+
+// Developer Hub quarterly metrics
+export interface DeveloperHubQuarterlyMetrics {
+  label: string;
+  commits: number;
+  scans: number;
+  uniqueApiKeysRun: number;
+}
+
+export interface DeveloperHubMetricsResponse {
+  product: string;
+  organization: string;
+  currentQuarter: DeveloperHubQuarterlyMetrics;
+  previousQuarter: DeveloperHubQuarterlyMetrics;
+  twoQuartersAgo: DeveloperHubQuarterlyMetrics;
+}
+
+export async function fetchDeveloperHubMetricsByOrg(
+  productSlug: string,
+  organization: string
+): Promise<DeveloperHubMetricsResponse> {
+  const res = await fetch(
+    `${API_BASE}/amplitude/quarterly/${productSlug}/developer-hub/${encodeURIComponent(organization)}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch developer hub metrics");
+  return res.json();
+}
+
+// Axe Reports quarterly metrics
+export interface AxeReportsQuarterlyMetrics {
+  label: string;
+  usageChartViews: number;
+  outcomesChartViews: number;
+}
+
+export interface AxeReportsMetricsResponse {
+  product: string;
+  organization: string;
+  currentQuarter: AxeReportsQuarterlyMetrics;
+  previousQuarter: AxeReportsQuarterlyMetrics;
+  twoQuartersAgo: AxeReportsQuarterlyMetrics;
+}
+
+export async function fetchAxeReportsMetricsByOrg(
+  productSlug: string,
+  organization: string
+): Promise<AxeReportsMetricsResponse> {
+  const res = await fetch(
+    `${API_BASE}/amplitude/quarterly/${productSlug}/axe-reports/${encodeURIComponent(organization)}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch axe reports metrics");
+  return res.json();
+}
+
+// Deque University quarterly metrics
+export interface DequeUniversityQuarterlyMetrics {
+  label: string;
+  pageViews: number;
+}
+
+export interface DequeUniversityMetricsResponse {
+  product: string;
+  organization: string;
+  currentQuarter: DequeUniversityQuarterlyMetrics;
+  previousQuarter: DequeUniversityQuarterlyMetrics;
+  twoQuartersAgo: DequeUniversityQuarterlyMetrics;
+}
+
+export async function fetchDequeUniversityMetricsByOrg(
+  productSlug: string,
+  organization: string
+): Promise<DequeUniversityMetricsResponse> {
+  const res = await fetch(
+    `${API_BASE}/amplitude/quarterly/${productSlug}/deque-university/${encodeURIComponent(organization)}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch deque university metrics");
+  return res.json();
+}
+
+// Generic quarterly metrics (for products without custom metrics)
+export interface GenericQuarterlyMetrics {
+  label: string;
+  eventCount: number;
+  uniqueUsers: number;
+}
+
+export interface GenericMetricsResponse {
+  product: string;
+  organization: string;
+  eventType: string;
+  currentQuarter: GenericQuarterlyMetrics;
+  previousQuarter: GenericQuarterlyMetrics;
+  twoQuartersAgo: GenericQuarterlyMetrics;
+}
+
+export async function fetchGenericQuarterlyMetricsByOrg(
+  productSlug: string,
+  organization: string,
+  eventType: string,
+  orgProperty?: string
+): Promise<GenericMetricsResponse> {
+  const params = new URLSearchParams({ event: eventType });
+  if (orgProperty) params.append("orgProperty", orgProperty);
+  const res = await fetch(
+    `${API_BASE}/amplitude/quarterly/${productSlug}/generic/${encodeURIComponent(organization)}?${params}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch generic quarterly metrics");
   return res.json();
 }

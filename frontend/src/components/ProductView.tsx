@@ -239,6 +239,8 @@ export function ProductView() {
         <div className="product-controls">
           <div className="search-box">
             <input
+              id="product-search"
+              name="product-search"
               type="text"
               placeholder="Search tickets..."
               value={searchQuery}
