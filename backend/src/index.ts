@@ -69,7 +69,19 @@ function loadSalesforceConfig() {
     // JWT Bearer Flow (production)
     const username = process.env.SF_USERNAME;
     const privateKeyPath = process.env.SF_PRIVATE_KEY_PATH;
-    const privateKey = process.env.SF_PRIVATE_KEY; // Direct key content for Cloud Run
+    let privateKey = process.env.SF_PRIVATE_KEY; // Direct key content for Cloud Run
+
+    // Decode base64 if the key looks like it's encoded (doesn't start with PEM header)
+    if (privateKey && !privateKey.includes('-----BEGIN')) {
+      try {
+        privateKey = Buffer.from(privateKey, 'base64').toString('utf8');
+        console.log("SF_PRIVATE_KEY: decoded from base64");
+      } catch (e) {
+        console.error('Failed to decode base64 private key:', e);
+      }
+    } else if (privateKey) {
+      console.log("SF_PRIVATE_KEY: using raw PEM content");
+    }
 
     if (!clientId || !username || (!privateKeyPath && !privateKey)) {
       console.warn("Salesforce JWT credentials not configured. SF features will be disabled.");
