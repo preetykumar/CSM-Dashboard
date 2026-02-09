@@ -274,7 +274,8 @@ function ProductSection({
 
   // Render usage metrics based on product type
   const renderProductMetrics = () => {
-    if (data?.loading) {
+    // Show loading spinner if data is loading OR if data hasn't been set yet (just expanded)
+    if (data?.loading || (!data && isExpanded)) {
       return (
         <div className="loading-spinner-inline">
           <div className="spinner-small" />
@@ -532,6 +533,16 @@ function ProductSection({
 
           // Render sub-product content
           const renderSubContent = () => {
+            // Show loading if subData is loading OR if it hasn't been set yet (just expanded)
+            if (subData?.loading || (!subData && isSubExpanded && subProduct.amplitudeSlug && !subProduct.hasQuarterlyMetrics)) {
+              return (
+                <div className="loading-spinner-inline">
+                  <div className="spinner-small" />
+                  <span>Loading...</span>
+                </div>
+              );
+            }
+
             // Pro has quarterly metrics from devToolsLogins (loaded at product level)
             if (subProduct.hasQuarterlyMetrics && data?.devToolsLogins) {
               return (
@@ -565,16 +576,6 @@ function ProductSection({
                     </tr>
                   </tbody>
                 </table>
-              );
-            }
-
-            // Loading state for sub-product
-            if (subData?.loading) {
-              return (
-                <div className="loading-spinner-inline">
-                  <div className="spinner-small" />
-                  <span>Loading...</span>
-                </div>
               );
             }
 

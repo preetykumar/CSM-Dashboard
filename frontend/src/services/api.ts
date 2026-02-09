@@ -783,3 +783,47 @@ export async function fetchGenericQuarterlyMetricsByOrg(
   if (!res.ok) throw new Error("Failed to fetch generic quarterly metrics");
   return res.json();
 }
+
+// ==================
+// Renewal Opportunities APIs
+// ==================
+
+export interface RenewalOpportunity {
+  id: string;
+  name: string;
+  accountId: string;
+  accountName: string;
+  amount: number;
+  stageName: string;
+  renewalDate: string;
+  type: string;
+  ownerId: string;
+  ownerName: string;
+  ownerEmail: string;
+  createdDate: string;
+  lastModifiedDate: string;
+  productName?: string;
+  contactName?: string;
+  contactEmail?: string;
+  // PRS from Product Success object
+  prsId?: string;
+  prsName?: string;
+  prsEmail?: string;
+  // Additional renewal fields
+  renewalStatus?: string;
+  accountingRenewalStatus?: string;
+  poRequired?: boolean;
+  poReceivedDate?: string;
+  atRisk?: boolean;
+}
+
+export interface RenewalOpportunitiesResponse {
+  opportunities: RenewalOpportunity[];
+  count: number;
+}
+
+export async function fetchRenewalOpportunities(daysAhead: number = 180): Promise<RenewalOpportunitiesResponse> {
+  const res = await fetch(`${API_BASE}/salesforce/renewals?days=${daysAhead}`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch renewal opportunities");
+  return res.json();
+}

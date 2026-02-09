@@ -266,7 +266,8 @@ function ProductSection({
   const data = productData.get(productKey);
 
   const renderProductMetrics = () => {
-    if (data?.loading) {
+    // Show loading spinner if data is loading OR if data hasn't been set yet (just expanded)
+    if (data?.loading || (!data && isExpanded)) {
       return (
         <div className="loading-spinner-inline">
           <div className="spinner-small" />
@@ -518,6 +519,16 @@ function ProductSection({
           };
 
           const renderSubContent = () => {
+            // Show loading spinner if sub-product just expanded but data hasn't been set yet
+            if (!subData && isSubExpanded && subProduct.amplitudeSlug) {
+              return (
+                <div className="loading-spinner-inline">
+                  <div className="spinner-small" />
+                  <span>Loading...</span>
+                </div>
+              );
+            }
+
             if (subProduct.hasQuarterlyMetrics && data?.devToolsLogins) {
               return (
                 <table className="devtools-metrics-table">

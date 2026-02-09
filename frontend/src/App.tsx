@@ -10,6 +10,8 @@ import { UserMenu } from "./components/UserMenu";
 import { ChatWidget } from "./components/chat";
 import { CustomerUsageView } from "./components/CustomerUsageView";
 import { CSMUsageView } from "./components/CSMUsageView";
+import RenewalAgent from "./components/RenewalAgent";
+import { PRSRenewalView } from "./components/PRSRenewalView";
 import { Pagination, usePagination } from "./components/Pagination";
 import { useAuth } from "./contexts/AuthContext";
 import { ChatProvider } from "./contexts/ChatContext";
@@ -18,6 +20,7 @@ import type { CustomerSummary, Organization } from "./types";
 type MainTab = "support" | "usage" | "renewals";
 type SupportSubTab = "customers" | "csm" | "product";
 type UsageSubTab = "customers" | "csm";
+type RenewalsSubTab = "upcoming" | "prs";
 type SmartFilter = "all" | "escalated" | "critical";
 type AlphabetRange = "all" | "A-D" | "E-H" | "I-L" | "M-P" | "Q-T" | "U-Z";
 
@@ -43,6 +46,7 @@ function Dashboard() {
   const [mainTab, setMainTab] = useState<MainTab>("support");
   const [supportSubTab, setSupportSubTab] = useState<SupportSubTab>("customers");
   const [usageSubTab, setUsageSubTab] = useState<UsageSubTab>("customers");
+  const [renewalsSubTab, setRenewalsSubTab] = useState<RenewalsSubTab>("upcoming");
   const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
   const [alphabetRange, setAlphabetRange] = useState<AlphabetRange>("all");
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -442,6 +446,33 @@ function Dashboard() {
           </>
         )}
 
+        {/* Renewals Sub-tabs */}
+        {mainTab === "renewals" && (
+          <>
+            <div className="sub-tabs">
+              <button
+                className={renewalsSubTab === "upcoming" ? "active" : ""}
+                onClick={() => setRenewalsSubTab("upcoming")}
+              >
+                Upcoming Renewals (All)
+              </button>
+              <button
+                className={renewalsSubTab === "prs" ? "active" : ""}
+                onClick={() => setRenewalsSubTab("prs")}
+              >
+                By PRS (QBR View)
+              </button>
+            </div>
+
+            {renewalsSubTab === "upcoming" && (
+              <p className="hint">View all upcoming renewal opportunities across accounts</p>
+            )}
+            {renewalsSubTab === "prs" && (
+              <p className="hint">View renewal opportunities grouped by Product Renewal Specialist</p>
+            )}
+          </>
+        )}
+
         {mainTab === "support" && supportSubTab === "customers" && loadingProgress.total > 0 && loadingProgress.loaded < loadingProgress.total && (
           <div className="progress-bar">
             <div
@@ -545,13 +576,13 @@ function Dashboard() {
         <CSMUsageView />
       </div>
 
-      {/* Renewals Tab Content - Coming Soon */}
-      {mainTab === "renewals" && (
-        <div className="coming-soon">
-          <h2>Renewals</h2>
-          <p>Renewal tracking coming soon.</p>
-        </div>
-      )}
+      {/* Renewals Tab Content - Components stay mounted to preserve state */}
+      <div style={{ display: mainTab === "renewals" && renewalsSubTab === "upcoming" ? "block" : "none" }}>
+        <RenewalAgent />
+      </div>
+      <div style={{ display: mainTab === "renewals" && renewalsSubTab === "prs" ? "block" : "none" }}>
+        <PRSRenewalView />
+      </div>
 
       {/* AI Chat Assistant */}
       <ChatWidget />

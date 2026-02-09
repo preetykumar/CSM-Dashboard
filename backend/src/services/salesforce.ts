@@ -78,6 +78,101 @@ export interface EnterpriseSubscription {
   monitorProjectCount?: number;
 }
 
+export interface RenewalOpportunity {
+  id: string;
+  name: string;
+  accountId: string;
+  accountName: string;
+  amount: number;
+  stageName: string;
+  renewalDate: string;
+  type: string;
+  ownerId: string;
+  ownerName: string;
+  ownerEmail: string;
+  createdDate: string;
+  lastModifiedDate: string;
+  productName?: string;
+  contactName?: string;
+  contactEmail?: string;
+  // PRS from Account's Product Retention Specialist field
+  prsId?: string;
+  prsName?: string;
+  prsEmail?: string;
+  // Additional renewal fields
+  renewalStatus?: string;
+  accountingRenewalStatus?: string;
+  poRequired?: boolean;
+  poReceivedDate?: string;
+  atRisk?: boolean;
+}
+
+// Product Success object from Salesforce
+interface SFProductSuccess {
+  Id: string;
+  Name: string;
+  Account__c: string;
+  Account__r?: {
+    Id: string;
+    Name: string;
+  };
+  Product_Retention_Specialist__c?: string;
+  Product_Retention_Specialist__r?: {
+    Id: string;
+    Name: string;
+    Email: string;
+  };
+}
+
+export interface PRSAssignment {
+  accountId: string;
+  accountName: string;
+  prsId: string;
+  prsName: string;
+  prsEmail: string;
+}
+
+interface SFOpportunity {
+  Id: string;
+  Name: string;
+  AccountId: string;
+  Account: {
+    Id: string;
+    Name: string;
+    // PRS field on Account (labeled "Product Retention Specialist" but API name is Customer_Success_Specialist__c)
+    Customer_Success_Specialist__c?: string;
+    Customer_Success_Specialist__r?: {
+      Id: string;
+      Name: string;
+      Email: string;
+    };
+  };
+  Amount: number;
+  StageName: string;
+  CloseDate: string;
+  Type: string;
+  OwnerId: string;
+  Owner: {
+    Id: string;
+    Name: string;
+    Email: string;
+  };
+  CreatedDate: string;
+  LastModifiedDate: string;
+  // Custom fields that may exist
+  Product_Name__c?: string;
+  Contact_Name__c?: string;
+  Contact_Email__c?: string;
+  // PRS field directly on Opportunity (string type, not a reference)
+  Product_Retention_Specialist__c?: string;
+  // Additional renewal fields
+  Customer_Success_Renewal_Status__c?: string;  // labeled "Renewal Status"
+  Renewal_Status__c?: string;  // labeled "Accounting Renewal Status"
+  PO_Required__c?: boolean;
+  PO_Received_Date__c?: string;
+  Renewal_at_Risk__c?: boolean;  // labeled "Renewal at Risk"
+}
+
 interface SFEnterpriseSubscription {
   Id: string;
   Name: string;
@@ -280,6 +375,40 @@ export class SalesforceService {
     return describe.fields.map((f: any) => `${f.name} (${f.type}): ${f.label}`);
   }
 
+  async getOpportunityFields(): Promise<string[]> {
+    console.log("Fetching Opportunity fields...");
+    const describe = await this.describeObject("Opportunity");
+    return describe.fields.map((f: any) => `${f.name} (${f.type}): ${f.label}`);
+  }
+
+  async findPRSFields(): Promise<{ accountFields: string[]; opportunityFields: string[] }> {
+    console.log("Searching for PRS-related fields...");
+    const [accountDescribe, oppDescribe] = await Promise.all([
+      this.describeObject("Account"),
+      this.describeObject("Opportunity"),
+    ]);
+
+    const accountFields = accountDescribe.fields
+      .filter((f: any) =>
+        f.name.toLowerCase().includes("retention") ||
+        f.name.toLowerCase().includes("prs") ||
+        f.label.toLowerCase().includes("retention") ||
+        f.label.toLowerCase().includes("specialist")
+      )
+      .map((f: any) => `${f.name} (${f.type}): ${f.label}`);
+
+    const opportunityFields = oppDescribe.fields
+      .filter((f: any) =>
+        f.name.toLowerCase().includes("retention") ||
+        f.name.toLowerCase().includes("prs") ||
+        f.label.toLowerCase().includes("retention") ||
+        f.label.toLowerCase().includes("specialist")
+      )
+      .map((f: any) => `${f.name} (${f.type}): ${f.label}`);
+
+    return { accountFields, opportunityFields };
+  }
+
   async testConnection(): Promise<{ success: boolean; message: string }> {
     try {
       await this.authenticate();
@@ -404,6 +533,104 @@ export class SalesforceService {
       return accountNames;
     } catch (error) {
       console.error("Error fetching accounts with subscriptions:", error);
+      throw error;
+    }
+  }
+
+  async getPRSAssignments(): Promise<PRSAssignment[]> {
+    console.log("Fetching PRS assignments from Product Success object...");
+
+    try {
+      const productSuccessRecords = await this.query<SFProductSuccess>(`
+        SELECT Id, Name, Account__c, Account__r.Id, Account__r.Name,
+               Product_Retention_Specialist__c, Product_Retention_Specialist__r.Id,
+               Product_Retention_Specialist__r.Name, Product_Retention_Specialist__r.Email
+        FROM Product_Success__c
+        WHERE Product_Retention_Specialist__c != null
+      `);
+
+      console.log(`Found ${productSuccessRecords.length} Product Success records with PRS`);
+
+      return productSuccessRecords.map((ps) => ({
+        accountId: ps.Account__c,
+        accountName: ps.Account__r?.Name || "",
+        prsId: ps.Product_Retention_Specialist__r?.Id || ps.Product_Retention_Specialist__c || "",
+        prsName: ps.Product_Retention_Specialist__r?.Name || "",
+        prsEmail: ps.Product_Retention_Specialist__r?.Email || "",
+      }));
+    } catch (error) {
+      console.error("Error fetching PRS assignments:", error);
+      // Return empty array if Product Success object doesn't exist or field is different
+      return [];
+    }
+  }
+
+  async getRenewalOpportunities(daysAhead: number = 180): Promise<RenewalOpportunity[]> {
+    console.log(`Fetching renewal opportunities for next ${daysAhead} days...`);
+
+    try {
+      // Calculate the date range
+      const today = new Date();
+      const futureDate = new Date();
+      futureDate.setDate(today.getDate() + daysAhead);
+      const futureDateStr = futureDate.toISOString().split("T")[0]; // YYYY-MM-DD format
+
+      // Query opportunities with PRS from both Opportunity and Account
+      // Account uses Customer_Success_Specialist__c (reference, labeled "Product Retention Specialist")
+      // Opportunity uses Product_Retention_Specialist__c (string field)
+      const opportunities = await this.query<SFOpportunity>(`
+        SELECT Id, Name, AccountId, Account.Id, Account.Name,
+               Account.Customer_Success_Specialist__c,
+               Account.Customer_Success_Specialist__r.Id,
+               Account.Customer_Success_Specialist__r.Name,
+               Account.Customer_Success_Specialist__r.Email,
+               Product_Retention_Specialist__c,
+               Amount, StageName,
+               CloseDate, Type, OwnerId, Owner.Id, Owner.Name, Owner.Email,
+               CreatedDate, LastModifiedDate,
+               Customer_Success_Renewal_Status__c, Renewal_Status__c,
+               PO_Required__c, PO_Received_Date__c, Renewal_at_Risk__c
+        FROM Opportunity
+        WHERE Type = 'Renewal'
+        AND CloseDate >= TODAY
+        AND CloseDate <= ${futureDateStr}
+        ORDER BY CloseDate ASC
+      `);
+
+      console.log(`Found ${opportunities.length} renewal opportunities`);
+
+      return opportunities.map((opp) => {
+        return {
+          id: opp.Id,
+          name: opp.Name,
+          accountId: opp.AccountId,
+          accountName: opp.Account?.Name || "",
+          amount: opp.Amount || 0,
+          stageName: opp.StageName,
+          renewalDate: opp.CloseDate,
+          type: opp.Type,
+          ownerId: opp.OwnerId,
+          ownerName: opp.Owner?.Name || "",
+          ownerEmail: opp.Owner?.Email || "",
+          createdDate: opp.CreatedDate,
+          lastModifiedDate: opp.LastModifiedDate,
+          productName: opp.Product_Name__c,
+          contactName: opp.Contact_Name__c,
+          contactEmail: opp.Contact_Email__c,
+          // PRS - check Opportunity first (string field), then fall back to Account (reference field)
+          prsId: opp.Account?.Customer_Success_Specialist__r?.Id || opp.Account?.Customer_Success_Specialist__c,
+          prsName: opp.Product_Retention_Specialist__c || opp.Account?.Customer_Success_Specialist__r?.Name,
+          prsEmail: opp.Account?.Customer_Success_Specialist__r?.Email,
+          // Additional renewal fields
+          renewalStatus: opp.Customer_Success_Renewal_Status__c,  // "Renewal Status"
+          accountingRenewalStatus: opp.Renewal_Status__c,  // "Accounting Renewal Status"
+          poRequired: opp.PO_Required__c,
+          poReceivedDate: opp.PO_Received_Date__c,
+          atRisk: opp.Renewal_at_Risk__c,  // "Renewal at Risk"
+        };
+      });
+    } catch (error) {
+      console.error("Error fetching renewal opportunities:", error);
       throw error;
     }
   }

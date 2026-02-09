@@ -79,5 +79,28 @@ export function createSalesforceRoutes(salesforce: SalesforceService): Router {
     }
   });
 
+  // Get renewal opportunities for the next N days (default 180)
+  router.get("/renewals", async (req: Request, res: Response) => {
+    try {
+      const daysAhead = parseInt(req.query.days as string) || 180;
+      const opportunities = await salesforce.getRenewalOpportunities(daysAhead);
+      res.json({ opportunities, count: opportunities.length });
+    } catch (error) {
+      console.error("Error fetching renewal opportunities:", error);
+      res.status(500).json({ error: "Failed to fetch renewal opportunities" });
+    }
+  });
+
+  // Find PRS-related fields on Account and Opportunity objects
+  router.get("/find-prs-fields", async (_req: Request, res: Response) => {
+    try {
+      const result = await salesforce.findPRSFields();
+      res.json(result);
+    } catch (error) {
+      console.error("Error finding PRS fields:", error);
+      res.status(500).json({ error: "Failed to find PRS fields" });
+    }
+  });
+
   return router;
 }
