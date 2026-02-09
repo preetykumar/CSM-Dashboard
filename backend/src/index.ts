@@ -125,8 +125,9 @@ function loadGitHubConfig() {
     return null;
   }
 
+  // Support both comma and semicolon separators (semicolons needed for Cloud Run env vars)
   const projectNumbers = projectNumbersStr
-    ? projectNumbersStr.split(",").map((n) => parseInt(n.trim(), 10)).filter((n) => !isNaN(n))
+    ? projectNumbersStr.split(/[,;]/).map((n) => parseInt(n.trim(), 10)).filter((n) => !isNaN(n))
     : [];
 
   if (projectNumbers.length === 0) {
