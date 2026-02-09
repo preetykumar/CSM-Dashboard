@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { DatabaseService, CachedTicket, CachedOrganization } from "./database.js";
 import { ZendeskService } from "./zendesk.js";
+import { SalesforceService, RenewalOpportunity } from "./salesforce.js";
 import { v4 as uuidv4 } from "uuid";
 
 // Tool definitions for Claude
@@ -40,6 +41,8 @@ export class AgentService {
   private anthropic: Anthropic;
   private db: DatabaseService;
   private zendesk: ZendeskService;
+  private salesforce: SalesforceService | null;
+  private apiBaseUrl: string;
   private model: string;
   private maxTokens: number;
 
@@ -50,36 +53,44 @@ export class AgentService {
       apiKey: string;
       model?: string;
       maxTokens?: number;
-    }
+    },
+    salesforce?: SalesforceService | null,
+    apiBaseUrl?: string
   ) {
     this.anthropic = new Anthropic({ apiKey: config.apiKey });
     this.db = db;
     this.zendesk = zendesk;
+    this.salesforce = salesforce || null;
+    this.apiBaseUrl = apiBaseUrl || "http://localhost:3001";
     this.model = config.model || "claude-sonnet-4-20250514";
     this.maxTokens = config.maxTokens || 4096;
   }
 
   // System prompt for the CSM Agent
   private getSystemPrompt(context: ConversationContext): string {
-    return `You are a helpful AI assistant for Customer Success Managers (CSMs) at Deque Systems. You help CSMs manage their customer relationships by providing insights about support tickets, customer health, and development status.
+    return `You are a helpful AI assistant for Customer Success Managers (CSMs) and Product Renewal Specialists (PRS) at Deque Systems. You help manage customer relationships by providing insights about support tickets, product usage analytics, and renewal opportunities.
 
 You have access to tools that can query:
 - Zendesk support tickets (bugs, feature requests, status, priority, etc.)
 - Customer organization information
-- CSM portfolio assignments
+- CSM and PRS portfolio assignments
 - GitHub development status for tickets
+- Product usage analytics from Amplitude (axe DevTools, Monitor, University, etc.)
+- Salesforce renewal opportunities and subscription data
 
 When answering questions:
 - Be concise and actionable
 - Focus on the most relevant information
-- Highlight urgent items (escalations, high-priority tickets)
-- Provide context about trends when useful
+- Highlight urgent items (escalations, high-priority tickets, at-risk renewals)
+- Provide context about trends when useful (usage growth/decline, renewal timelines)
 - Format data clearly using bullet points or tables when appropriate
 
 The current user is: ${context.userEmail}
 Channel: ${context.channel}
 
-If the user asks about "my portfolio" or "my customers", use their email to look up their assigned organizations.`;
+If the user asks about "my portfolio" or "my customers", use their email to look up their assigned organizations.
+If the user asks about "renewals" or "opportunities", use the renewal tools to fetch Salesforce data.
+If the user asks about "usage" or "analytics", use the product usage tools to fetch Amplitude data.`;
   }
 
   // Define available tools
@@ -236,6 +247,66 @@ If the user asks about "my portfolio" or "my customers", use their email to look
           },
         },
       },
+      // Usage Analytics Tools
+      {
+        name: "get_product_usage_summary",
+        description: "Gets product usage summary for a specific organization. Shows metrics like active users, page views, and logins for products like axe DevTools, axe Monitor, Deque University, etc.",
+        input_schema: {
+          type: "object",
+          properties: {
+            organization_name: {
+              type: "string",
+              description: "Name or domain of the organization to get usage for",
+            },
+            product: {
+              type: "string",
+              enum: ["axe-devtools", "axe-monitor", "deque-university", "axe-auditor", "axe-reports", "axe-account-portal"],
+              description: "Product to get usage for. If not specified, returns all products.",
+            },
+          },
+          required: ["organization_name"],
+        },
+      },
+      // Renewal Tools
+      {
+        name: "get_renewal_opportunities",
+        description: "Gets upcoming renewal opportunities from Salesforce. Shows renewal date, amount, stage, owner, and PRS assignment. Use this to find renewals coming up in the next N days.",
+        input_schema: {
+          type: "object",
+          properties: {
+            days_ahead: {
+              type: "number",
+              description: "Number of days to look ahead for renewals (default: 60, max: 180)",
+            },
+            account_name: {
+              type: "string",
+              description: "Optional: filter to a specific account/customer name",
+            },
+            prs_name: {
+              type: "string",
+              description: "Optional: filter to renewals assigned to a specific PRS",
+            },
+            at_risk_only: {
+              type: "boolean",
+              description: "If true, only return at-risk renewals",
+            },
+          },
+        },
+      },
+      {
+        name: "get_enterprise_subscriptions",
+        description: "Gets enterprise subscription/license information for an account from Salesforce. Shows product types, license counts, and subscription details.",
+        input_schema: {
+          type: "object",
+          properties: {
+            account_name: {
+              type: "string",
+              description: "Name of the account/customer to get subscriptions for",
+            },
+          },
+          required: ["account_name"],
+        },
+      },
     ];
   }
 
@@ -270,6 +341,17 @@ If the user asks about "my portfolio" or "my customers", use their email to look
 
         case "get_organization_list":
           return this.toolGetOrganizationList(toolInput as any);
+
+        // Usage Analytics tools
+        case "get_product_usage_summary":
+          return await this.toolGetProductUsageSummary(toolInput as any);
+
+        // Renewal tools
+        case "get_renewal_opportunities":
+          return await this.toolGetRenewalOpportunities(toolInput as any);
+
+        case "get_enterprise_subscriptions":
+          return await this.toolGetEnterpriseSubscriptions(toolInput as any);
 
         default:
           return JSON.stringify({ error: `Unknown tool: ${toolName}` });
@@ -618,6 +700,168 @@ If the user asks about "my portfolio" or "my customers", use their email to look
         salesforce_account: o.salesforce_account_name,
       })),
     });
+  }
+
+  // Usage Analytics tool - fetches from internal API
+  private async toolGetProductUsageSummary(input: {
+    organization_name: string;
+    product?: string;
+  }): Promise<string> {
+    try {
+      const orgEncoded = encodeURIComponent(input.organization_name);
+      const url = `${this.apiBaseUrl}/api/amplitude/org/${orgEncoded}`;
+
+      const response = await fetch(url);
+      if (!response.ok) {
+        return JSON.stringify({
+          error: `Failed to fetch usage data: ${response.status}`,
+          organization: input.organization_name,
+        });
+      }
+
+      const data = await response.json();
+
+      // Filter by product if specified
+      let summaries = data.summaries || [];
+      if (input.product) {
+        summaries = summaries.filter((s: any) =>
+          s.slug?.toLowerCase().includes(input.product!.toLowerCase())
+        );
+      }
+
+      return JSON.stringify({
+        organization: input.organization_name,
+        total_products: summaries.length,
+        usage_summaries: summaries.map((s: any) => ({
+          product: s.product || s.slug,
+          active_users_30d: s.activeUsers30d,
+          new_users_30d: s.newUsers30d,
+          total_events_30d: s.totalEvents30d,
+          trend: s.trend,
+        })),
+      });
+    } catch (error) {
+      return JSON.stringify({
+        error: `Failed to fetch usage data: ${error instanceof Error ? error.message : "Unknown error"}`,
+        organization: input.organization_name,
+      });
+    }
+  }
+
+  // Renewal opportunities tool - fetches from Salesforce
+  private async toolGetRenewalOpportunities(input: {
+    days_ahead?: number;
+    account_name?: string;
+    prs_name?: string;
+    at_risk_only?: boolean;
+  }): Promise<string> {
+    if (!this.salesforce) {
+      return JSON.stringify({
+        error: "Salesforce is not configured. Renewal data is unavailable.",
+      });
+    }
+
+    try {
+      const daysAhead = Math.min(input.days_ahead || 60, 180);
+      let opportunities = await this.salesforce.getRenewalOpportunities(daysAhead);
+
+      // Filter by account name
+      if (input.account_name) {
+        const search = input.account_name.toLowerCase();
+        opportunities = opportunities.filter((o) =>
+          o.accountName.toLowerCase().includes(search)
+        );
+      }
+
+      // Filter by PRS name
+      if (input.prs_name) {
+        const search = input.prs_name.toLowerCase();
+        opportunities = opportunities.filter((o) =>
+          o.prsName?.toLowerCase().includes(search)
+        );
+      }
+
+      // Filter by at-risk status
+      if (input.at_risk_only) {
+        opportunities = opportunities.filter((o) => o.atRisk === true);
+      }
+
+      // Calculate summary stats
+      const totalValue = opportunities.reduce((sum, o) => sum + (o.amount || 0), 0);
+      const atRiskCount = opportunities.filter((o) => o.atRisk).length;
+      const atRiskValue = opportunities.filter((o) => o.atRisk).reduce((sum, o) => sum + (o.amount || 0), 0);
+
+      return JSON.stringify({
+        days_ahead: daysAhead,
+        total_opportunities: opportunities.length,
+        total_value: totalValue,
+        at_risk_count: atRiskCount,
+        at_risk_value: atRiskValue,
+        opportunities: opportunities.slice(0, 50).map((o) => ({
+          name: o.name,
+          account: o.accountName,
+          amount: o.amount,
+          stage: o.stageName,
+          renewal_date: o.renewalDate,
+          owner: o.ownerName,
+          prs: o.prsName || "Unassigned",
+          renewal_status: o.renewalStatus,
+          at_risk: o.atRisk,
+          po_required: o.poRequired,
+        })),
+      });
+    } catch (error) {
+      return JSON.stringify({
+        error: `Failed to fetch renewal opportunities: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
+    }
+  }
+
+  // Enterprise subscriptions tool - fetches from Salesforce
+  private async toolGetEnterpriseSubscriptions(input: {
+    account_name: string;
+  }): Promise<string> {
+    if (!this.salesforce) {
+      return JSON.stringify({
+        error: "Salesforce is not configured. Subscription data is unavailable.",
+      });
+    }
+
+    try {
+      const subscriptions = await this.salesforce.getEnterpriseSubscriptionsByAccountName(input.account_name);
+
+      if (subscriptions.length === 0) {
+        return JSON.stringify({
+          account_name: input.account_name,
+          message: "No enterprise subscriptions found for this account",
+          subscriptions: [],
+        });
+      }
+
+      // Calculate total licenses
+      const totalLicenses = subscriptions.reduce((sum, s) => sum + (s.licenseCount || 0), 0);
+
+      return JSON.stringify({
+        account_name: input.account_name,
+        total_subscriptions: subscriptions.length,
+        total_licenses: totalLicenses,
+        subscriptions: subscriptions.map((s) => ({
+          name: s.name,
+          product_type: s.productType,
+          license_count: s.licenseCount,
+          assigned_seats: s.assignedSeats,
+          percentage_assigned: s.percentageAssigned,
+          start_date: s.startDate,
+          end_date: s.endDate,
+          environment: s.environment,
+        })),
+      });
+    } catch (error) {
+      return JSON.stringify({
+        error: `Failed to fetch subscriptions: ${error instanceof Error ? error.message : "Unknown error"}`,
+        account_name: input.account_name,
+      });
+    }
   }
 
   // Main chat method

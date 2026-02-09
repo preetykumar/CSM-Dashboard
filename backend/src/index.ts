@@ -373,9 +373,10 @@ const github = ghConfig ? new GitHubService(ghConfig) : null;
 const db = new DatabaseService();
 const sync = new SyncService(db, zendesk, salesforce, github);
 
-// Initialize AI Agent
+// Initialize AI Agent with Salesforce integration for renewals
 const anthropicConfig = loadAnthropicConfig();
-const agent = anthropicConfig ? new AgentService(db, zendesk, anthropicConfig) : null;
+const apiBaseUrl = `http://localhost:${PORT}`;
+const agent = anthropicConfig ? new AgentService(db, zendesk, anthropicConfig, salesforce, apiBaseUrl) : null;
 
 // Auth routes (no auth required)
 app.use("/api/auth", createAuthRoutes());
