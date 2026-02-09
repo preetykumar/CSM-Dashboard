@@ -586,6 +586,24 @@ function Dashboard() {
 
       {/* AI Chat Assistant */}
       <ChatWidget />
+
+      {/* Footer */}
+      <footer className="app-footer">
+        <div className="footer-content">
+          <span>CSM Dashboard v1.0.0 (MVP)</span>
+          <span className="footer-separator">|</span>
+          <a
+            href="https://github.com/preetykumar/CSM-Dashboard/blob/main/RELEASE_NOTES.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="footer-link"
+          >
+            Release Notes
+          </a>
+          <span className="footer-separator">|</span>
+          <span>&copy; {new Date().getFullYear()} Deque Systems</span>
+        </div>
+      </footer>
     </div>
   );
 }

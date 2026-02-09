@@ -7553,3 +7553,36 @@ header .hint {
 .renewal-empty-icon.success {
   color: #22c55e;
 }
+
+/* App Footer */
+.app-footer {
+  margin-top: 3rem;
+  padding: 1.5rem 0;
+  border-top: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+.footer-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+  flex-wrap: wrap;
+}
+
+.footer-separator {
+  color: #d1d5db;
+}
+
+.footer-link {
+  color: #667eea;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.footer-link:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
