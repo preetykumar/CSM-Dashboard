@@ -335,6 +335,18 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
     setDrilldownTickets({ title: "Features Completed This Month", tickets: featuresCompleted });
   };
 
+  // Status drill-down handler for VelocityBanner
+  const handleStatusClick = (status: string) => {
+    const filteredTickets = tickets.filter((t) => t.status === status);
+    const statusLabels: Record<string, string> = {
+      new: "New",
+      open: "Open",
+      pending: "Pending",
+      hold: "On Hold",
+    };
+    setDrilldownTickets({ title: `${statusLabels[status] || status} Tickets`, tickets: filteredTickets });
+  };
+
   // Quarterly drill-down handlers (closed/solved totals are shown in QBR quarterly views)
   const getQuarterDateRange = (quarter: "current" | "previous"): { start: Date; end: Date } => {
     const now = new Date();
@@ -457,8 +469,15 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
             <>
               <VelocityBanner
                 velocity={enhancedSummary.velocity}
+                ticketStats={{
+                  new: ticketStats.open > 0 ? tickets.filter(t => t.status === 'new').length : 0,
+                  open: tickets.filter(t => t.status === 'open').length,
+                  pending: tickets.filter(t => t.status === 'pending').length,
+                  hold: tickets.filter(t => t.status === 'hold').length,
+                }}
                 onBugsFixedClick={handleBugsFixedClick}
                 onFeaturesCompletedClick={handleFeaturesCompletedClick}
+                onStatusClick={handleStatusClick}
               />
 
               <QuarterlySummaryCard

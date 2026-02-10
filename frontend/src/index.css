@@ -1874,6 +1874,55 @@ header .hint {
   background-color: rgba(255, 255, 255, 0.2);
 }
 
+/* Velocity Status Badges */
+.velocity-statuses {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.velocity-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 16px;
+  font-size: 0.85rem;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.velocity-status.clickable {
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.velocity-status.clickable:hover {
+  background-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.velocity-status .velocity-count {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.velocity-status.new {
+  background-color: rgba(52, 152, 219, 0.3);
+}
+
+.velocity-status.open {
+  background-color: rgba(231, 76, 60, 0.3);
+}
+
+.velocity-status.pending {
+  background-color: rgba(241, 196, 15, 0.3);
+}
+
+.velocity-status.hold {
+  background-color: rgba(149, 165, 166, 0.3);
+}
+
 /* Quarterly Summary */
 .quarterly-summary-container {
   margin: 1rem 0;
