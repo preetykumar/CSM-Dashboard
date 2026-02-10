@@ -31,13 +31,12 @@ export function CustomerSummaryCard({ summary, onClick, onStatusClick, onPriorit
     }
   };
 
+  // Only show active ticket statuses (not solved/closed - those are in QBR quarterly views)
   const statuses: { key: StatusKey; label: string }[] = [
     { key: "new", label: "New" },
     { key: "open", label: "Open" },
     { key: "pending", label: "Pending" },
     { key: "hold", label: "Hold" },
-    { key: "solved", label: "Solved" },
-    { key: "closed", label: "Closed" },
   ];
 
   const priorities: { key: PriorityKey; label: string }[] = [

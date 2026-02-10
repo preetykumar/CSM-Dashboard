@@ -628,6 +628,110 @@ export class ZendeskService {
     return this.searchTickets(`type:ticket organization_id:${orgId} status:${status}`);
   }
 
+  // Incremental Export API - fetches ALL tickets since a given timestamp
+  // Much faster than per-org searches for full/delta syncs
+  // Returns tickets and the end_time for the next incremental sync
+  async getTicketsIncremental(
+    startTime?: number, // Unix timestamp (seconds)
+    onProgress?: (count: number, endTime: number) => void
+  ): Promise<{ tickets: Ticket[]; endTime: number }> {
+    const allTickets: Ticket[] = [];
+
+    // Default to 30 days ago if no start time (for initial sync, gets recent tickets)
+    // For full initial sync, use startTime = 0 or a very old timestamp
+    const effectiveStartTime = startTime ?? Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
+
+    console.log(`Starting incremental ticket export from ${new Date(effectiveStartTime * 1000).toISOString()}...`);
+
+    let url = `/api/v2/incremental/tickets.json?start_time=${effectiveStartTime}`;
+    let endTime = effectiveStartTime;
+    let pageCount = 0;
+
+    while (url) {
+      try {
+        console.log(`  Fetching page ${pageCount + 1}...`);
+        const data = await this.apiCall<{
+          tickets: Ticket[];
+          next_page: string | null;
+          end_time: number;
+          count: number;
+        }>("get", url);
+
+        console.log(`  Got ${data.tickets.length} tickets from API`);
+        allTickets.push(...data.tickets);
+        endTime = data.end_time;
+        pageCount++;
+
+        if (pageCount % 5 === 0 || !data.next_page) {
+          console.log(`  Incremental export: ${allTickets.length} tickets (page ${pageCount})...`);
+          if (onProgress) {
+            onProgress(allTickets.length, endTime);
+          }
+        }
+
+        // Zendesk returns next_page as full URL, need to extract the path
+        if (data.next_page) {
+          const nextUrl = new URL(data.next_page);
+          url = nextUrl.pathname + nextUrl.search;
+        } else {
+          url = "";
+        }
+
+        // Safety: break if we're getting empty pages (shouldn't happen but prevents infinite loops)
+        if (data.tickets.length === 0 && !data.next_page) {
+          break;
+        }
+      } catch (error) {
+        console.error(`Incremental export error at page ${pageCount}:`, error);
+        throw error;
+      }
+    }
+
+    console.log(`Incremental export complete: ${allTickets.length} tickets, endTime: ${new Date(endTime * 1000).toISOString()}`);
+
+    return { tickets: allTickets, endTime };
+  }
+
+  // Parallel fetch for multiple organizations (with concurrency limit)
+  async getTicketsForOrganizationsParallel(
+    orgIds: number[],
+    concurrency = 5,
+    onProgress?: (completed: number, total: number) => void
+  ): Promise<Map<number, Ticket[]>> {
+    const results = new Map<number, Ticket[]>();
+    let completed = 0;
+
+    // Process in batches with concurrency limit
+    for (let i = 0; i < orgIds.length; i += concurrency) {
+      const batch = orgIds.slice(i, i + concurrency);
+
+      const batchResults = await Promise.all(
+        batch.map(async (orgId) => {
+          try {
+            const tickets = await this.getTicketsByOrganization(orgId);
+            return { orgId, tickets };
+          } catch (error) {
+            console.error(`Failed to fetch tickets for org ${orgId}:`, error);
+            return { orgId, tickets: [] };
+          }
+        })
+      );
+
+      for (const { orgId, tickets } of batchResults) {
+        results.set(orgId, tickets);
+        completed++;
+      }
+
+      if (onProgress) {
+        onProgress(completed, orgIds.length);
+      }
+
+      console.log(`  Parallel fetch: ${completed}/${orgIds.length} organizations...`);
+    }
+
+    return results;
+  }
+
   async getTicketsByOrganizationAndPriority(orgId: number, priority: string): Promise<Ticket[]> {
     return this.searchTickets(`type:ticket organization_id:${orgId} priority:${priority}`);
   }

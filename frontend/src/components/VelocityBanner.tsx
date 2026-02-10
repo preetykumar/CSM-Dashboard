@@ -4,27 +4,21 @@ interface VelocityBannerProps {
   velocity: VelocitySnapshot;
   onBugsFixedClick?: () => void;
   onFeaturesCompletedClick?: () => void;
-  onClosedClick?: () => void;
 }
 
 export function VelocityBanner({
   velocity,
   onBugsFixedClick,
   onFeaturesCompletedClick,
-  onClosedClick
 }: VelocityBannerProps) {
-  const { closedThisMonth, bugsFixed, featuresCompleted, period } = velocity;
+  const { bugsFixed, featuresCompleted, period } = velocity;
 
+  // Monthly progress showing bugs fixed and features completed
+  // Total closed/solved counts are shown in the quarterly QBR summaries instead
   return (
     <div className="velocity-banner">
       <div className="velocity-header">
-        <span className="velocity-period">{period}</span>
-        <span
-          className={`velocity-total ${onClosedClick ? 'clickable' : ''}`}
-          onClick={onClosedClick}
-        >
-          Closed <strong>{closedThisMonth}</strong> tickets
-        </span>
+        <span className="velocity-period">{period} Progress</span>
       </div>
       <div className="velocity-breakdown">
         <span

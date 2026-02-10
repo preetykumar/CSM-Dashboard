@@ -100,62 +100,227 @@ export class SyncService {
     }
   }
 
-  async syncTickets(): Promise<number> {
-    console.log("Syncing tickets...");
+  // Get the last ticket sync end_time for delta syncs
+  private getLastTicketSyncTime(): number | null {
+    const status = this.db.getSyncStatus().find(s => s.type === "tickets");
+    if (status && status.status === "success" && status.last_sync) {
+      // Get the stored end_time from metadata if available
+      const metadata = this.db.getSyncMetadata("tickets_end_time");
+      if (metadata) {
+        return parseInt(metadata, 10);
+      }
+      // Fallback: use last_sync timestamp (less accurate but works)
+      return Math.floor(new Date(status.last_sync).getTime() / 1000);
+    }
+    return null;
+  }
+
+  // Calculate the QBR cutoff date (start of Q-2 from current date)
+  // Current quarter + 2 previous quarters = 3 quarters of solved/closed data
+  private getQBRCutoffDate(): Date {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    // Determine current quarter (0-indexed: Q1=0, Q2=1, Q3=2, Q4=3)
+    const currentQuarter = Math.floor(currentMonth / 3);
+
+    // Go back 2 quarters to get the start of our QBR window
+    let targetQuarter = currentQuarter - 2;
+    let targetYear = currentYear;
+
+    if (targetQuarter < 0) {
+      targetQuarter += 4;
+      targetYear -= 1;
+    }
+
+    // Return first day of that quarter
+    return new Date(targetYear, targetQuarter * 3, 1);
+  }
+
+  // Optimized ticket sync strategy:
+  // 1. Open/pending/new/hold tickets: Full details (always need these)
+  // 2. Solved/closed tickets from last 2Q + current Q: Minimal data for QBR
+  // 3. Older closed/solved: Skip entirely
+  async syncTickets(deltaOnly = false): Promise<number> {
+    console.log(`Syncing tickets (${deltaOnly ? "delta" : "full"} mode - optimized)...`);
     this.db.updateSyncStatus("tickets", "in_progress", 0);
 
     try {
       // Ensure ticket fields are loaded for custom field extraction
       await this.zendesk.getTicketFields();
 
-      // Get all organizations from cache
+      // Get all organization IDs from cache for filtering
       const orgs = this.db.getOrganizations();
+      const orgIdSet = new Set(orgs.map(o => o.id));
+
+      // Calculate QBR cutoff date (e.g., for Feb 2026, this is Jul 1, 2025)
+      const qbrCutoff = this.getQBRCutoffDate();
+      const qbrCutoffStr = qbrCutoff.toISOString().split('T')[0];
+      console.log(`  QBR cutoff date: ${qbrCutoffStr} (solved/closed tickets before this will be skipped)`);
+
       let totalTickets = 0;
+      const allCachedTickets: CachedTicket[] = [];
 
-      // Fetch tickets for each organization
-      for (const org of orgs) {
-        try {
-          const tickets = await this.zendesk.getTicketsByOrganization(org.id);
+      // Step 1: Fetch ALL open/active tickets (new, open, pending, hold)
+      // These are the most important and typically fewer in number
+      console.log(`  Step 1: Fetching open/active tickets...`);
+      const openStatuses = ["new", "open", "pending", "hold"];
 
-          const cachedTickets: CachedTicket[] = tickets.map((ticket) => {
-            // Extract custom field values
-            const customFields = this.zendesk.extractTicketCustomFields(ticket);
+      for (const status of openStatuses) {
+        console.log(`    Fetching ${status} tickets...`);
+        const tickets = await this.zendesk.searchTickets(`type:ticket status:${status}`, 50);
 
-            return {
-              id: ticket.id,
-              organization_id: ticket.organization_id || 0,
-              subject: ticket.subject || "",
-              status: ticket.status,
-              priority: ticket.priority || "normal",
-              requester_id: ticket.requester_id,
-              assignee_id: ticket.assignee_id || null,
-              tags: JSON.stringify(ticket.tags || []),
-              created_at: ticket.created_at,
-              updated_at: ticket.updated_at,
-              product: customFields.product,
-              module: customFields.module,
-              ticket_type: customFields.ticketType,
-              workflow_status: customFields.workflowStatus,
-              issue_subtype: customFields.issueSubtype,
-              is_escalated: customFields.isEscalated ? 1 : 0,
-            };
+        // Filter to our orgs and convert to cached format
+        const relevantTickets = tickets.filter(t => t.organization_id && orgIdSet.has(t.organization_id));
+
+        for (const ticket of relevantTickets) {
+          const customFields = this.zendesk.extractTicketCustomFields(ticket);
+          allCachedTickets.push({
+            id: ticket.id,
+            organization_id: ticket.organization_id || 0,
+            subject: ticket.subject || "",
+            status: ticket.status,
+            priority: ticket.priority || "normal",
+            requester_id: ticket.requester_id,
+            assignee_id: ticket.assignee_id || null,
+            tags: JSON.stringify(ticket.tags || []),
+            created_at: ticket.created_at,
+            updated_at: ticket.updated_at,
+            product: customFields.product,
+            module: customFields.module,
+            ticket_type: customFields.ticketType,
+            workflow_status: customFields.workflowStatus,
+            issue_subtype: customFields.issueSubtype,
+            is_escalated: customFields.isEscalated ? 1 : 0,
           });
-
-          this.db.upsertTickets(cachedTickets);
-          totalTickets += tickets.length;
-
-          console.log(`  - ${org.name}: ${tickets.length} tickets`);
-        } catch (error) {
-          console.error(`  - Error syncing tickets for ${org.name}:`, error);
         }
+
+        console.log(`    Found ${relevantTickets.length} ${status} tickets (${tickets.length} total)`);
+        this.db.updateSyncStatus("tickets", "in_progress", allCachedTickets.length);
       }
 
-      this.db.updateSyncStatus("tickets", "success", totalTickets);
-      console.log(`Synced ${totalTickets} tickets total`);
-      return totalTickets;
+      console.log(`  Step 1 complete: ${allCachedTickets.length} open/active tickets`);
+
+      // Step 2: Fetch solved/closed tickets from QBR window (for quarterly reviews)
+      // Use date filter to only get recent solved/closed tickets
+      console.log(`  Step 2: Fetching solved/closed tickets since ${qbrCutoffStr}...`);
+
+      for (const status of ["solved", "closed"]) {
+        console.log(`    Fetching ${status} tickets updated>=${qbrCutoffStr}...`);
+        const tickets = await this.zendesk.searchTickets(
+          `type:ticket status:${status} updated>=${qbrCutoffStr}`,
+          30 // Limit pages for solved/closed
+        );
+
+        // Filter to our orgs
+        const relevantTickets = tickets.filter(t => t.organization_id && orgIdSet.has(t.organization_id));
+
+        for (const ticket of relevantTickets) {
+          const customFields = this.zendesk.extractTicketCustomFields(ticket);
+          allCachedTickets.push({
+            id: ticket.id,
+            organization_id: ticket.organization_id || 0,
+            subject: ticket.subject || "",
+            status: ticket.status,
+            priority: ticket.priority || "normal",
+            requester_id: ticket.requester_id,
+            assignee_id: ticket.assignee_id || null,
+            tags: JSON.stringify(ticket.tags || []),
+            created_at: ticket.created_at,
+            updated_at: ticket.updated_at,
+            product: customFields.product,
+            module: customFields.module,
+            ticket_type: customFields.ticketType,
+            workflow_status: customFields.workflowStatus,
+            issue_subtype: customFields.issueSubtype,
+            is_escalated: customFields.isEscalated ? 1 : 0,
+          });
+        }
+
+        console.log(`    Found ${relevantTickets.length} ${status} tickets in QBR window (${tickets.length} total)`);
+        this.db.updateSyncStatus("tickets", "in_progress", allCachedTickets.length);
+      }
+
+      console.log(`  Step 2 complete: Total ${allCachedTickets.length} tickets`);
+
+      // Deduplicate by ticket ID (in case any tickets changed status during sync)
+      const ticketMap = new Map<number, CachedTicket>();
+      for (const ticket of allCachedTickets) {
+        ticketMap.set(ticket.id, ticket);
+      }
+      const dedupedTickets = Array.from(ticketMap.values());
+      console.log(`  After deduplication: ${dedupedTickets.length} unique tickets`);
+
+      // Batch upsert all tickets
+      if (dedupedTickets.length > 0) {
+        this.db.upsertTickets(dedupedTickets);
+      }
+
+      // Store sync timestamp for delta syncs
+      const validEndTime = Math.floor(Date.now() / 1000);
+      this.db.setSyncMetadata("tickets_end_time", validEndTime.toString());
+
+      // Count by org for summary
+      const orgCounts = new Map<number, number>();
+      for (const t of dedupedTickets) {
+        orgCounts.set(t.organization_id, (orgCounts.get(t.organization_id) || 0) + 1);
+      }
+      console.log(`  Tickets distributed across ${orgCounts.size} organizations`);
+
+      // Count by status
+      const statusCounts = new Map<string, number>();
+      for (const t of dedupedTickets) {
+        statusCounts.set(t.status, (statusCounts.get(t.status) || 0) + 1);
+      }
+      console.log(`  Status breakdown: ${JSON.stringify(Object.fromEntries(statusCounts))}`);
+
+      this.db.updateSyncStatus("tickets", "success", dedupedTickets.length);
+      console.log(`Synced ${dedupedTickets.length} tickets total (optimized: open + QBR-window closed)`);
+      return dedupedTickets.length;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       this.db.updateSyncStatus("tickets", "error", 0, message);
+      throw error;
+    }
+  }
+
+  // Legacy per-org sync method - kept for targeted org refreshes
+  async syncTicketsForOrganization(orgId: number): Promise<number> {
+    console.log(`Syncing tickets for org ${orgId}...`);
+
+    try {
+      await this.zendesk.getTicketFields();
+      const tickets = await this.zendesk.getTicketsByOrganization(orgId);
+
+      const cachedTickets: CachedTicket[] = tickets.map((ticket) => {
+        const customFields = this.zendesk.extractTicketCustomFields(ticket);
+
+        return {
+          id: ticket.id,
+          organization_id: ticket.organization_id || 0,
+          subject: ticket.subject || "",
+          status: ticket.status,
+          priority: ticket.priority || "normal",
+          requester_id: ticket.requester_id,
+          assignee_id: ticket.assignee_id || null,
+          tags: JSON.stringify(ticket.tags || []),
+          created_at: ticket.created_at,
+          updated_at: ticket.updated_at,
+          product: customFields.product,
+          module: customFields.module,
+          ticket_type: customFields.ticketType,
+          workflow_status: customFields.workflowStatus,
+          issue_subtype: customFields.issueSubtype,
+          is_escalated: customFields.isEscalated ? 1 : 0,
+        };
+      });
+
+      this.db.upsertTickets(cachedTickets);
+      console.log(`  Synced ${tickets.length} tickets for org ${orgId}`);
+      return tickets.length;
+    } catch (error) {
+      console.error(`  Error syncing tickets for org ${orgId}:`, error);
       throw error;
     }
   }

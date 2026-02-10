@@ -36,14 +36,44 @@ export function createSyncRoutes(sync: SyncService): Router {
     }
   });
 
-  // Sync tickets only
-  router.post("/tickets", async (_req: Request, res: Response) => {
+  // Sync tickets only (supports delta mode via query param)
+  router.post("/tickets", async (req: Request, res: Response) => {
     try {
-      const count = await sync.syncTickets();
-      res.json({ message: "Tickets synced", count });
+      // Support ?delta=true for delta sync (only tickets updated since last sync)
+      const deltaOnly = req.query.delta === "true";
+      const count = await sync.syncTickets(deltaOnly);
+      res.json({ message: `Tickets synced (${deltaOnly ? "delta" : "full"})`, count });
     } catch (error) {
       console.error("Error syncing tickets:", error);
       res.status(500).json({ error: "Failed to sync tickets" });
+    }
+  });
+
+  // Delta sync - quick sync for updated tickets only
+  router.post("/delta", async (_req: Request, res: Response) => {
+    try {
+      if (sync.isSyncInProgress()) {
+        res.status(409).json({ error: "Sync already in progress" });
+        return;
+      }
+
+      // Return immediately, run sync in background
+      res.json({ message: "Delta sync started", status: "in_progress" });
+
+      // Run delta sync asynchronously (tickets only, then CSM/GitHub)
+      (async () => {
+        try {
+          await sync.syncTickets(true); // Delta mode
+          await sync.syncCSMAssignments();
+          await sync.syncGitHubLinks();
+          console.log("Delta sync complete");
+        } catch (error) {
+          console.error("Delta sync failed:", error);
+        }
+      })();
+    } catch (error) {
+      console.error("Error starting delta sync:", error);
+      res.status(500).json({ error: "Failed to start delta sync" });
     }
   });
 

@@ -286,6 +286,18 @@ export async function triggerFullSync(): Promise<{ message: string; status: stri
   return res.json();
 }
 
+export async function triggerDeltaSync(): Promise<{ message: string; status: string }> {
+  const res = await fetch(`${API_BASE}/sync/delta`, {
+    ...fetchOptions,
+    method: "POST",
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: "Failed to trigger delta sync" }));
+    throw new Error(error.error || "Failed to trigger delta sync");
+  }
+  return res.json();
+}
+
 // ==================
 // Amplitude Usage Analytics APIs
 // ==================

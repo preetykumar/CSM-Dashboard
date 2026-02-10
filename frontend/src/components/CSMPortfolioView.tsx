@@ -335,14 +335,7 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
     setDrilldownTickets({ title: "Features Completed This Month", tickets: featuresCompleted });
   };
 
-  const handleClosedTicketsClick = () => {
-    const closedTickets = tickets.filter(
-      (t) => t.status === "solved" || t.status === "closed"
-    );
-    setDrilldownTickets({ title: "All Closed Tickets This Month", tickets: closedTickets });
-  };
-
-  // Quarterly drill-down handlers
+  // Quarterly drill-down handlers (closed/solved totals are shown in QBR quarterly views)
   const getQuarterDateRange = (quarter: "current" | "previous"): { start: Date; end: Date } => {
     const now = new Date();
     const currentQuarterNum = Math.floor(now.getMonth() / 3) + 1;
@@ -466,7 +459,6 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
                 velocity={enhancedSummary.velocity}
                 onBugsFixedClick={handleBugsFixedClick}
                 onFeaturesCompletedClick={handleFeaturesCompletedClick}
-                onClosedClick={handleClosedTicketsClick}
               />
 
               <QuarterlySummaryCard

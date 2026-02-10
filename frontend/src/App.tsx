@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { fetchOrganizations, fetchCustomerSummary, fetchSyncStatus, triggerFullSync, SyncStatus } from "./services/api";
+import { fetchOrganizations, fetchCustomerSummary } from "./services/api";
+import { SyncButton } from "./components/SyncButton";
 import { CustomerSummaryCard } from "./components/CustomerSummaryCard";
 import { OrganizationDrilldown } from "./components/OrganizationDrilldown";
 import { CSMPortfolioView } from "./components/CSMPortfolioView";
@@ -42,7 +43,7 @@ interface TicketFilter {
 }
 
 function Dashboard() {
-  const { isAdmin } = useAuth();
+  useAuth(); // Ensures user is authenticated
   const [mainTab, setMainTab] = useState<MainTab>("support");
   const [supportSubTab, setSupportSubTab] = useState<SupportSubTab>("customers");
   const [usageSubTab, setUsageSubTab] = useState<UsageSubTab>("customers");
@@ -56,9 +57,6 @@ function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<{ id: number; name: string } | null>(null);
   const [ticketFilter, setTicketFilter] = useState<TicketFilter | null>(null);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,42 +67,6 @@ function Dashboard() {
   // Pagination state for By Customer view
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
-
-  // Load sync status for admins
-  useEffect(() => {
-    if (isAdmin) {
-      fetchSyncStatus()
-        .then(setSyncStatus)
-        .catch((err) => console.error("Failed to load sync status:", err));
-    }
-  }, [isAdmin]);
-
-  const handleSync = async () => {
-    if (isSyncing) return;
-    setIsSyncing(true);
-    setSyncMessage(null);
-    try {
-      const result = await triggerFullSync();
-      setSyncMessage(result.message);
-      // Poll for status updates
-      const pollInterval = setInterval(async () => {
-        try {
-          const status = await fetchSyncStatus();
-          setSyncStatus(status);
-          if (!status.inProgress) {
-            clearInterval(pollInterval);
-            setIsSyncing(false);
-            setSyncMessage("Sync completed successfully!");
-          }
-        } catch (err) {
-          console.error("Error polling sync status:", err);
-        }
-      }, 5000);
-    } catch (err) {
-      setSyncMessage(err instanceof Error ? err.message : "Sync failed");
-      setIsSyncing(false);
-    }
-  };
 
   // Load organizations first (fast)
   useEffect(() => {
@@ -260,19 +222,7 @@ function Dashboard() {
             <h1>Customer Success Manager Dashboard</h1>
           </div>
           <div className="header-actions">
-            {isAdmin && (
-              <div className="sync-controls">
-                <button
-                  className={`sync-button ${isSyncing ? "syncing" : ""}`}
-                  onClick={handleSync}
-                  disabled={isSyncing}
-                  title={syncStatus ? `Last sync: ${syncStatus.status.map(s => `${s.type}: ${new Date(s.last_sync).toLocaleString()}`).join(", ")}` : "Sync data from Zendesk and Salesforce"}
-                >
-                  {isSyncing ? "Syncing..." : "Sync Data"}
-                </button>
-                {syncMessage && <span className="sync-message">{syncMessage}</span>}
-              </div>
-            )}
+            <SyncButton />
             <UserMenu />
           </div>
         </div>

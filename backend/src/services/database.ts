@@ -203,6 +203,13 @@ export class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_messages_conversation ON conversation_messages(conversation_id);
       CREATE INDEX IF NOT EXISTS idx_messages_created ON conversation_messages(created_at);
       CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_email);
+
+      -- Sync metadata for delta sync timestamps
+      CREATE TABLE IF NOT EXISTS sync_metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     // Migration: Add new columns if they don't exist (for existing databases)
@@ -564,6 +571,19 @@ export class DatabaseService {
   getLastSyncTime(type: string): string | null {
     const row = this.db.prepare("SELECT last_sync FROM sync_status WHERE type = ?").get(type) as any;
     return row?.last_sync || null;
+  }
+
+  // Sync Metadata - for storing delta sync timestamps
+  getSyncMetadata(key: string): string | null {
+    const row = this.db.prepare("SELECT value FROM sync_metadata WHERE key = ?").get(key) as { value: string } | undefined;
+    return row?.value || null;
+  }
+
+  setSyncMetadata(key: string, value: string): void {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO sync_metadata (key, value, updated_at)
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+    `).run(key, value);
   }
 
   // GitHub Issue Links
