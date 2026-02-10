@@ -171,7 +171,7 @@ function CSMCard({
   expandedCustomer,
   onCustomerToggle,
 }: CSMCardProps) {
-  const { csm, customers, totalTickets, openTickets } = portfolio;
+  const { csm, customers } = portfolio;
 
   // Consolidate customers by SF account name
   const consolidatedCustomers = consolidateCustomerSummaries(customers);
@@ -187,14 +187,6 @@ function CSMCard({
           <div className="csm-stat">
             <span className="value">{consolidatedCustomers.length}</span>
             <span className="label">Customers</span>
-          </div>
-          <div className="csm-stat">
-            <span className="value">{totalTickets}</span>
-            <span className="label">Tickets</span>
-          </div>
-          <div className="csm-stat open">
-            <span className="value">{openTickets}</span>
-            <span className="label">Open</span>
           </div>
         </div>
         <span className="expand-icon">{expanded ? "▼" : "▶"}</span>
@@ -230,7 +222,7 @@ interface ConsolidatedCustomerCardProps {
 }
 
 function ConsolidatedCustomerCard({ customer, expanded, onToggle }: ConsolidatedCustomerCardProps) {
-  const { accountName, organizations, ticketStats, priorityBreakdown, featureRequests, problemReports, escalations, tickets, primaryOrgId } = customer;
+  const { accountName, organizations, ticketStats, featureRequests, problemReports, escalations, tickets, primaryOrgId } = customer;
   const [enhancedSummary, setEnhancedSummary] = useState<EnhancedCustomerSummary | null>(null);
   const [loadingEnhanced, setLoadingEnhanced] = useState(false);
   const [githubStatusMap, setGitHubStatusMap] = useState<Map<number, GitHubDevelopmentStatus[]> | null>(null);
@@ -298,13 +290,6 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
 
   const handleModuleBugsClick = (productName: string, moduleName: string, bugTickets: Ticket[]) => {
     setDrilldownTickets({ title: `${productName} - ${moduleName} - Bugs`, tickets: bugTickets });
-  };
-
-  const handlePriorityClick = (priority: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const filteredTickets = tickets.filter((t) => (t.priority || "normal") === priority);
-    const priorityLabel = priority.charAt(0).toUpperCase() + priority.slice(1);
-    setDrilldownTickets({ title: `${priorityLabel} Priority Tickets`, tickets: filteredTickets });
   };
 
   const handleTypeClick = (type: "feature" | "bug", e: React.MouseEvent) => {
@@ -403,6 +388,19 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
     setDrilldownTickets({ title: `All Closed - ${quarterLabel}`, tickets: closed, grouped: true });
   };
 
+  // Calculate unresolved ticket count (new + open + pending + hold)
+  const unresolvedCount = tickets.filter(t =>
+    ['new', 'open', 'pending', 'hold'].includes(t.status)
+  ).length;
+
+  // Calculate status counts for display
+  const statusCounts = {
+    new: tickets.filter(t => t.status === 'new').length,
+    open: tickets.filter(t => t.status === 'open').length,
+    pending: tickets.filter(t => t.status === 'pending').length,
+    hold: tickets.filter(t => t.status === 'hold').length,
+  };
+
   return (
     <div className={`customer-card ${expanded ? "expanded" : ""}`}>
       <div className="customer-header" onClick={onToggle}>
@@ -411,28 +409,28 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
           {organizations.length > 1 && (
             <span className="org-count">({organizations.length} Zendesk orgs)</span>
           )}
-          <span className="ticket-count">{ticketStats.total} tickets</span>
+          <span className="ticket-count">{unresolvedCount} Unresolved tickets</span>
         </div>
         <div className="customer-stats-mini">
-          <div className="priority-breakdown">
-            {priorityBreakdown.urgent > 0 && (
-              <span className="priority-badge urgent clickable" onClick={(e) => handlePriorityClick("urgent", e)}>
-                {priorityBreakdown.urgent} urgent
+          <div className="status-breakdown">
+            {statusCounts.new > 0 && (
+              <span className="status-badge new clickable" onClick={(e) => { e.stopPropagation(); handleStatusClick('new'); }}>
+                {statusCounts.new} new
               </span>
             )}
-            {priorityBreakdown.high > 0 && (
-              <span className="priority-badge high clickable" onClick={(e) => handlePriorityClick("high", e)}>
-                {priorityBreakdown.high} high
+            {statusCounts.open > 0 && (
+              <span className="status-badge open clickable" onClick={(e) => { e.stopPropagation(); handleStatusClick('open'); }}>
+                {statusCounts.open} open
               </span>
             )}
-            {priorityBreakdown.normal > 0 && (
-              <span className="priority-badge normal clickable" onClick={(e) => handlePriorityClick("normal", e)}>
-                {priorityBreakdown.normal} normal
+            {statusCounts.pending > 0 && (
+              <span className="status-badge pending clickable" onClick={(e) => { e.stopPropagation(); handleStatusClick('pending'); }}>
+                {statusCounts.pending} pending
               </span>
             )}
-            {priorityBreakdown.low > 0 && (
-              <span className="priority-badge low clickable" onClick={(e) => handlePriorityClick("low", e)}>
-                {priorityBreakdown.low} low
+            {statusCounts.hold > 0 && (
+              <span className="status-badge hold clickable" onClick={(e) => { e.stopPropagation(); handleStatusClick('hold'); }}>
+                {statusCounts.hold} on hold
               </span>
             )}
           </div>

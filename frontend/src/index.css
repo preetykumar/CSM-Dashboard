@@ -1309,6 +1309,40 @@ header .hint {
   color: #065f46;
 }
 
+/* Status badges in customer header */
+.status-breakdown {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.status-badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 500;
+  font-size: 0.85rem;
+}
+
+.status-badge.new {
+  background: #3b82f6;
+  color: white;
+}
+
+.status-badge.open {
+  background: #ef4444;
+  color: white;
+}
+
+.status-badge.pending {
+  background: #f59e0b;
+  color: white;
+}
+
+.status-badge.hold {
+  background: #6b7280;
+  color: white;
+}
+
 .clickable {
   cursor: pointer;
   transition: transform 0.1s, box-shadow 0.1s;
@@ -1822,6 +1856,43 @@ header .hint {
   padding: 1rem 1.25rem;
   border-radius: 8px;
   margin-bottom: 1rem;
+}
+
+.velocity-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+
+.velocity-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.velocity-unresolved {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.unresolved-count {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.unresolved-label {
+  font-size: 1rem;
+  opacity: 0.9;
+}
+
+.velocity-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
 }
 
 .velocity-header {
