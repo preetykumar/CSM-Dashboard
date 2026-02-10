@@ -661,6 +661,7 @@ export function createCachedRoutes(db: DatabaseService): Router {
               product: t.product || undefined,
               module: t.module || undefined,
               issue_subtype: t.issue_subtype || undefined,
+              created_at: t.created_at,
               updated_at: t.updated_at,
               url: `https://dequehelp.zendesk.com/agent/tickets/${t.id}`,
             })),

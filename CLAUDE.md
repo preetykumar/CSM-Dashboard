@@ -131,9 +131,14 @@ Or use Cloud Console: Cloud Run > csm-dashboard > Edit & Deploy New Revision > V
 
 **For Production (Cloud Run):**
 - The private key must be **base64-encoded** when stored in Cloud Run env vars
-- Encode the key:
+- **CRITICAL: PEM File Must Have Unix Line Endings (LF, not CRLF)**
+  - Windows-style line endings in the PEM file will cause JWT signing to fail with "secretOrPrivateKey must be an asymmetric key when using RS256"
+  - Check your PEM file: `file keys/salesforce.pem` (should show "ASCII text", NOT "ASCII text, with CRLF line terminators")
+  - Convert to Unix line endings if needed: `tr -d '\r' < keys/salesforce.pem > keys/salesforce_unix.pem`
+- Encode the key (after ensuring Unix line endings):
   ```bash
-  base64 -i keys/private-key.pem | tr -d '\n'
+  # Convert to Unix line endings and encode
+  tr -d '\r' < keys/salesforce.pem | base64 | tr -d '\n'
   ```
 - The backend automatically detects and decodes base64-encoded keys (if they don't start with `-----BEGIN`)
 - Update in Cloud Run:
@@ -159,7 +164,85 @@ Or use Cloud Console: Cloud Run > csm-dashboard > Edit & Deploy New Revision > V
 - Production credentials are stored in Cloud Run environment variables
 - The `keys/` directory is in `.gitignore`
 
-### 6. Checking Production Logs
+### 6. Cloud Run Environment Variables - CRITICAL
+**DANGER: `--set-env-vars` REPLACES ALL env vars!**
+- Using `--set-env-vars` will DELETE all existing environment variables and only set the ones you specify
+- This will break your deployment if you forget any required variables (Zendesk, Salesforce, OAuth, etc.)
+- **Always use `--update-env-vars` to add or modify individual variables**
+- If you need to set multiple variables at once, use `--env-vars-file` with a YAML file
+
+**Handling commas in env var values:**
+- Cloud Run interprets commas as separators in `--update-env-vars`
+- For values with commas (like `GITHUB_PROJECT_NUMBERS=1,2,3`), use semicolons instead: `GITHUB_PROJECT_NUMBERS=1;2;3`
+- The backend code must support both separators (see `loadGitHubConfig()` which uses `/[,;]/` regex)
+- Alternative: Use `--env-vars-file` with a YAML file where commas work normally
+
+**Recovering from broken env vars:**
+1. Get env vars from a working revision: `gcloud run revisions describe REVISION_NAME --region=us-central1 --format="get(spec.containers[0].env)"`
+2. Create a YAML file with all required variables
+3. Deploy with `--env-vars-file`: `gcloud run deploy csm-dashboard --image=gcr.io/PROJECT/IMAGE:tag --env-vars-file=env.yaml`
+4. Route traffic to the new revision: `gcloud run services update-traffic csm-dashboard --to-revisions=NEW_REVISION=100`
+
+**Why Cloud Build fails after broken env vars:**
+- Cloud Build's `gcloud run deploy` inherits the service's CURRENT env vars configuration
+- If a previous manual `--set-env-vars` wiped the env vars, ALL subsequent Cloud Build deployments will fail
+- The new image builds successfully but the deploy step fails because the service has missing required vars
+- Error looks like: `Revision 'xxx' is not ready... container failed to start`
+
+**Automation: Preventing this in CI/CD:**
+
+Option 1: Use Google Secret Manager (Recommended for production)
+- Store all env vars in Secret Manager
+- Reference them in cloudbuild.yaml using `--set-secrets`
+- Env vars are never lost since they're stored externally
+
+Option 2: Maintain an env-vars backup file
+- Keep a `production-env-vars.yaml` in a secure location (NOT in git)
+- After any manual env var change, update this backup file
+- If Cloud Build fails, restore using `--env-vars-file`
+
+Option 3: Add env vars to cloudbuild.yaml (Less secure - env vars in build logs)
+```yaml
+# In cloudbuild.yaml, modify the deploy step:
+- name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  entrypoint: gcloud
+  args:
+    - 'run'
+    - 'deploy'
+    - 'csm-dashboard'
+    - '--image'
+    - 'gcr.io/$PROJECT_ID/csm-dashboard:$COMMIT_SHA'
+    - '--region'
+    - 'us-central1'
+    - '--platform'
+    - 'managed'
+    - '--env-vars-file'
+    - 'production-env-vars.yaml'  # Must exist in repo or be generated
+```
+
+**Quick fix when Cloud Build is broken:**
+```bash
+# 1. Find a working revision
+gcloud run revisions list --service=csm-dashboard --region=us-central1 --limit=5
+
+# 2. Route traffic to working revision immediately
+gcloud run services update-traffic csm-dashboard --to-revisions=WORKING_REVISION=100 --region=us-central1
+
+# 3. Get env vars from working revision and save to file
+gcloud run revisions describe WORKING_REVISION --region=us-central1 --format="get(spec.containers[0].env)" > /tmp/env-backup.txt
+
+# 4. Manually deploy with correct env vars (creates new revision)
+gcloud run deploy csm-dashboard --image=gcr.io/csm-dashboard-deque/csm-dashboard:latest --env-vars-file=/path/to/env.yaml --region=us-central1
+
+# 5. Future Cloud Builds will now work since service has correct env vars
+```
+
+### 7. GitHub Integration
+- **Required env vars**: `GITHUB_TOKEN`, `GITHUB_ORG`, `GITHUB_PROJECT_NUMBERS`
+- `GITHUB_PROJECT_NUMBERS` should be semicolon-separated in Cloud Run (e.g., `246;248;212`)
+- Current projects: `246;248;212;186;64;188;181;243;179;114;216`
+
+### 8. Checking Production Logs
 ```bash
 # Recent logs
 gcloud run services logs read csm-dashboard --region=us-central1 --project=csm-dashboard-deque --limit=50
@@ -228,9 +311,13 @@ https://csm-dashboard-iow4tellka-uc.a.run.app
 
 ### "secretOrPrivateKey must be an asymmetric key when using RS256"
 - The Salesforce private key is not being read correctly
-- In production: Ensure `SF_PRIVATE_KEY` is base64-encoded
+- **Most Common Cause**: PEM file has Windows line endings (CRLF instead of LF)
+  - Check: `file keys/salesforce.pem` - should NOT say "with CRLF line terminators"
+  - Fix: `tr -d '\r' < keys/salesforce.pem > keys/salesforce_unix.pem` then re-encode
+- In production: Ensure `SF_PRIVATE_KEY` is base64-encoded with Unix line endings
 - The code auto-detects and decodes base64 (see `loadSalesforceConfig()` in index.ts)
 - Check logs for "SF_PRIVATE_KEY: decoded from base64" to confirm decoding works
+- Even if decoding shows success, the decoded key may be invalid if original had CRLF
 
 ### Build fails with native module errors
 - Check that you're using Node.js 20, not 22+
@@ -240,6 +327,13 @@ https://csm-dashboard-iow4tellka-uc.a.run.app
 1. Check build completed: `gcloud builds list --limit=1 --project=csm-dashboard-deque`
 2. Check which revision is serving traffic (see above)
 3. Route traffic to latest if needed (see above)
+
+### Cloud Build succeeds but deployment fails with "container failed to start"
+- **Most likely cause**: A previous `--set-env-vars` wiped all environment variables
+- Cloud Build inherits the service's current (broken) env vars configuration
+- The build step succeeds but deploy step fails because required env vars are missing
+- **Fix**: See "Quick fix when Cloud Build is broken" in section 6 above
+- Check logs for the failing revision to confirm: `gcloud logging read "resource.labels.revision_name=FAILING_REVISION"` - look for "Missing required environment variables"
 
 ### Local SQLite errors
 - Delete `backend/data/cache.db` and restart the server to rebuild the cache
@@ -259,6 +353,13 @@ https://csm-dashboard-iow4tellka-uc.a.run.app
 2. Verify SF_CLIENT_ID, SF_USERNAME, and SF_PRIVATE_KEY are set correctly
 3. Ensure SF_AUTH_TYPE=jwt and SF_LOGIN_URL=https://login.salesforce.com
 4. Confirm traffic is routed to the latest revision with the fixes
+
+### "Missing required environment variables: ZENDESK_SUBDOMAIN..." after deployment
+- You likely used `--set-env-vars` instead of `--update-env-vars`, which deleted all other env vars
+- Recovery steps:
+  1. Route traffic back to a working revision: `gcloud run services update-traffic csm-dashboard --to-revisions=WORKING_REVISION=100`
+  2. Get env vars from working revision: `gcloud run revisions describe WORKING_REVISION --format="get(spec.containers[0].env)"`
+  3. Create a YAML file with all variables and redeploy with `--env-vars-file`
 
 ---
 

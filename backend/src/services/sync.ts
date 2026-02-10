@@ -445,11 +445,12 @@ export class SyncService {
       return 0;
     }
 
-    console.log("Syncing GitHub issue links...");
+    console.log("Syncing GitHub issue links (projects + repository search)...");
     this.db.updateSyncStatus("github_links", "in_progress", 0);
 
     try {
-      const links = await this.github.getLinkedIssues();
+      // Use getAllLinkedIssues to search both projects AND repositories
+      const links = await this.github.getAllLinkedIssues();
 
       // Filter to only tickets that exist in our database
       const ticketIds = this.db.getAllTicketIds();

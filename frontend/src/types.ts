@@ -84,6 +84,7 @@ export interface MinimalTicket {
   product?: string;
   module?: string;
   issue_subtype?: string;
+  created_at: string;
   updated_at: string;
 }
 

@@ -9,6 +9,7 @@ export interface GitHubConfig {
   token: string;
   org: string;
   projectNumbers?: number[];
+  searchRepos?: string[]; // Repos to search for Zendesk references not in projects
 }
 
 export interface GitHubProjectItem {
@@ -135,6 +136,79 @@ const LIST_PROJECTS_QUERY = `
   }
 `;
 
+// Search query for issues containing Zendesk references
+const SEARCH_ISSUES_QUERY = `
+  query SearchIssues($query: String!, $cursor: String) {
+    search(query: $query, type: ISSUE, first: 100, after: $cursor) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        ... on Issue {
+          number
+          title
+          body
+          url
+          state
+          updatedAt
+          milestone {
+            title
+          }
+          repository {
+            name
+          }
+          projectItems(first: 5) {
+            nodes {
+              project {
+                title
+              }
+              fieldValueByName(name: "Status") {
+                ... on ProjectV2ItemFieldSingleSelectValue {
+                  name
+                }
+              }
+            }
+          }
+        }
+        ... on PullRequest {
+          number
+          title
+          body
+          url
+          state
+          updatedAt
+          milestone {
+            title
+          }
+          repository {
+            name
+          }
+        }
+      }
+    }
+  }
+`;
+
+// Query to list repositories in an org
+const LIST_REPOS_QUERY = `
+  query ListRepos($org: String!, $cursor: String) {
+    organization(login: $org) {
+      repositories(first: 100, after: $cursor, orderBy: {field: PUSHED_AT, direction: DESC}) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+        nodes {
+          name
+          isArchived
+          pushedAt
+        }
+      }
+    }
+  }
+`;
+
 // GraphQL Response Types
 interface ListProjectsResponse {
   organization: {
@@ -173,6 +247,37 @@ interface ProjectItemsResponse {
         }>;
       };
     } | null;
+  };
+}
+
+interface SearchIssuesResponse {
+  search: {
+    pageInfo: { hasNextPage: boolean; endCursor: string };
+    nodes: Array<{
+      number?: number;
+      title?: string;
+      body?: string;
+      url?: string;
+      state?: string;
+      updatedAt?: string;
+      milestone?: { title: string } | null;
+      repository?: { name: string };
+      projectItems?: {
+        nodes: Array<{
+          project?: { title: string };
+          fieldValueByName?: { name?: string } | null;
+        }>;
+      };
+    }>;
+  };
+}
+
+interface ListReposResponse {
+  organization: {
+    repositories: {
+      pageInfo: { hasNextPage: boolean; endCursor: string };
+      nodes: Array<{ name: string; isArchived: boolean; pushedAt: string }>;
+    };
   };
 }
 
@@ -405,5 +510,163 @@ export class GitHubService {
       console.error("GitHub connection failed:", error);
       return false;
     }
+  }
+
+  /**
+   * List repositories in the organization (sorted by recently pushed)
+   */
+  async listRepositories(): Promise<Array<{ name: string; isArchived: boolean; pushedAt: string }>> {
+    const repos: Array<{ name: string; isArchived: boolean; pushedAt: string }> = [];
+    let cursor: string | null = null;
+    let hasMore = true;
+    let pageCount = 0;
+    const maxPages = 5; // Limit to most recent 500 repos
+
+    while (hasMore && pageCount < maxPages) {
+      const data: ListReposResponse = await this.graphql<ListReposResponse>(LIST_REPOS_QUERY, {
+        org: this.config.org,
+        cursor,
+      });
+
+      repos.push(...data.organization.repositories.nodes);
+
+      if (data.organization.repositories.pageInfo.hasNextPage) {
+        cursor = data.organization.repositories.pageInfo.endCursor;
+        pageCount++;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    return repos.filter(r => !r.isArchived);
+  }
+
+  /**
+   * Search for issues in repositories that contain Zendesk references
+   * Uses GitHub search API to find issues mentioning ZD#, zendesk, etc.
+   */
+  async searchRepoIssuesForZendeskRefs(repos?: string[]): Promise<ZendeskTicketLink[]> {
+    const links: ZendeskTicketLink[] = [];
+    const seenIssues = new Set<string>(); // Track repo#number to avoid duplicates
+
+    // Search patterns to find Zendesk references
+    const searchTerms = [
+      "ZD#",
+      "ZD-",
+      "zendesk.com/agent/tickets",
+      "dequehelp.zendesk.com",
+    ];
+
+    // Build repo filter if repos specified
+    const repoFilter = repos && repos.length > 0
+      ? repos.map(r => `repo:${this.config.org}/${r}`).join(" ")
+      : `org:${this.config.org}`;
+
+    for (const term of searchTerms) {
+      try {
+        console.log(`Searching repos for "${term}"...`);
+        let cursor: string | null = null;
+        let hasMore = true;
+        let pageCount = 0;
+        const maxPages = 3; // Limit pages per search term
+
+        while (hasMore && pageCount < maxPages) {
+          const query = `${term} in:body,title ${repoFilter} is:issue`;
+
+          const data: SearchIssuesResponse = await this.graphql<SearchIssuesResponse>(SEARCH_ISSUES_QUERY, {
+            query,
+            cursor,
+          });
+
+          for (const node of data.search.nodes) {
+            if (!node.number || !node.repository?.name) continue;
+
+            const issueKey = `${node.repository.name}#${node.number}`;
+            if (seenIssues.has(issueKey)) continue;
+            seenIssues.add(issueKey);
+
+            // Create a GitHubProjectItem-like object to extract ticket references
+            const item: GitHubProjectItem = {
+              id: issueKey,
+              issueNumber: node.number,
+              issueTitle: node.title || "",
+              issueBody: node.body || "",
+              repoName: node.repository.name,
+              projectTitle: node.projectItems?.nodes?.[0]?.project?.title || "(No Project)",
+              status: node.projectItems?.nodes?.[0]?.fieldValueByName?.name || node.state || "",
+              milestone: node.milestone?.title,
+              url: node.url || "",
+              updatedAt: node.updatedAt || "",
+            };
+
+            const ticketIds = this.extractZendeskTicketReferences(item);
+
+            for (const ticketId of ticketIds) {
+              links.push({
+                zendeskTicketId: ticketId,
+                githubIssueNumber: item.issueNumber,
+                repoName: item.repoName,
+                projectTitle: item.projectTitle,
+                projectStatus: item.status,
+                milestone: item.milestone,
+                githubUrl: item.url,
+                updatedAt: item.updatedAt,
+              });
+            }
+          }
+
+          if (data.search.pageInfo.hasNextPage) {
+            cursor = data.search.pageInfo.endCursor;
+            pageCount++;
+          } else {
+            hasMore = false;
+          }
+        }
+      } catch (error) {
+        console.error(`Error searching for "${term}":`, error);
+        // Continue with other search terms
+      }
+    }
+
+    console.log(`Found ${links.length} Zendesk links from repository search`);
+    return links;
+  }
+
+  /**
+   * Fetch all linked issues from both projects AND repository search
+   * Combines results and deduplicates
+   */
+  async getAllLinkedIssues(): Promise<ZendeskTicketLink[]> {
+    const allLinks: ZendeskTicketLink[] = [];
+    const seenKeys = new Set<string>();
+
+    // First, get links from configured projects
+    const projectLinks = await this.getLinkedIssues();
+    for (const link of projectLinks) {
+      const key = `${link.zendeskTicketId}-${link.repoName}-${link.githubIssueNumber}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        allLinks.push(link);
+      }
+    }
+
+    // Then, search repositories for additional links
+    console.log("\nSearching repositories for additional Zendesk references...");
+    const repoLinks = await this.searchRepoIssuesForZendeskRefs(this.config.searchRepos);
+
+    let newLinksCount = 0;
+    for (const link of repoLinks) {
+      const key = `${link.zendeskTicketId}-${link.repoName}-${link.githubIssueNumber}`;
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
+        allLinks.push(link);
+        newLinksCount++;
+      }
+    }
+
+    console.log(`Added ${newLinksCount} new links from repository search`);
+    console.log(`Total unique Zendesk ticket links: ${allLinks.length}`);
+
+    return allLinks;
   }
 }

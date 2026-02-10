@@ -386,7 +386,7 @@ export class DatabaseService {
   }
 
   getTicketsByPriority(orgId: number, priority: string): CachedTicket[] {
-    return this.db.prepare("SELECT * FROM tickets WHERE organization_id = ? AND priority = ? ORDER BY updated_at DESC").all(orgId, priority) as CachedTicket[];
+    return this.db.prepare("SELECT * FROM tickets WHERE organization_id = ? AND priority = ? AND status NOT IN ('solved', 'closed') ORDER BY updated_at DESC").all(orgId, priority) as CachedTicket[];
   }
 
   getTicketsByProduct(orgId: number, product: string): CachedTicket[] {
@@ -436,7 +436,7 @@ export class DatabaseService {
         SUM(CASE WHEN priority = 'normal' OR priority IS NULL THEN 1 ELSE 0 END) as normal,
         SUM(CASE WHEN priority = 'high' THEN 1 ELSE 0 END) as high,
         SUM(CASE WHEN priority = 'urgent' THEN 1 ELSE 0 END) as urgent
-      FROM tickets WHERE organization_id = ?
+      FROM tickets WHERE organization_id = ? AND status NOT IN ('solved', 'closed')
     `).get(orgId) as any;
 
     return {

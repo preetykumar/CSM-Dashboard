@@ -159,10 +159,12 @@ export async function fetchGitHubStatusForTickets(
   ticketIds: number[]
 ): Promise<Map<number, GitHubDevelopmentStatus[]>> {
   if (ticketIds.length === 0) {
+    console.log("[GitHub API] No ticket IDs provided");
     return new Map();
   }
 
   try {
+    console.log(`[GitHub API] Fetching statuses for ${ticketIds.length} tickets`);
     const res = await fetch(`${API_BASE}/github/tickets/status`, {
       ...fetchOptions,
       method: "POST",
@@ -171,11 +173,13 @@ export async function fetchGitHubStatusForTickets(
     });
 
     if (!res.ok) {
-      console.warn("Failed to fetch GitHub statuses:", res.status);
+      console.warn("[GitHub API] Failed to fetch GitHub statuses:", res.status, res.statusText);
       return new Map();
     }
 
     const data = await res.json();
+    console.log("[GitHub API] Response received, links count:", Object.keys(data.links || {}).length);
+
     const linksMap = new Map<number, GitHubDevelopmentStatus[]>();
 
     if (data.links) {
@@ -186,7 +190,7 @@ export async function fetchGitHubStatusForTickets(
 
     return linksMap;
   } catch (error) {
-    console.warn("Error fetching GitHub statuses:", error);
+    console.warn("[GitHub API] Error fetching GitHub statuses:", error);
     return new Map();
   }
 }

@@ -262,9 +262,12 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
         .flatMap((m) => m.tickets)
         .map((t) => t.id);
 
+      console.log(`[GitHub] Fetching statuses for ${ticketIds.length} backlog tickets:`, ticketIds.slice(0, 5), ticketIds.length > 5 ? '...' : '');
+
       if (ticketIds.length > 0) {
         fetchGitHubStatusForTickets(ticketIds)
           .then((newMap) => {
+            console.log(`[GitHub] Received ${newMap.size} tickets with links`);
             // Ensure all requested tickets are in the map (empty array for those without links)
             const completeMap = new Map<number, GitHubDevelopmentStatus[]>();
             for (const id of ticketIds) {
@@ -272,9 +275,10 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
             }
             setGitHubStatusMap(completeMap);
           })
-          .catch((err) => console.error("Failed to load GitHub statuses:", err));
+          .catch((err) => console.error("[GitHub] Failed to load GitHub statuses:", err));
       } else {
         // No tickets to fetch, set empty map to prevent re-fetching
+        console.log("[GitHub] No backlog tickets to fetch GitHub statuses for");
         setGitHubStatusMap(new Map());
       }
     }
@@ -521,27 +525,10 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
             {drilldownTickets.grouped ? (
               <GroupedTicketView tickets={drilldownTickets.tickets} githubStatusMap={githubStatusMap} />
             ) : (
-              <div className="ticket-table-container">
-                <table className="ticket-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Subject</th>
-                      <th>Type</th>
-                      <th>Subtype</th>
-                      <th>Status</th>
-                      <th>Priority</th>
-                      <th>GitHub</th>
-                      <th>Updated</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {drilldownTickets.tickets.map((ticket) => (
-                      <TicketDetailRow key={ticket.id} ticket={ticket} githubStatuses={githubStatusMap?.get(ticket.id)} />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <SortableTicketTable
+                tickets={drilldownTickets.tickets}
+                githubStatusMap={githubStatusMap}
+              />
             )}
           </div>
         </div>
@@ -550,59 +537,217 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
   );
 }
 
-function TicketDetailRow({ ticket, githubStatuses }: { ticket: Ticket | MinimalTicket; githubStatuses?: GitHubDevelopmentStatus[] }) {
-  const formatDate = (dateStr: string) => {
+// Sortable Ticket Table Component
+type SortColumn = "id" | "subject" | "type" | "subtype" | "status" | "priority" | "age" | "updated";
+type SortDirection = "asc" | "desc";
+
+interface SortableTicketTableProps {
+  tickets: (Ticket | MinimalTicket)[];
+  githubStatusMap?: Map<number, GitHubDevelopmentStatus[]> | null;
+}
+
+function SortableTicketTable({ tickets, githubStatusMap }: SortableTicketTableProps) {
+  const [sortColumn, setSortColumn] = useState<SortColumn>("age");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+
+  // Calculate ticket age in days
+  const calculateAge = (createdAt: string | undefined | null): number => {
+    if (!createdAt) return 0;
+    const created = new Date(createdAt);
+    if (isNaN(created.getTime())) return 0;
+    const now = new Date();
+    const diffTime = now.getTime() - created.getTime();
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  // Format age for display
+  const formatAge = (days: number): string => {
+    if (isNaN(days) || days === 0) return "Today";
+    if (days === 1) return "1 day";
+    if (days < 7) return `${days} days`;
+    if (days < 30) {
+      const weeks = Math.floor(days / 7);
+      return weeks === 1 ? "1 week" : `${weeks} weeks`;
+    }
+    if (days < 365) {
+      const months = Math.floor(days / 30);
+      return months === 1 ? "1 month" : `${months} months`;
+    }
+    const years = Math.floor(days / 365);
+    return years === 1 ? "1 year" : `${years} years`;
+  };
+
+  // Get age color class based on days
+  const getAgeClass = (days: number): string => {
+    if (days <= 7) return "age-fresh";
+    if (days <= 30) return "age-recent";
+    if (days <= 90) return "age-moderate";
+    if (days <= 180) return "age-old";
+    return "age-stale";
+  };
+
+  const formatDate = (dateStr: string | undefined | null) => {
+    if (!dateStr) return "-";
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "-";
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
-  const openInZendesk = () => {
-    if (ticket.url) {
-      window.open(ticket.url, "_blank");
+  // Priority order for sorting
+  const priorityOrder: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+
+  // Sort tickets
+  const sortedTickets = useMemo(() => {
+    const sorted = [...tickets].sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortColumn) {
+        case "id":
+          comparison = a.id - b.id;
+          break;
+        case "subject":
+          comparison = (a.subject || "").localeCompare(b.subject || "");
+          break;
+        case "type":
+          comparison = (a.ticket_type || "other").localeCompare(b.ticket_type || "other");
+          break;
+        case "subtype":
+          comparison = (a.issue_subtype || a.module || "").localeCompare(b.issue_subtype || b.module || "");
+          break;
+        case "status":
+          comparison = a.status.localeCompare(b.status);
+          break;
+        case "priority":
+          comparison = (priorityOrder[a.priority || "normal"] || 2) - (priorityOrder[b.priority || "normal"] || 2);
+          break;
+        case "age":
+          comparison = calculateAge(a.created_at) - calculateAge(b.created_at);
+          break;
+        case "updated":
+          comparison = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
+          break;
+      }
+
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+
+    return sorted;
+  }, [tickets, sortColumn, sortDirection]);
+
+  // Handle column header click
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
-      window.open(`https://dequehelp.zendesk.com/agent/tickets/${ticket.id}`, "_blank");
+      setSortColumn(column);
+      setSortDirection("desc");
     }
   };
 
+  // Render sort indicator
+  const renderSortIndicator = (column: SortColumn) => {
+    if (sortColumn !== column) return <span className="sort-indicator inactive">⇅</span>;
+    return <span className="sort-indicator active">{sortDirection === "asc" ? "↑" : "↓"}</span>;
+  };
+
+  const openInZendesk = (ticket: Ticket | MinimalTicket) => {
+    const url = ticket.url || `https://dequehelp.zendesk.com/agent/tickets/${ticket.id}`;
+    window.open(url, "_blank");
+  };
+
   return (
-    <tr className={`ticket-detail-row ${ticket.is_escalated ? "escalated" : ""}`} onClick={openInZendesk}>
-      <td className="ticket-id">
-        <a href={ticket.url || `https://dequehelp.zendesk.com/agent/tickets/${ticket.id}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}>
-          #{ticket.id}
-        </a>
-        {ticket.is_escalated && <span className="escalation-indicator" title="Escalated">!</span>}
-      </td>
-      <td className="ticket-subject">{ticket.subject || "No subject"}</td>
-      <td className={`ticket-type type-${ticket.ticket_type || "other"}`}>
-        {ticket.ticket_type === "bug" ? "Bug" : ticket.ticket_type === "feature" ? "Feature" : "Other"}
-      </td>
-      <td className="ticket-subtype">{ticket.issue_subtype || ticket.module || "-"}</td>
-      <td className={`ticket-status status-${ticket.status}`}>{ticket.status}</td>
-      <td className={`ticket-priority priority-${ticket.priority || "normal"}`}>{ticket.priority || "normal"}</td>
-      <td className="ticket-github">
-        {githubStatuses && githubStatuses.length > 0 ? (
-          <div className="github-links">
-            {githubStatuses.map((gh, idx) => (
-              <a
-                key={idx}
-                href={gh.githubUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`github-status-pill status-${gh.projectStatus?.toLowerCase().replace(/\s+/g, "-") || "unknown"}`}
-                onClick={(e) => e.stopPropagation()}
-                title={`${gh.repoName}#${gh.issueNumber}`}
+    <div className="ticket-table-container">
+      <table className="ticket-table sortable">
+        <thead>
+          <tr>
+            <th className="sortable-header" onClick={() => handleSort("id")}>
+              ID {renderSortIndicator("id")}
+            </th>
+            <th className="sortable-header" onClick={() => handleSort("subject")}>
+              Subject {renderSortIndicator("subject")}
+            </th>
+            <th className="sortable-header" onClick={() => handleSort("type")}>
+              Type {renderSortIndicator("type")}
+            </th>
+            <th className="sortable-header" onClick={() => handleSort("subtype")}>
+              Subtype {renderSortIndicator("subtype")}
+            </th>
+            <th className="sortable-header" onClick={() => handleSort("status")}>
+              Status {renderSortIndicator("status")}
+            </th>
+            <th className="sortable-header" onClick={() => handleSort("priority")}>
+              Priority {renderSortIndicator("priority")}
+            </th>
+            <th>GitHub</th>
+            <th className="sortable-header" onClick={() => handleSort("age")}>
+              Age {renderSortIndicator("age")}
+            </th>
+            <th className="sortable-header" onClick={() => handleSort("updated")}>
+              Updated {renderSortIndicator("updated")}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {sortedTickets.map((ticket) => {
+            const age = calculateAge(ticket.created_at);
+            const githubStatuses = githubStatusMap?.get(ticket.id);
+
+            return (
+              <tr
+                key={ticket.id}
+                className={`ticket-detail-row ${ticket.is_escalated ? "escalated" : ""}`}
+                onClick={() => openInZendesk(ticket)}
               >
-                <span className="gh-icon">GH</span>
-                <span className="gh-status">{gh.projectStatus || "Linked"}</span>
-              </a>
-            ))}
-          </div>
-        ) : (
-          <span className="no-github">-</span>
-        )}
-      </td>
-      <td className="ticket-updated">{formatDate(ticket.updated_at)}</td>
-    </tr>
+                <td className="ticket-id">
+                  <a
+                    href={ticket.url || `https://dequehelp.zendesk.com/agent/tickets/${ticket.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    #{ticket.id}
+                  </a>
+                  {ticket.is_escalated && <span className="escalation-indicator" title="Escalated">!</span>}
+                </td>
+                <td className="ticket-subject">{ticket.subject || "No subject"}</td>
+                <td className={`ticket-type type-${ticket.ticket_type || "other"}`}>
+                  {ticket.ticket_type === "bug" ? "Bug" : ticket.ticket_type === "feature" ? "Feature" : "Other"}
+                </td>
+                <td className="ticket-subtype">{ticket.issue_subtype || ticket.module || "-"}</td>
+                <td className={`ticket-status status-${ticket.status}`}>{ticket.status}</td>
+                <td className={`ticket-priority priority-${ticket.priority || "normal"}`}>{ticket.priority || "normal"}</td>
+                <td className="ticket-github">
+                  {githubStatuses && githubStatuses.length > 0 ? (
+                    <div className="github-links">
+                      {githubStatuses.map((gh, idx) => (
+                        <a
+                          key={idx}
+                          href={gh.githubUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`github-status-pill status-${gh.projectStatus?.toLowerCase().replace(/\s+/g, "-") || "unknown"}`}
+                          onClick={(e) => e.stopPropagation()}
+                          title={`${gh.repoName}#${gh.issueNumber}`}
+                        >
+                          <span className="gh-icon">GH</span>
+                          <span className="gh-status">{gh.projectStatus || "Linked"}</span>
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="no-github">-</span>
+                  )}
+                </td>
+                <td className={`ticket-age ${getAgeClass(age)}`} title={`Created: ${formatDate(ticket.created_at)}`}>
+                  {formatAge(age)}
+                </td>
+                <td className="ticket-updated">{formatDate(ticket.updated_at)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -615,9 +760,73 @@ interface ProductGroup {
   }[];
 }
 
+type GroupSortColumn = "age" | "priority" | "updated";
+
 function GroupedTicketView({ tickets, githubStatusMap }: { tickets: (Ticket | MinimalTicket)[]; githubStatusMap?: Map<number, GitHubDevelopmentStatus[]> | null }) {
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [expandedTypes, setExpandedTypes] = useState<Set<string>>(new Set());
+  const [sortBy, setSortBy] = useState<GroupSortColumn>("age");
+  const [sortAsc, setSortAsc] = useState(false);
+
+  // Calculate ticket age in days
+  const calculateAge = (createdAt: string | undefined | null): number => {
+    if (!createdAt) return 0;
+    const created = new Date(createdAt);
+    if (isNaN(created.getTime())) return 0;
+    const now = new Date();
+    const diffTime = now.getTime() - created.getTime();
+    return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  };
+
+  // Format age for display
+  const formatAge = (days: number): string => {
+    if (isNaN(days) || days === 0) return "Today";
+    if (days === 1) return "1d";
+    if (days < 7) return `${days}d`;
+    if (days < 30) return `${Math.floor(days / 7)}w`;
+    if (days < 365) return `${Math.floor(days / 30)}mo`;
+    return `${Math.floor(days / 365)}y`;
+  };
+
+  // Get age color class
+  const getAgeClass = (days: number): string => {
+    if (days <= 7) return "age-fresh";
+    if (days <= 30) return "age-recent";
+    if (days <= 90) return "age-moderate";
+    if (days <= 180) return "age-old";
+    return "age-stale";
+  };
+
+  // Priority order for sorting
+  const priorityOrder: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
+
+  // Sort tickets within a group
+  const sortTickets = (ticketList: (Ticket | MinimalTicket)[]): (Ticket | MinimalTicket)[] => {
+    return [...ticketList].sort((a, b) => {
+      let comparison = 0;
+      switch (sortBy) {
+        case "age":
+          comparison = calculateAge(a.created_at) - calculateAge(b.created_at);
+          break;
+        case "priority":
+          comparison = (priorityOrder[a.priority || "normal"] || 2) - (priorityOrder[b.priority || "normal"] || 2);
+          break;
+        case "updated":
+          comparison = new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime();
+          break;
+      }
+      return sortAsc ? comparison : -comparison;
+    });
+  };
+
+  const handleSortChange = (column: GroupSortColumn) => {
+    if (sortBy === column) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortBy(column);
+      setSortAsc(false);
+    }
+  };
 
   // Group tickets by product, then by issue type
   // Primary product (customer's main product) is shown first, others under "Other Products"
@@ -712,13 +921,38 @@ function GroupedTicketView({ tickets, githubStatusMap }: { tickets: (Ticket | Mi
     setExpandedTypes(newSet);
   };
 
-  const formatDate = (dateStr: string) => {
+  const formatDate = (dateStr: string | undefined | null) => {
+    if (!dateStr) return "-";
     const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return "-";
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   };
 
   return (
     <div className="grouped-ticket-view">
+      {/* Sort controls */}
+      <div className="grouped-sort-controls">
+        <span className="sort-label">Sort by:</span>
+        <button
+          className={`sort-btn ${sortBy === "age" ? "active" : ""}`}
+          onClick={() => handleSortChange("age")}
+        >
+          Age {sortBy === "age" && (sortAsc ? "↑" : "↓")}
+        </button>
+        <button
+          className={`sort-btn ${sortBy === "priority" ? "active" : ""}`}
+          onClick={() => handleSortChange("priority")}
+        >
+          Priority {sortBy === "priority" && (sortAsc ? "↑" : "↓")}
+        </button>
+        <button
+          className={`sort-btn ${sortBy === "updated" ? "active" : ""}`}
+          onClick={() => handleSortChange("updated")}
+        >
+          Updated {sortBy === "updated" && (sortAsc ? "↑" : "↓")}
+        </button>
+      </div>
+
       {groupedData.map((product) => {
         const productExpanded = expandedProducts.has(product.productName);
         const totalTickets = product.types.reduce((sum, t) => sum + t.tickets.length, 0);
@@ -742,6 +976,7 @@ function GroupedTicketView({ tickets, githubStatusMap }: { tickets: (Ticket | Mi
                 {product.types.map((type) => {
                   const typeKey = `${product.productName}-${type.typeName}`;
                   const typeExpanded = expandedTypes.has(typeKey);
+                  const sortedTypeTickets = sortTickets(type.tickets);
 
                   return (
                     <div key={typeKey} className="type-group">
@@ -756,8 +991,9 @@ function GroupedTicketView({ tickets, githubStatusMap }: { tickets: (Ticket | Mi
 
                       {typeExpanded && (
                         <div className="type-group-tickets">
-                          {type.tickets.map((ticket) => {
+                          {sortedTypeTickets.map((ticket) => {
                             const ticketGithubStatuses = githubStatusMap?.get(ticket.id);
+                            const age = calculateAge(ticket.created_at);
                             return (
                               <div
                                 key={ticket.id}
@@ -770,6 +1006,9 @@ function GroupedTicketView({ tickets, githubStatusMap }: { tickets: (Ticket | Mi
                                 <span className="ticket-id">
                                   #{ticket.id}
                                   {ticket.is_escalated && <span className="escalation-indicator" title="Escalated">!</span>}
+                                </span>
+                                <span className={`ticket-age ${getAgeClass(age)}`} title={`Created: ${formatDate(ticket.created_at)}`}>
+                                  {formatAge(age)}
                                 </span>
                                 <span className="ticket-subtype">{ticket.issue_subtype || ticket.module || "-"}</span>
                                 <span className="ticket-subject">{ticket.subject || "No subject"}</span>
