@@ -17,9 +17,12 @@ export function OrganizationDrilldown({ orgId, orgName, onClose }: Props) {
   const [ticketFilter, setTicketFilter] = useState<"all" | "feature" | "problem">("all");
   const [subscriptions, setSubscriptions] = useState<EnterpriseSubscription[]>([]);
   const [loadingSubscriptions, setLoadingSubscriptions] = useState(true);
-  const [githubStatusMap, setGitHubStatusMap] = useState<Map<number, GitHubDevelopmentStatus[]>>(new Map());
+  const [githubStatusMap, setGitHubStatusMap] = useState<Map<number, GitHubDevelopmentStatus[]> | null>(null);
 
   useEffect(() => {
+    // Reset GitHub status map when org changes
+    setGitHubStatusMap(null);
+
     async function loadDetails() {
       try {
         setLoading(true);
@@ -50,18 +53,30 @@ export function OrganizationDrilldown({ orgId, orgName, onClose }: Props) {
 
   // Fetch GitHub statuses when summary is loaded
   useEffect(() => {
-    if (summary && githubStatusMap.size === 0) {
+    if (summary && !githubStatusMap) {
       const allTicketIds = summary.productBreakdown
         .flatMap((p) => p.tickets)
         .map((t) => t.id);
 
       if (allTicketIds.length > 0) {
+        console.log(`[GitHub] Fetching statuses for ${allTicketIds.length} tickets`);
         fetchGitHubStatusForTickets(allTicketIds)
-          .then(setGitHubStatusMap)
-          .catch((err) => console.error("Failed to load GitHub statuses:", err));
+          .then((newMap) => {
+            console.log(`[GitHub] Received ${newMap.size} tickets with links`);
+            // Create complete map with all ticket IDs
+            const completeMap = new Map<number, GitHubDevelopmentStatus[]>();
+            for (const id of allTicketIds) {
+              completeMap.set(id, newMap.get(id) || []);
+            }
+            setGitHubStatusMap(completeMap);
+          })
+          .catch((err) => console.error("[GitHub] Failed to load GitHub statuses:", err));
+      } else {
+        // No tickets, set empty map to prevent re-fetching
+        setGitHubStatusMap(new Map());
       }
     }
-  }, [summary, githubStatusMap.size]);
+  }, [summary, githubStatusMap]);
 
   const filterTickets = (tickets: Ticket[], filter: typeof ticketFilter): Ticket[] => {
     if (filter === "all") return tickets;
@@ -178,7 +193,7 @@ interface ProductCardProps {
   onToggle: () => void;
   ticketFilter: "all" | "feature" | "problem";
   filterTickets: (tickets: Ticket[], filter: "all" | "feature" | "problem") => Ticket[];
-  githubStatusMap: Map<number, GitHubDevelopmentStatus[]>;
+  githubStatusMap: Map<number, GitHubDevelopmentStatus[]> | null;
 }
 
 function ProductCard({ product, expanded, onToggle, ticketFilter, filterTickets, githubStatusMap }: ProductCardProps) {
@@ -253,7 +268,7 @@ function ProductCard({ product, expanded, onToggle, ticketFilter, filterTickets,
             ) : (
               <ul>
                 {filteredTickets.slice(0, 10).map((ticket) => {
-                  const githubStatuses = githubStatusMap.get(ticket.id);
+                  const githubStatuses = githubStatusMap?.get(ticket.id);
                   return (
                     <li key={ticket.id}>
                       <a
