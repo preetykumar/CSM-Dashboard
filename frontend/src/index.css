@@ -2952,6 +2952,97 @@ header .hint {
 }
 
 /* ============================================
+   Generic GitHub Status Pill Styles
+   (Works in CSM, PM, Customer drilldown views)
+   ============================================ */
+
+.github-links {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-left: 8px;
+}
+
+.github-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.15s;
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
+.github-status-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.github-status-pill .gh-icon {
+  font-weight: 700;
+  font-size: 0.65rem;
+  opacity: 0.7;
+}
+
+.github-status-pill .gh-status {
+  text-transform: capitalize;
+}
+
+/* Status-specific colors for GitHub pills */
+.github-status-pill.status-done,
+.github-status-pill.status-released,
+.github-status-pill.status-devdone,
+.github-status-pill.status-waiting-for-release {
+  background: #d1fae5;
+  color: #059669;
+}
+
+.github-status-pill.status-in-progress {
+  background: #dbeafe;
+  color: #2563eb;
+}
+
+.github-status-pill.status-ready-for-review,
+.github-status-pill.status-review,
+.github-status-pill.status-qa {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.github-status-pill.status-backlog,
+.github-status-pill.status-todo,
+.github-status-pill.status-product-backlog {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.github-status-pill.status-blocked {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.github-status-pill.status-archived {
+  background: #e5e7eb;
+  color: #9ca3af;
+}
+
+.github-status-pill.status-accepted,
+.github-status-pill.status-submitted {
+  background: #ede9fe;
+  color: #7c3aed;
+}
+
+.github-status-pill.status-unknown,
+.github-status-pill.status-linked {
+  background: #e5e7eb;
+  color: #6b7280;
+}
+
+/* ============================================
    Escalation Styles
    ============================================ */
 
