@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { fetchDetailedCustomerSummary, fetchEnterpriseSubscriptionsByName, EnterpriseSubscription } from "../services/api";
+import { fetchDetailedCustomerSummary, fetchEnterpriseSubscriptionsByName, fetchGitHubStatusForTickets, EnterpriseSubscription } from "../services/api";
 import { LicenseBanner } from "./LicenseBanner";
-import type { DetailedCustomerSummary, ProductStats, Ticket } from "../types";
+import type { DetailedCustomerSummary, ProductStats, Ticket, GitHubDevelopmentStatus } from "../types";
 
 interface Props {
   orgId: number;
@@ -17,6 +17,7 @@ export function OrganizationDrilldown({ orgId, orgName, onClose }: Props) {
   const [ticketFilter, setTicketFilter] = useState<"all" | "feature" | "problem">("all");
   const [subscriptions, setSubscriptions] = useState<EnterpriseSubscription[]>([]);
   const [loadingSubscriptions, setLoadingSubscriptions] = useState(true);
+  const [githubStatusMap, setGitHubStatusMap] = useState<Map<number, GitHubDevelopmentStatus[]>>(new Map());
 
   useEffect(() => {
     async function loadDetails() {
@@ -46,6 +47,21 @@ export function OrganizationDrilldown({ orgId, orgName, onClose }: Props) {
     loadDetails();
     loadSubscriptions();
   }, [orgId, orgName]);
+
+  // Fetch GitHub statuses when summary is loaded
+  useEffect(() => {
+    if (summary && githubStatusMap.size === 0) {
+      const allTicketIds = summary.productBreakdown
+        .flatMap((p) => p.tickets)
+        .map((t) => t.id);
+
+      if (allTicketIds.length > 0) {
+        fetchGitHubStatusForTickets(allTicketIds)
+          .then(setGitHubStatusMap)
+          .catch((err) => console.error("Failed to load GitHub statuses:", err));
+      }
+    }
+  }, [summary, githubStatusMap.size]);
 
   const filterTickets = (tickets: Ticket[], filter: typeof ticketFilter): Ticket[] => {
     if (filter === "all") return tickets;
@@ -143,6 +159,7 @@ export function OrganizationDrilldown({ orgId, orgName, onClose }: Props) {
                       }
                       ticketFilter={ticketFilter}
                       filterTickets={filterTickets}
+                      githubStatusMap={githubStatusMap}
                     />
                   ))}
                 </div>
@@ -161,9 +178,10 @@ interface ProductCardProps {
   onToggle: () => void;
   ticketFilter: "all" | "feature" | "problem";
   filterTickets: (tickets: Ticket[], filter: "all" | "feature" | "problem") => Ticket[];
+  githubStatusMap: Map<number, GitHubDevelopmentStatus[]>;
 }
 
-function ProductCard({ product, expanded, onToggle, ticketFilter, filterTickets }: ProductCardProps) {
+function ProductCard({ product, expanded, onToggle, ticketFilter, filterTickets, githubStatusMap }: ProductCardProps) {
   const filteredTickets = filterTickets(product.tickets, ticketFilter);
 
   return (
@@ -234,13 +252,40 @@ function ProductCard({ product, expanded, onToggle, ticketFilter, filterTickets 
               <p className="no-tickets">No tickets match the current filter</p>
             ) : (
               <ul>
-                {filteredTickets.slice(0, 10).map((ticket) => (
-                  <li key={ticket.id}>
-                    <span className="ticket-id">#{ticket.id}</span>
-                    <span className="ticket-subject">{ticket.subject || "No subject"}</span>
-                    <span className={`ticket-status ${ticket.status}`}>{ticket.status}</span>
-                  </li>
-                ))}
+                {filteredTickets.slice(0, 10).map((ticket) => {
+                  const githubStatuses = githubStatusMap.get(ticket.id);
+                  return (
+                    <li key={ticket.id}>
+                      <a
+                        href={ticket.url || `https://dequehelp.zendesk.com/agent/tickets/${ticket.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ticket-id"
+                      >
+                        #{ticket.id}
+                      </a>
+                      <span className="ticket-subject">{ticket.subject || "No subject"}</span>
+                      <span className={`ticket-status ${ticket.status}`}>{ticket.status}</span>
+                      {githubStatuses && githubStatuses.length > 0 && (
+                        <span className="github-links">
+                          {githubStatuses.map((gh, idx) => (
+                            <a
+                              key={idx}
+                              href={gh.githubUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`github-status-pill status-${gh.projectStatus?.toLowerCase().replace(/\s+/g, "-") || "unknown"}`}
+                              title={`${gh.repoName}#${gh.issueNumber}`}
+                            >
+                              <span className="gh-icon">GH</span>
+                              <span className="gh-status">{gh.projectStatus || "Linked"}</span>
+                            </a>
+                          ))}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
                 {filteredTickets.length > 10 && (
                   <li className="more-tickets">
                     ... and {filteredTickets.length - 10} more tickets

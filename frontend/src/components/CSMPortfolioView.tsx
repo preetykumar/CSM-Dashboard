@@ -253,36 +253,27 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
     }
   }, [expanded, enhancedSummary, loadingEnhanced, primaryOrgId, subscriptions.length, loadingSubscriptions, accountName]);
 
-  // Fetch GitHub statuses when enhanced summary is loaded
+  // Fetch GitHub statuses for ALL tickets when card is expanded
   useEffect(() => {
-    if (enhancedSummary && !githubStatusMap) {
-      // Get all ticket IDs from the backlog
-      const ticketIds = enhancedSummary.backlog
-        .flatMap((p) => p.modules)
-        .flatMap((m) => m.tickets)
-        .map((t) => t.id);
+    if (expanded && !githubStatusMap && tickets.length > 0) {
+      // Get all ticket IDs from the customer's portfolio
+      const ticketIds = tickets.map((t) => t.id);
 
-      console.log(`[GitHub] Fetching statuses for ${ticketIds.length} backlog tickets:`, ticketIds.slice(0, 5), ticketIds.length > 5 ? '...' : '');
+      console.log(`[GitHub] Fetching statuses for ${ticketIds.length} tickets`);
 
-      if (ticketIds.length > 0) {
-        fetchGitHubStatusForTickets(ticketIds)
-          .then((newMap) => {
-            console.log(`[GitHub] Received ${newMap.size} tickets with links`);
-            // Ensure all requested tickets are in the map (empty array for those without links)
-            const completeMap = new Map<number, GitHubDevelopmentStatus[]>();
-            for (const id of ticketIds) {
-              completeMap.set(id, newMap.get(id) || []);
-            }
-            setGitHubStatusMap(completeMap);
-          })
-          .catch((err) => console.error("[GitHub] Failed to load GitHub statuses:", err));
-      } else {
-        // No tickets to fetch, set empty map to prevent re-fetching
-        console.log("[GitHub] No backlog tickets to fetch GitHub statuses for");
-        setGitHubStatusMap(new Map());
-      }
+      fetchGitHubStatusForTickets(ticketIds)
+        .then((newMap) => {
+          console.log(`[GitHub] Received ${newMap.size} tickets with links`);
+          // Ensure all requested tickets are in the map (empty array for those without links)
+          const completeMap = new Map<number, GitHubDevelopmentStatus[]>();
+          for (const id of ticketIds) {
+            completeMap.set(id, newMap.get(id) || []);
+          }
+          setGitHubStatusMap(completeMap);
+        })
+        .catch((err) => console.error("[GitHub] Failed to load GitHub statuses:", err));
     }
-  }, [enhancedSummary, githubStatusMap]);
+  }, [expanded, githubStatusMap, tickets]);
 
   const handleModuleClick = (productName: string, moduleName: string, moduleTickets: Ticket[]) => {
     setDrilldownTickets({ title: `${productName} - ${moduleName}`, tickets: moduleTickets });
