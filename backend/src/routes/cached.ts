@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { DatabaseService, CachedTicket } from "../services/database.js";
-import type { CustomerSummary, CSMPortfolio, CSMCustomerSummary, Ticket, Organization, EnhancedCustomerSummary, VelocitySnapshot, ProductBacklog, ModuleSummary, QuarterlySummary } from "../types/index.js";
+import type { CustomerSummary, CSMPortfolio, PMPortfolio, CSMCustomerSummary, Ticket, Organization, EnhancedCustomerSummary, VelocitySnapshot, ProductBacklog, ModuleSummary, QuarterlySummary } from "../types/index.js";
 
 // Admin users who can see all CSM portfolios
 const ADMIN_EMAILS = [
@@ -706,6 +706,140 @@ export function createCachedRoutes(db: DatabaseService): Router {
     } catch (error) {
       console.error("Error fetching cached CSM portfolios:", error);
       res.status(500).json({ error: "Failed to fetch CSM portfolios" });
+    }
+  });
+
+  // Get PM portfolios from cache (with ticket summaries and usage analytics)
+  router.get("/pm-portfolios", async (req: Request, res: Response) => {
+    try {
+      const userEmail = req.user?.email;
+      const userIsAdmin = isAdmin(userEmail);
+      let pmPortfolios;
+
+      if (userIsAdmin) {
+        // Admin users can see all PM portfolios
+        pmPortfolios = db.getPMPortfolios();
+        console.log(`Admin ${userEmail}: viewing all ${pmPortfolios.length} PM portfolios`);
+      } else if (userEmail) {
+        // Regular users only see their own portfolio if they are a PM
+        const myPortfolio = db.getPMPortfolioByEmail(userEmail);
+        pmPortfolios = myPortfolio ? [myPortfolio] : [];
+        console.log(`PM portfolio for ${userEmail}: ${myPortfolio ? myPortfolio.org_ids.length : 0} customers`);
+      } else {
+        // No authentication - return all portfolios (for backwards compatibility)
+        pmPortfolios = db.getPMPortfolios();
+      }
+
+      const portfolios: PMPortfolio[] = [];
+
+      for (const portfolio of pmPortfolios) {
+        const customers: CSMCustomerSummary[] = [];
+        let totalTickets = 0;
+        let openTickets = 0;
+
+        for (const orgId of portfolio.org_ids) {
+          const org = db.getOrganization(orgId);
+          if (!org) continue;
+
+          const tickets = db.getTicketsByOrganization(orgId);
+          const ticketStats = db.getTicketStats(orgId);
+
+          // Count feature requests, problem reports, and priority breakdown
+          let featureRequests = 0;
+          let problemReports = 0;
+          let escalations = 0;
+          const priorityBreakdown = { urgent: 0, high: 0, normal: 0, low: 0 };
+
+          for (const t of tickets) {
+            if (t.ticket_type === "feature") featureRequests++;
+            else if (t.ticket_type === "bug") problemReports++;
+
+            // Count escalations (only open/active tickets)
+            if (t.is_escalated && !["solved", "closed"].includes(t.status)) {
+              escalations++;
+            }
+
+            // Count by priority (only open/active tickets)
+            if (!["solved", "closed"].includes(t.status)) {
+              const priority = t.priority || "normal";
+              if (priority === "urgent") priorityBreakdown.urgent++;
+              else if (priority === "high") priorityBreakdown.high++;
+              else if (priority === "low") priorityBreakdown.low++;
+              else priorityBreakdown.normal++;
+            }
+          }
+
+          customers.push({
+            organization: {
+              id: org.id,
+              url: "",
+              name: org.salesforce_account_name || org.name,
+              domain_names: JSON.parse(org.domain_names || "[]"),
+              salesforce_account_name: org.salesforce_account_name || undefined,
+              created_at: org.created_at,
+              updated_at: org.updated_at,
+            },
+            // Send minimal ticket data for filtering - full details fetched on demand
+            tickets: tickets.map((t) => ({
+              id: t.id,
+              subject: t.subject,
+              status: t.status,
+              priority: t.priority,
+              ticket_type: t.ticket_type || undefined,
+              is_escalated: t.is_escalated === 1,
+              product: t.product || undefined,
+              module: t.module || undefined,
+              issue_subtype: t.issue_subtype || undefined,
+              created_at: t.created_at,
+              updated_at: t.updated_at,
+              url: `https://dequehelp.zendesk.com/agent/tickets/${t.id}`,
+            })),
+            ticketStats,
+            featureRequests,
+            problemReports,
+            priorityBreakdown,
+            escalations,
+          });
+
+          totalTickets += ticketStats.total;
+          openTickets += ticketStats.new + ticketStats.open + ticketStats.pending + ticketStats.hold;
+        }
+
+        // Sort customers by total tickets (highest first)
+        customers.sort((a, b) => b.ticketStats.total - a.ticketStats.total);
+
+        if (customers.length > 0) {
+          portfolios.push({
+            pm: {
+              id: 0,
+              url: "",
+              name: portfolio.pm_name,
+              email: portfolio.pm_email,
+              role: "agent",
+              created_at: "",
+              updated_at: "",
+            },
+            customers,
+            totalTickets,
+            openTickets,
+            totalCustomers: customers.length,
+          });
+        }
+      }
+
+      // Sort portfolios by total tickets (highest first)
+      portfolios.sort((a, b) => b.totalTickets - a.totalTickets);
+
+      res.json({
+        portfolios,
+        count: portfolios.length,
+        cached: true,
+        isAdmin: userIsAdmin,
+        filteredByUser: !!userEmail,
+      });
+    } catch (error) {
+      console.error("Error fetching cached PM portfolios:", error);
+      res.status(500).json({ error: "Failed to fetch PM portfolios" });
     }
   });
 

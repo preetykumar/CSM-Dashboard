@@ -40,6 +40,12 @@ interface SFAccount {
     Name: string;
     Email: string;
   };
+  Project_Manager__c?: string;
+  Project_Manager__r?: {
+    Id: string;
+    Name: string;
+    Email: string;
+  };
   OwnerId?: string;
   Owner?: {
     Id: string;
@@ -60,6 +66,14 @@ export interface CSMAssignment {
   csmId: string;
   csmName: string;
   csmEmail: string;
+}
+
+export interface PMAssignment {
+  accountId: string;
+  accountName: string;
+  pmId: string;
+  pmName: string;
+  pmEmail: string;
 }
 
 export interface EnterpriseSubscription {
@@ -366,6 +380,34 @@ export class SalesforceService {
         console.error("Fallback query also failed:", fallbackError);
         throw fallbackError;
       }
+    }
+  }
+
+  async getProjectManagerAssignments(): Promise<PMAssignment[]> {
+    console.log("Fetching Project Manager assignments from Salesforce...");
+
+    // Query accounts with Project Manager assignment using the Project_Manager__c field
+    try {
+      const accounts = await this.query<SFAccount>(`
+        SELECT Id, Name, Project_Manager__c, Project_Manager__r.Id,
+               Project_Manager__r.Name, Project_Manager__r.Email
+        FROM Account
+        WHERE Project_Manager__c != null
+      `);
+
+      console.log(`Found ${accounts.length} accounts with Project Manager assignments`);
+
+      return accounts.map((account) => ({
+        accountId: account.Id,
+        accountName: account.Name,
+        pmId: account.Project_Manager__r?.Id || account.Project_Manager__c || "",
+        pmName: account.Project_Manager__r?.Name || "",
+        pmEmail: account.Project_Manager__r?.Email || "",
+      }));
+    } catch (error) {
+      console.error("Error fetching Project Manager assignments:", error);
+      // Return empty array if field doesn't exist or query fails
+      return [];
     }
   }
 

@@ -4,6 +4,7 @@ import { SyncButton } from "./components/SyncButton";
 import { CustomerSummaryCard } from "./components/CustomerSummaryCard";
 import { OrganizationDrilldown } from "./components/OrganizationDrilldown";
 import { CSMPortfolioView } from "./components/CSMPortfolioView";
+import { PMPortfolioView } from "./components/PMPortfolioView";
 import { ProductView } from "./components/ProductView";
 import { TicketListModal } from "./components/TicketListModal";
 import { LoginPage } from "./components/LoginPage";
@@ -19,7 +20,7 @@ import { ChatProvider } from "./contexts/ChatContext";
 import type { CustomerSummary, Organization } from "./types";
 
 type MainTab = "support" | "usage" | "renewals";
-type SupportSubTab = "customers" | "csm" | "product";
+type SupportSubTab = "customers" | "csm" | "pm" | "product";
 type UsageSubTab = "customers" | "csm";
 type RenewalsSubTab = "upcoming" | "prs";
 type SmartFilter = "all" | "escalated" | "critical";
@@ -266,6 +267,12 @@ function Dashboard() {
                 By CSM (QBR View)
               </button>
               <button
+                className={supportSubTab === "pm" ? "active" : ""}
+                onClick={() => setSupportSubTab("pm")}
+              >
+                By PM (Reports)
+              </button>
+              <button
                 className={supportSubTab === "product" ? "active" : ""}
                 onClick={() => setSupportSubTab("product")}
               >
@@ -362,6 +369,9 @@ function Dashboard() {
             )}
             {supportSubTab === "csm" && (
               <p className="hint">View tickets grouped by CSM and their customer portfolio</p>
+            )}
+            {supportSubTab === "pm" && (
+              <p className="hint">View tickets and analytics grouped by Project Manager for report compilation</p>
             )}
             {supportSubTab === "product" && (
               <p className="hint">View tickets grouped by product, request type, and issue subtype</p>
@@ -510,9 +520,12 @@ function Dashboard() {
         )}
       </div>
 
-      {/* Support Tickets - CSM and Product views */}
+      {/* Support Tickets - CSM, PM and Product views */}
       <div style={{ display: mainTab === "support" && supportSubTab === "csm" ? "block" : "none" }}>
         <CSMPortfolioView />
+      </div>
+      <div style={{ display: mainTab === "support" && supportSubTab === "pm" ? "block" : "none" }}>
+        <PMPortfolioView />
       </div>
       <div style={{ display: mainTab === "support" && supportSubTab === "product" ? "block" : "none" }}>
         <ProductView />

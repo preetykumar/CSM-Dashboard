@@ -1,4 +1,4 @@
-import type { CustomerSummary, DetailedCustomerSummary, Organization, Ticket, CSMPortfolio, EnhancedCustomerSummary, GitHubDevelopmentStatus } from "../types";
+import type { CustomerSummary, DetailedCustomerSummary, Organization, Ticket, CSMPortfolio, PMPortfolio, EnhancedCustomerSummary, GitHubDevelopmentStatus } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -81,6 +81,22 @@ export async function fetchCSMPortfolio(csmId: number): Promise<CSMPortfolio> {
   const res = await fetch(`${API_BASE}/csm/portfolios/${csmId}`, fetchOptions);
   if (!res.ok) throw new Error("Failed to fetch CSM portfolio");
   return res.json();
+}
+
+// PM Portfolio APIs
+export interface PMPortfoliosResponse {
+  portfolios: PMPortfolio[];
+  count: number;
+  cached: boolean;
+  isAdmin: boolean;
+  filteredByUser: boolean;
+}
+
+export async function fetchPMPortfolios(): Promise<PMPortfoliosResponse> {
+  const res = await fetch(`${API_BASE}/organizations/pm-portfolios`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch PM portfolios");
+  const data = await res.json();
+  return data;
 }
 
 // Enhanced Customer Summary API

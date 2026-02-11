@@ -44,6 +44,15 @@ export interface CachedCSMAssignment {
   zendesk_org_id: number | null;
 }
 
+export interface CachedPMAssignment {
+  account_id: string;
+  account_name: string;
+  pm_id: string;
+  pm_name: string;
+  pm_email: string;
+  zendesk_org_id: number | null;
+}
+
 export interface SyncStatus {
   type: string;
   last_sync: string;
@@ -139,6 +148,16 @@ export class DatabaseService {
         csm_id TEXT NOT NULL,
         csm_name TEXT NOT NULL,
         csm_email TEXT NOT NULL,
+        zendesk_org_id INTEGER,
+        cached_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS pm_assignments (
+        account_id TEXT PRIMARY KEY,
+        account_name TEXT NOT NULL,
+        pm_id TEXT NOT NULL,
+        pm_name TEXT NOT NULL,
+        pm_email TEXT NOT NULL,
         zendesk_org_id INTEGER,
         cached_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
@@ -552,6 +571,98 @@ export class DatabaseService {
     const row = this.db.prepare(`
       SELECT * FROM csm_assignments WHERE zendesk_org_id = ?
     `).get(orgId) as CachedCSMAssignment | undefined;
+    return row || null;
+  }
+
+  // Project Manager Assignment Methods
+  upsertPMAssignments(assignments: CachedPMAssignment[]): void {
+    // Clear existing assignments first
+    this.db.prepare("DELETE FROM pm_assignments").run();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO pm_assignments (account_id, account_name, pm_id, pm_name, pm_email, zendesk_org_id, cached_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+    const transaction = this.db.transaction((assignments: CachedPMAssignment[]) => {
+      for (const a of assignments) {
+        stmt.run(a.account_id, a.account_name, a.pm_id, a.pm_name, a.pm_email, a.zendesk_org_id);
+      }
+    });
+    transaction(assignments);
+  }
+
+  getPMAssignments(): CachedPMAssignment[] {
+    return this.db.prepare("SELECT * FROM pm_assignments ORDER BY pm_name, account_name").all() as CachedPMAssignment[];
+  }
+
+  getPMPortfolios(): { pm_email: string; pm_name: string; org_ids: number[] }[] {
+    // Group by pm_name to consolidate PMs with multiple Salesforce IDs/emails
+    // Prefer @deque.com emails, fall back to any email
+    const rows = this.db.prepare(`
+      SELECT
+        pm_name,
+        GROUP_CONCAT(DISTINCT zendesk_org_id) as org_ids,
+        GROUP_CONCAT(DISTINCT pm_email) as emails
+      FROM pm_assignments
+      WHERE zendesk_org_id IS NOT NULL
+      GROUP BY pm_name
+      ORDER BY pm_name
+    `).all() as any[];
+
+    return rows.map((row) => {
+      // Pick the best email (prefer @deque.com)
+      const emails = row.emails ? row.emails.split(",") : [];
+      const dequeEmail = emails.find((e: string) => e.toLowerCase().endsWith("@deque.com"));
+      const pm_email = dequeEmail || emails[0] || "";
+
+      return {
+        pm_email,
+        pm_name: row.pm_name,
+        org_ids: row.org_ids ? row.org_ids.split(",").map(Number) : [],
+      };
+    });
+  }
+
+  // Get portfolio for a specific PM by email
+  getPMPortfolioByEmail(email: string): { pm_email: string; pm_name: string; org_ids: number[] } | null {
+    // First, find the PM name for this email
+    const pmName = this.db.prepare(`
+      SELECT pm_name FROM pm_assignments WHERE LOWER(pm_email) = LOWER(?) LIMIT 1
+    `).get(email) as { pm_name: string } | undefined;
+
+    if (!pmName) return null;
+
+    // Then get all accounts for this PM (by name, to include all their Salesforce IDs)
+    const rows = this.db.prepare(`
+      SELECT
+        pm_name,
+        GROUP_CONCAT(DISTINCT zendesk_org_id) as org_ids,
+        GROUP_CONCAT(DISTINCT pm_email) as emails
+      FROM pm_assignments
+      WHERE zendesk_org_id IS NOT NULL AND pm_name = ?
+      GROUP BY pm_name
+    `).all(pmName.pm_name) as any[];
+
+    if (rows.length === 0) return null;
+
+    const row = rows[0];
+    // Prefer @deque.com email
+    const emails = row.emails ? row.emails.split(",") : [];
+    const dequeEmail = emails.find((e: string) => e.toLowerCase().endsWith("@deque.com"));
+    const pm_email = dequeEmail || emails[0] || email;
+
+    return {
+      pm_email,
+      pm_name: row.pm_name,
+      org_ids: row.org_ids ? row.org_ids.split(",").map(Number) : [],
+    };
+  }
+
+  // Get PM assignment details for an organization
+  getPMAssignmentByOrgId(orgId: number): CachedPMAssignment | null {
+    const row = this.db.prepare(`
+      SELECT * FROM pm_assignments WHERE zendesk_org_id = ?
+    `).get(orgId) as CachedPMAssignment | undefined;
     return row || null;
   }
 

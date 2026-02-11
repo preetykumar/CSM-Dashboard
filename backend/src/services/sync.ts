@@ -1,6 +1,6 @@
-import { DatabaseService, CachedOrganization, CachedTicket, CachedCSMAssignment, CachedGitHubLink } from "./database.js";
+import { DatabaseService, CachedOrganization, CachedTicket, CachedCSMAssignment, CachedPMAssignment, CachedGitHubLink } from "./database.js";
 import { ZendeskService } from "./zendesk.js";
-import { SalesforceService, CSMAssignment } from "./salesforce.js";
+import { SalesforceService, CSMAssignment, PMAssignment } from "./salesforce.js";
 import { GitHubService } from "./github.js";
 import type { Organization, Ticket } from "../types/index.js";
 
@@ -29,7 +29,7 @@ export class SyncService {
     this.github = github;
   }
 
-  async syncAll(): Promise<{ organizations: number; tickets: number; csmAssignments: number; githubLinks: number }> {
+  async syncAll(): Promise<{ organizations: number; tickets: number; csmAssignments: number; pmAssignments: number; githubLinks: number }> {
     if (this.isSyncing) {
       throw new Error("Sync already in progress");
     }
@@ -41,11 +41,12 @@ export class SyncService {
       const orgCount = await this.syncOrganizations();
       const ticketCount = await this.syncTickets();
       const csmCount = this.salesforce ? await this.syncCSMAssignments() : 0;
+      const pmCount = this.salesforce ? await this.syncPMAssignments() : 0;
       const githubCount = this.github ? await this.syncGitHubLinks() : 0;
 
-      console.log(`Sync complete: ${orgCount} orgs, ${ticketCount} tickets, ${csmCount} CSM assignments, ${githubCount} GitHub links`);
+      console.log(`Sync complete: ${orgCount} orgs, ${ticketCount} tickets, ${csmCount} CSM assignments, ${pmCount} PM assignments, ${githubCount} GitHub links`);
 
-      return { organizations: orgCount, tickets: ticketCount, csmAssignments: csmCount, githubLinks: githubCount };
+      return { organizations: orgCount, tickets: ticketCount, csmAssignments: csmCount, pmAssignments: pmCount, githubLinks: githubCount };
     } finally {
       this.isSyncing = false;
     }
@@ -436,6 +437,110 @@ export class SyncService {
       const message = error instanceof Error ? error.message : "Unknown error";
       this.db.updateSyncStatus("csm_assignments", "error", 0, message);
       throw error;
+    }
+  }
+
+  async syncPMAssignments(): Promise<number> {
+    if (!this.salesforce) {
+      console.log("Salesforce not configured, skipping PM sync");
+      return 0;
+    }
+
+    console.log("Syncing Project Manager assignments from Salesforce...");
+    this.db.updateSyncStatus("pm_assignments", "in_progress", 0);
+
+    try {
+      const assignments = await this.salesforce.getProjectManagerAssignments();
+
+      if (assignments.length === 0) {
+        console.log("No Project Manager assignments found (Project_Manager__c field may not exist)");
+        this.db.updateSyncStatus("pm_assignments", "success", 0);
+        return 0;
+      }
+
+      // Get organizations for matching
+      const orgs = this.db.getOrganizations();
+
+      // Primary: Build a map of Salesforce ID -> Zendesk org
+      const sfIdToOrg = new Map<string, CachedOrganization>();
+      for (const org of orgs) {
+        if (org.salesforce_id) {
+          sfIdToOrg.set(org.salesforce_id, org);
+        }
+      }
+
+      console.log(`Matching PM assignments using ${sfIdToOrg.size} orgs with Salesforce ID`);
+
+      let matchedBySfId = 0;
+      let matchedByName = 0;
+
+      // Match Salesforce accounts to Zendesk organizations
+      const cachedAssignments: CachedPMAssignment[] = assignments.map((a) => {
+        let primaryZendeskOrg: CachedOrganization | undefined;
+
+        // Primary: Match by Salesforce Account ID
+        primaryZendeskOrg = sfIdToOrg.get(a.accountId);
+        if (primaryZendeskOrg) {
+          matchedBySfId++;
+        }
+
+        // Fallback: Match by name pattern (same logic as CSM)
+        if (!primaryZendeskOrg) {
+          const accountNameLower = normalizeAccents(a.accountName.toLowerCase().trim());
+          const accountNameNormalized = accountNameLower
+            .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
+            .trim();
+
+          for (const org of orgs) {
+            if (org.salesforce_id === a.accountId) continue;
+
+            const orgNameLower = normalizeAccents(org.name.toLowerCase().trim());
+            const orgNameNormalized = orgNameLower
+              .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
+              .replace(/\s*-\s*(corp|enterprise|wfn|llc|inc)$/i, "")
+              .trim();
+
+            const escapedAccountName = accountNameNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const isMatch =
+              orgNameNormalized === accountNameNormalized ||
+              orgNameLower === accountNameLower ||
+              (accountNameNormalized.length >= 3 && orgNameNormalized.startsWith(accountNameNormalized)) ||
+              (accountNameNormalized.length >= 4 && new RegExp(`\\b${escapedAccountName}\\b`, 'i').test(orgNameLower));
+
+            if (isMatch && !primaryZendeskOrg) {
+              primaryZendeskOrg = org;
+              matchedByName++;
+              break;
+            }
+          }
+        }
+
+        return {
+          account_id: a.accountId,
+          account_name: a.accountName,
+          pm_id: a.pmId,
+          pm_name: a.pmName,
+          pm_email: a.pmEmail,
+          zendesk_org_id: primaryZendeskOrg?.id || null,
+        };
+      });
+
+      this.db.upsertPMAssignments(cachedAssignments);
+
+      const matchedCount = cachedAssignments.filter((a) => a.zendesk_org_id !== null).length;
+      console.log(`Synced ${assignments.length} PM assignments:`);
+      console.log(`  - ${matchedBySfId} matched by Salesforce ID`);
+      console.log(`  - ${matchedByName} matched by name (fallback)`);
+      console.log(`  - ${assignments.length - matchedCount} unmatched`);
+
+      this.db.updateSyncStatus("pm_assignments", "success", assignments.length);
+      return assignments.length;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error("Error syncing PM assignments:", message);
+      this.db.updateSyncStatus("pm_assignments", "error", 0, message);
+      // Don't throw - PM sync failure shouldn't break the entire sync
+      return 0;
     }
   }
 

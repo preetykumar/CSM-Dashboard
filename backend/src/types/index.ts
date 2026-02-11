@@ -176,6 +176,14 @@ export interface CSMPortfolio {
   totalCustomers: number;
 }
 
+export interface PMPortfolio {
+  pm: User;
+  customers: CSMCustomerSummary[];
+  totalTickets: number;
+  openTickets: number;
+  totalCustomers: number;
+}
+
 // Enhanced CSM Customer Summary types
 
 export interface VelocitySnapshot {
