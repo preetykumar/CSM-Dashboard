@@ -3,7 +3,7 @@ import { fetchCSMPortfolios, fetchEnhancedCustomerSummary, fetchGitHubStatusForT
 import { VelocityBanner } from "./VelocityBanner";
 import { ProductBacklogCard } from "./ProductBacklogCard";
 import { QuarterlySummaryCard } from "./QuarterlySummaryCard";
-import { LicenseBanner } from "./LicenseBanner";
+import { SubscriptionSummary } from "./SubscriptionSummary";
 import { Pagination, usePagination } from "./Pagination";
 import type { CSMPortfolio, CSMCustomerSummary, Ticket, MinimalTicket, EnhancedCustomerSummary, GitHubDevelopmentStatus, Organization } from "../types";
 
@@ -448,12 +448,11 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
 
       {expanded && (
         <div className="customer-details">
-          {/* License Banner */}
-          <LicenseBanner
+          {/* Subscription Summary */}
+          <SubscriptionSummary
             subscriptions={subscriptions}
             loading={loadingSubscriptions}
             accountName={!loadingSubscriptions && subscriptions.length === 0 ? accountName : undefined}
-            compact
           />
 
           {loadingEnhanced ? (

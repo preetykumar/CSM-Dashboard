@@ -51,6 +51,29 @@ const groupOrder: Record<string, number> = {
 // Groups that don't have license/assignment tracking (show simplified view)
 const simplifiedGroups = new Set(["Other"]);
 
+// Format date for display
+function formatDate(dateStr: string): string {
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+// Check if subscription is expiring soon (within 90 days)
+function isExpiringSoon(endDate: string): boolean {
+  if (!endDate) return false;
+  const end = new Date(endDate);
+  const now = new Date();
+  const daysUntilExpiry = (end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+  return daysUntilExpiry <= 90 && daysUntilExpiry > 0;
+}
+
+// Check if subscription is expired
+function isExpired(endDate: string): boolean {
+  if (!endDate) return false;
+  const end = new Date(endDate);
+  return end < new Date();
+}
+
 // Get user-friendly product name
 function getProductDisplayName(productType: string): string {
   const mapping = productMapping[productType.toLowerCase()];
@@ -150,6 +173,8 @@ export function LicenseBanner({ subscriptions, loading, accountName, compact }: 
                         </>
                       )}
                       <th>Environment</th>
+                      <th>Start Date</th>
+                      <th>End Date</th>
                       {group.groupName === "Axe Monitor" && (
                         <>
                           <th>Pages</th>
@@ -159,30 +184,46 @@ export function LicenseBanner({ subscriptions, loading, accountName, compact }: 
                     </tr>
                   </thead>
                   <tbody>
-                    {group.subscriptions.map((sub) => (
-                      <tr
-                        key={sub.id}
-                        className={!isSimplified && sub.percentageAssigned < 50 ? "low-usage" : !isSimplified && sub.percentageAssigned >= 90 ? "high-usage" : ""}
-                      >
-                        <td className="product-name">{getProductDisplayName(sub.productType)}</td>
-                        {!isSimplified && (
-                          <>
-                            <td className="license-count">{sub.licenseCount.toLocaleString()}</td>
-                            <td className="assigned-seats">{sub.assignedSeats.toLocaleString()}</td>
-                            <td className={`percentage ${sub.percentageAssigned < 50 ? "low" : sub.percentageAssigned >= 90 ? "high" : ""}`}>
-                              {sub.percentageAssigned.toFixed(1)}%
-                            </td>
-                          </>
-                        )}
-                        <td className="environment">{sub.environment}</td>
-                        {group.groupName === "Axe Monitor" && (
-                          <>
-                            <td className="monitor-pages">{sub.monitorPageCount?.toLocaleString() || "-"}</td>
-                            <td className="monitor-projects">{sub.monitorProjectCount?.toLocaleString() || "-"}</td>
-                          </>
-                        )}
-                      </tr>
-                    ))}
+                    {group.subscriptions.map((sub) => {
+                      const expired = isExpired(sub.endDate);
+                      const expiringSoon = isExpiringSoon(sub.endDate);
+                      const rowClass = expired
+                        ? "expired"
+                        : expiringSoon
+                        ? "expiring-soon"
+                        : !isSimplified && sub.percentageAssigned < 50
+                        ? "low-usage"
+                        : !isSimplified && sub.percentageAssigned >= 90
+                        ? "high-usage"
+                        : "";
+
+                      return (
+                        <tr key={sub.id} className={rowClass}>
+                          <td className="product-name">{getProductDisplayName(sub.productType)}</td>
+                          {!isSimplified && (
+                            <>
+                              <td className="license-count">{sub.licenseCount.toLocaleString()}</td>
+                              <td className="assigned-seats">{sub.assignedSeats.toLocaleString()}</td>
+                              <td className={`percentage ${sub.percentageAssigned < 50 ? "low" : sub.percentageAssigned >= 90 ? "high" : ""}`}>
+                                {sub.percentageAssigned.toFixed(1)}%
+                              </td>
+                            </>
+                          )}
+                          <td className="environment">{sub.environment}</td>
+                          <td className="start-date">{formatDate(sub.startDate)}</td>
+                          <td className={`end-date ${expired ? "expired" : expiringSoon ? "expiring-soon" : ""}`}>
+                            {formatDate(sub.endDate)}
+                            {expiringSoon && <span className="expiring-badge">Expiring Soon</span>}
+                          </td>
+                          {group.groupName === "Axe Monitor" && (
+                            <>
+                              <td className="monitor-pages">{sub.monitorPageCount?.toLocaleString() || "-"}</td>
+                              <td className="monitor-projects">{sub.monitorProjectCount?.toLocaleString() || "-"}</td>
+                            </>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

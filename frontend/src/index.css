@@ -4848,6 +4848,120 @@ header .hint {
   color: #555;
 }
 
+/* Date columns */
+.license-table .start-date,
+.license-table .end-date {
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.license-table .end-date.expiring-soon {
+  color: #f57c00;
+  font-weight: 500;
+}
+
+.license-table .end-date.expired {
+  color: #c62828;
+  font-weight: 500;
+}
+
+.license-table tr.expiring-soon {
+  background: rgba(255, 152, 0, 0.1);
+}
+
+.license-table tr.expired {
+  background: rgba(198, 40, 40, 0.1);
+  opacity: 0.7;
+}
+
+.expiring-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: #ff9800;
+  color: white;
+  padding: 2px 5px;
+  border-radius: 3px;
+  margin-left: 0.35rem;
+  vertical-align: middle;
+}
+
+/* Subscription Summary Component (for CSM/PM Portfolio) */
+.subscription-summary {
+  margin-bottom: 1rem;
+}
+
+.subscription-summary-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #4a5568;
+  margin: 0 0 0.5rem 0;
+}
+
+.subscription-summary-loading,
+.subscription-summary-empty {
+  font-size: 0.85rem;
+  color: #666;
+  padding: 0.5rem 0;
+}
+
+.subscription-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.subscription-summary-table th,
+.subscription-summary-table td {
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e5f0;
+}
+
+.subscription-summary-table th {
+  font-weight: 600;
+  color: #4a5568;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.subscription-summary-table tbody tr:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.subscription-summary-table .product-name {
+  font-weight: 500;
+}
+
+.subscription-summary-table .quantity {
+  text-align: center;
+  font-family: monospace;
+}
+
+.subscription-summary-table .start-date,
+.subscription-summary-table .end-date {
+  white-space: nowrap;
+}
+
+.subscription-summary-table .end-date.expiring-soon {
+  color: #f57c00;
+  font-weight: 500;
+}
+
+.subscription-summary-table .end-date.expired {
+  color: #c62828;
+  font-weight: 500;
+}
+
+.subscription-summary-table tr.expiring-soon {
+  background: rgba(255, 152, 0, 0.08);
+}
+
+.subscription-summary-table tr.expired {
+  background: rgba(198, 40, 40, 0.08);
+  opacity: 0.7;
+}
+
 /* License Groups */
 .license-groups {
   display: flex;

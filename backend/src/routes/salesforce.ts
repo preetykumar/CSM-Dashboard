@@ -45,6 +45,18 @@ export function createSalesforceRoutes(salesforce: SalesforceService): Router {
     }
   });
 
+  // List all Salesforce objects, optionally filtered by name
+  router.get("/objects", async (req: Request, res: Response) => {
+    try {
+      const filter = req.query.filter as string | undefined;
+      const objects = await salesforce.listObjects(filter);
+      res.json({ objects, count: objects.length });
+    } catch (error) {
+      console.error("Error listing Salesforce objects:", error);
+      res.status(500).json({ error: "Failed to list Salesforce objects" });
+    }
+  });
+
   // Get enterprise subscriptions by account name
   router.get("/subscriptions/account/:accountName", async (req: Request, res: Response) => {
     try {

@@ -335,6 +335,32 @@ export class SalesforceService {
     return this.apiCall("get", `/services/data/v59.0/sobjects/${objectName}/describe`);
   }
 
+  async listObjects(filter?: string): Promise<Array<{ name: string; label: string; custom: boolean }>> {
+    console.log("Listing Salesforce objects...");
+    const result = await this.apiCall<{ sobjects: Array<{ name: string; label: string; custom: boolean }> }>(
+      "get",
+      "/services/data/v59.0/sobjects"
+    );
+
+    let objects = result.sobjects.map((obj) => ({
+      name: obj.name,
+      label: obj.label,
+      custom: obj.custom,
+    }));
+
+    // Filter by name if provided
+    if (filter) {
+      const filterLower = filter.toLowerCase();
+      objects = objects.filter(
+        (obj) =>
+          obj.name.toLowerCase().includes(filterLower) ||
+          obj.label.toLowerCase().includes(filterLower)
+      );
+    }
+
+    return objects.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   async getCSMAssignments(): Promise<CSMAssignment[]> {
     console.log("Fetching CSM assignments from Salesforce...");
 
