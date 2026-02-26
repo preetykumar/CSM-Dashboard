@@ -87,6 +87,7 @@ cd frontend && npm run build
 ### Project Details
 - **GCP Project**: `csm-dashboard-deque`
 - **Cloud Run Service**: `csm-dashboard`
+- **Cloud SQL Instance**: `csm-dashboard-db` (PostgreSQL 18)
 - **Region**: `us-central1`
 - **Production URL**: `https://csm-dashboard-iow4tellka-uc.a.run.app`
 
@@ -300,22 +301,26 @@ gcloud run services update-traffic csm-dashboard --region=us-central1 --to-lates
 gcloud run services describe csm-dashboard --region=us-central1 --project=csm-dashboard-deque --format="value(status.traffic[0].revisionName)"
 ```
 
-### 10. Database Persistence (SQLite vs PostgreSQL)
+### 10. Database Persistence (Cloud SQL PostgreSQL)
 
-**SQLite mode** (current default for production):
-- Stored in the container filesystem — data is lost when Cloud Run scales to zero
-- `min-instances=1` keeps 1 instance warm to avoid cold starts
-- Conversation history resets on deployment
+**Production uses Cloud SQL PostgreSQL 18** (as of Feb 2026):
+- **Instance**: `csm-dashboard-db` (connection: `csm-dashboard-deque:us-central1:csm-dashboard-db`)
+- **Database**: `csm_dashboard`
+- **User**: `postgres`
+- Data persists across restarts, deployments, and scale-to-zero events
+- Cloud Run connects via Cloud SQL Auth Proxy (Unix socket at `/cloudsql/<instance>`)
+- `min-instances=0` is safe — no data loss on scale-to-zero
 
-**PostgreSQL mode** (migration in progress):
-- Data persists across restarts and deployments via Cloud SQL or local Docker
-- Eliminates cold-start data loss — no need for `min-instances=1` workaround
-- Set `PG_DATABASE` or `INSTANCE_CONNECTION_NAME` env vars to enable
+**SQLite mode** (local development fallback):
+- Default when no `PG_DATABASE` or `INSTANCE_CONNECTION_NAME` env var is set
+- Stored in `backend/data/zendesk-cache.db`
+- Data lost on Cloud Run restart (not used in production)
 
-**Current Configuration** (as of Feb 2026):
-- Production still uses SQLite with `minScale: 1`
-- PostgreSQL tested locally with Docker (`csm-postgres` container)
-- Cloud SQL provisioning is the next step for production PostgreSQL
+**Cloud SQL env vars** (set in Cloud Run):
+- `INSTANCE_CONNECTION_NAME=csm-dashboard-deque:us-central1:csm-dashboard-db`
+- `PG_DATABASE=csm_dashboard`
+- `PG_USER=postgres`
+- `PG_PASSWORD=<stored in Cloud Run>`
 
 **BIGINT requirement**: Zendesk IDs (e.g., `37418035591188`) exceed PostgreSQL `INTEGER` max (~2.1B). All ID columns use `BIGINT`. The `pg` library returns BIGINT as strings by default — we use `types.setTypeParser(20, ...)` to parse as JS numbers (safe since Zendesk IDs are within `Number.MAX_SAFE_INTEGER`).
 
@@ -340,7 +345,7 @@ gcloud run services describe csm-dashboard --region=us-central1 --project=csm-da
 | `/backend/src/services/agent.ts` | AI chat agent with tool definitions |
 | `/frontend/src/App.tsx` | Main React app with routing and layout |
 | `/Dockerfile` | Multi-stage Docker build for Cloud Run |
-| `/cloudbuild.yaml` | Cloud Build configuration |
+| `/cloudbuild.yaml` | Cloud Build configuration (includes Cloud SQL instance) |
 
 ---
 
@@ -450,10 +455,10 @@ https://csm-dashboard-iow4tellka-uc.a.run.app
   3. Create a YAML file with all variables and redeploy with `--env-vars-file`
 
 ### Dashboard is slow or shows "Loading..." for extended time
-- **Cause**: Cold start - the instance was scaled to zero and is rebuilding cache from APIs
+- **Cause**: Cold start - the instance was scaled to zero. With Cloud SQL PostgreSQL, data is preserved but the instance still needs ~30s to start.
 - **Check**: `gcloud run services describe csm-dashboard --region=us-central1 --format="yaml(spec.template.metadata.annotations)" | grep minScale`
 - **Fix**: Set `min-instances=1` to eliminate cold starts (see section 10 above)
-- **Note**: After deployment, new revisions still need ~1-2 min to warm up, but old revision serves traffic during this time
+- **Note**: With PostgreSQL, cold starts are faster since data doesn't need to be re-synced from APIs. After deployment, new revisions still need ~1-2 min to warm up, but old revision serves traffic during this time.
 
 ### Changes not taking effect after `gcloud run services update`
 - **Cause**: Service updates create new revisions but may not route traffic to them
@@ -491,6 +496,12 @@ gcloud run services describe csm-dashboard --region=us-central1 --project=csm-da
 gcloud run services update csm-dashboard --region=us-central1 --min-instances=1 --project=csm-dashboard-deque && \
 gcloud run services update-traffic csm-dashboard --region=us-central1 --to-latest --project=csm-dashboard-deque
 
-# Disable always-on (scale to zero, $0 when idle)
+# Disable always-on (scale to zero, $0 when idle) — safe with Cloud SQL PostgreSQL
 gcloud run services update csm-dashboard --region=us-central1 --min-instances=0 --project=csm-dashboard-deque
+
+# Cloud SQL: connect to production database
+gcloud sql connect csm-dashboard-db --database=csm_dashboard --user=postgres --project=csm-dashboard-deque
+
+# Cloud SQL: check instance status
+gcloud sql instances describe csm-dashboard-db --project=csm-dashboard-deque --format="value(state)"
 ```
