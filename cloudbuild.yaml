@@ -33,6 +33,8 @@ steps:
       - 'us-central1'
       - '--platform'
       - 'managed'
+      - '--add-cloudsql-instances'
+      - 'csm-dashboard-deque:us-central1:csm-dashboard-db'
 
 images:
   - 'gcr.io/$PROJECT_ID/csm-dashboard:$COMMIT_SHA'

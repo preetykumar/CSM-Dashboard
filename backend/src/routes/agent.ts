@@ -53,10 +53,10 @@ export function createAgentRoutes(agentService: AgentService): Router {
   });
 
   // GET /api/agent/conversations - List user's conversations
-  router.get("/conversations", (req: Request, res: Response) => {
+  router.get("/conversations", async (req: Request, res: Response) => {
     try {
       const user = getUser(req);
-      const conversations = agentService.getUserConversations(user.email);
+      const conversations = await agentService.getUserConversations(user.email);
       res.json({ conversations });
     } catch (error) {
       console.error("Get conversations error:", error);
@@ -65,10 +65,10 @@ export function createAgentRoutes(agentService: AgentService): Router {
   });
 
   // GET /api/agent/conversations/:id - Get conversation history
-  router.get("/conversations/:id", (req: Request, res: Response) => {
+  router.get("/conversations/:id", async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const messages = agentService.getConversationHistory(id);
+      const messages = await agentService.getConversationHistory(id);
       res.json({ messages });
     } catch (error) {
       console.error("Get conversation history error:", error);
@@ -77,10 +77,10 @@ export function createAgentRoutes(agentService: AgentService): Router {
   });
 
   // DELETE /api/agent/conversations/:id - Delete a conversation
-  router.delete("/conversations/:id", (req: Request, res: Response) => {
+  router.delete("/conversations/:id", async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      agentService.deleteConversation(id);
+      await agentService.deleteConversation(id);
       res.json({ success: true });
     } catch (error) {
       console.error("Delete conversation error:", error);

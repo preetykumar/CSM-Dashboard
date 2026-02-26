@@ -4,7 +4,7 @@
 This is a Customer Success Management dashboard with:
 - **Frontend**: React 18 + TypeScript + Vite (in `/frontend`)
 - **Backend**: Node.js 20 + Express + TypeScript (in `/backend`)
-- **Database**: SQLite for local caching
+- **Database**: SQLite (default, local) or PostgreSQL (persistent, for production)
 - **Deployment**: Google Cloud Run
 
 ---
@@ -27,10 +27,16 @@ This is a Customer Success Management dashboard with:
 
 ### Running Locally
 ```bash
-# Terminal 1: Backend
+# Terminal 1: Backend (SQLite - default)
 cd backend
 npm install
 npm run dev
+
+# Terminal 1: Backend (PostgreSQL - persistent)
+# First start the Docker container (one-time setup):
+docker run -d --name csm-postgres -e POSTGRES_DB=csm_dashboard -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16-alpine
+# Then start backend with PG:
+PG_DATABASE=csm_dashboard npm run dev
 
 # Terminal 2: Frontend
 cd frontend
@@ -40,6 +46,30 @@ npm run dev
 
 - Backend runs on http://localhost:3001
 - Frontend runs on http://localhost:5173
+
+### Database Modes
+The backend supports two database backends, selected automatically by environment variables:
+
+- **SQLite (default)**: No config needed. Data stored in `backend/data/zendesk-cache.db`. Lost on Cloud Run restart.
+- **PostgreSQL**: Set `PG_DATABASE` env var (or `INSTANCE_CONNECTION_NAME` for Cloud SQL). Data persists across restarts.
+
+Both implement the `IDatabaseService` interface defined in `backend/src/services/database-interface.ts`.
+
+**PostgreSQL env vars** (all optional, defaults shown):
+- `PG_HOST` (default: `localhost`)
+- `PG_PORT` (default: `5432`)
+- `PG_DATABASE` (default: `csm_dashboard`) — **setting this triggers PostgreSQL mode**
+- `PG_USER` (default: `postgres`)
+- `PG_PASSWORD` (default: `postgres`)
+- `INSTANCE_CONNECTION_NAME` — for Cloud SQL Unix socket connections (also triggers PostgreSQL mode)
+
+**Docker PostgreSQL commands:**
+```bash
+docker start csm-postgres   # Start existing container
+docker stop csm-postgres    # Stop container
+docker rm -f csm-postgres   # Remove container (data lost)
+docker exec -it csm-postgres psql -U postgres -d csm_dashboard  # Connect to psql
+```
 
 ### Local Build
 ```bash
@@ -254,6 +284,47 @@ gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.serv
 gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="csm-dashboard" AND textPayload:("Server running" OR "OAuth" OR "SF_PRIVATE_KEY")' --project=csm-dashboard-deque --limit=10
 ```
 
+### 9. Cloud Run Service Updates Create New Revisions - Always Route Traffic!
+
+**CRITICAL**: When you run `gcloud run services update` (e.g., to change min-instances, env vars, or other settings), it creates a **new revision** but may NOT automatically route traffic to it.
+
+**Symptoms**: You made a change but it's not taking effect, or you see regressions (old code running).
+
+**Always follow service updates with:**
+```bash
+gcloud run services update-traffic csm-dashboard --region=us-central1 --to-latest --project=csm-dashboard-deque
+```
+
+**Check current traffic routing:**
+```bash
+gcloud run services describe csm-dashboard --region=us-central1 --project=csm-dashboard-deque --format="value(status.traffic[0].revisionName)"
+```
+
+### 10. Database Persistence (SQLite vs PostgreSQL)
+
+**SQLite mode** (current default for production):
+- Stored in the container filesystem — data is lost when Cloud Run scales to zero
+- `min-instances=1` keeps 1 instance warm to avoid cold starts
+- Conversation history resets on deployment
+
+**PostgreSQL mode** (migration in progress):
+- Data persists across restarts and deployments via Cloud SQL or local Docker
+- Eliminates cold-start data loss — no need for `min-instances=1` workaround
+- Set `PG_DATABASE` or `INSTANCE_CONNECTION_NAME` env vars to enable
+
+**Current Configuration** (as of Feb 2026):
+- Production still uses SQLite with `minScale: 1`
+- PostgreSQL tested locally with Docker (`csm-postgres` container)
+- Cloud SQL provisioning is the next step for production PostgreSQL
+
+**BIGINT requirement**: Zendesk IDs (e.g., `37418035591188`) exceed PostgreSQL `INTEGER` max (~2.1B). All ID columns use `BIGINT`. The `pg` library returns BIGINT as strings by default — we use `types.setTypeParser(20, ...)` to parse as JS numbers (safe since Zendesk IDs are within `Number.MAX_SAFE_INTEGER`).
+
+**Check min-instances setting:**
+```bash
+gcloud run services describe csm-dashboard --region=us-central1 --project=csm-dashboard-deque \
+  --format="yaml(spec.template.metadata.annotations)" | grep -E "minScale|maxScale"
+```
+
 ---
 
 ## Key Files
@@ -261,7 +332,11 @@ gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.serv
 | File | Description |
 |------|-------------|
 | `/backend/src/index.ts` | Main server entry point, initializes all services |
+| `/backend/src/services/database-interface.ts` | Shared `IDatabaseService` interface and type definitions |
+| `/backend/src/services/database.ts` | SQLite implementation of `IDatabaseService` |
+| `/backend/src/services/database-pg.ts` | PostgreSQL implementation of `IDatabaseService` |
 | `/backend/src/services/salesforce.ts` | Salesforce JWT auth and API integration |
+| `/backend/src/services/sync.ts` | Sync service (Zendesk, Salesforce, GitHub) |
 | `/backend/src/services/agent.ts` | AI chat agent with tool definitions |
 | `/frontend/src/App.tsx` | Main React app with routing and layout |
 | `/Dockerfile` | Multi-stage Docker build for Cloud Run |
@@ -338,6 +413,19 @@ https://csm-dashboard-iow4tellka-uc.a.run.app
 ### Local SQLite errors
 - Delete `backend/data/cache.db` and restart the server to rebuild the cache
 
+### PostgreSQL "value is out of range for type integer"
+- Zendesk IDs exceed PostgreSQL `INTEGER` max (~2.1B). All ID columns must be `BIGINT`.
+- If you see this after a schema change, drop and recreate tables: `docker exec csm-postgres psql -U postgres -d csm_dashboard -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"`
+
+### PostgreSQL returns empty data but sync shows success
+- The `pg` library returns `BIGINT` as strings. If `types.setTypeParser(20, ...)` is missing, Set/Map lookups fail (string vs number mismatch).
+- Check `database-pg.ts` has: `types.setTypeParser(20, (val: string) => parseInt(val, 10));`
+
+### API routes return "API endpoint not found" (404)
+- Routes depending on `db`/`sync`/`agent` are registered in `startServer()` after async initialization
+- Static files and SPA fallback must be registered AFTER all API routes (also in `startServer()`)
+- If you move route registration, ensure it happens before `app.listen()` but after service initialization
+
 ### OAuth "redirect_uri_mismatch" error
 - The callback URL is not registered in Google Cloud Console
 - OR the GOOGLE_CLIENT_ID in Cloud Run doesn't match the OAuth client where URIs are configured
@@ -361,6 +449,18 @@ https://csm-dashboard-iow4tellka-uc.a.run.app
   2. Get env vars from working revision: `gcloud run revisions describe WORKING_REVISION --format="get(spec.containers[0].env)"`
   3. Create a YAML file with all variables and redeploy with `--env-vars-file`
 
+### Dashboard is slow or shows "Loading..." for extended time
+- **Cause**: Cold start - the instance was scaled to zero and is rebuilding cache from APIs
+- **Check**: `gcloud run services describe csm-dashboard --region=us-central1 --format="yaml(spec.template.metadata.annotations)" | grep minScale`
+- **Fix**: Set `min-instances=1` to eliminate cold starts (see section 10 above)
+- **Note**: After deployment, new revisions still need ~1-2 min to warm up, but old revision serves traffic during this time
+
+### Changes not taking effect after `gcloud run services update`
+- **Cause**: Service updates create new revisions but may not route traffic to them
+- **Check**: `gcloud run services describe csm-dashboard --region=us-central1 --format="value(status.traffic[0].revisionName)"` - compare with latest revision
+- **Fix**: `gcloud run services update-traffic csm-dashboard --region=us-central1 --to-latest` (see section 9 above)
+- **Prevention**: Always run `--to-latest` after any service update
+
 ---
 
 ## Quick Reference Commands
@@ -383,4 +483,14 @@ gcloud run services logs read csm-dashboard --region=us-central1 --project=csm-d
 
 # Get service URL
 gcloud run services describe csm-dashboard --region=us-central1 --project=csm-dashboard-deque --format="value(status.url)"
+
+# Check min-instances setting
+gcloud run services describe csm-dashboard --region=us-central1 --project=csm-dashboard-deque --format="yaml(spec.template.metadata.annotations)" | grep -E "minScale|maxScale"
+
+# Enable always-on (eliminate cold starts, ~$15-30/month) - ALWAYS route traffic after!
+gcloud run services update csm-dashboard --region=us-central1 --min-instances=1 --project=csm-dashboard-deque && \
+gcloud run services update-traffic csm-dashboard --region=us-central1 --to-latest --project=csm-dashboard-deque
+
+# Disable always-on (scale to zero, $0 when idle)
+gcloud run services update csm-dashboard --region=us-central1 --min-instances=0 --project=csm-dashboard-deque
 ```

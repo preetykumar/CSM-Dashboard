@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { DatabaseService, CachedTicket } from "../services/database.js";
+import type { IDatabaseService, CachedTicket } from "../services/database-interface.js";
 import type { CustomerSummary, CSMPortfolio, PMPortfolio, CSMCustomerSummary, Ticket, Organization, EnhancedCustomerSummary, VelocitySnapshot, ProductBacklog, ModuleSummary, QuarterlySummary } from "../types/index.js";
 
 // Admin users who can see all CSM portfolios
@@ -19,13 +19,13 @@ function isAdmin(email: string | undefined): boolean {
   return ADMIN_EMAILS.some((admin) => admin.toLowerCase() === email.toLowerCase());
 }
 
-export function createCachedRoutes(db: DatabaseService): Router {
+export function createCachedRoutes(db: IDatabaseService): Router {
   const router = Router();
 
   // Get all organizations with summaries
   router.get("/", async (_req: Request, res: Response) => {
     try {
-      const orgs = db.getOrganizations();
+      const orgs = await db.getOrganizations();
       res.json({
         organizations: orgs.map((org) => ({
           id: org.id,
@@ -47,7 +47,7 @@ export function createCachedRoutes(db: DatabaseService): Router {
   // Get domain to account name mapping
   router.get("/domain-mapping", async (_req: Request, res: Response) => {
     try {
-      const domainMap = db.getDomainToAccountMap();
+      const domainMap = await db.getDomainToAccountMap();
       // Convert Map to object for JSON serialization
       const mapping: Record<string, string> = {};
       domainMap.forEach((accountName, domain) => {
@@ -64,16 +64,16 @@ export function createCachedRoutes(db: DatabaseService): Router {
   router.get("/:id/summary", async (req: Request, res: Response) => {
     try {
       const orgId = parseInt(req.params.id, 10);
-      const org = db.getOrganization(orgId);
+      const org = await db.getOrganization(orgId);
 
       if (!org) {
         res.status(404).json({ error: "Organization not found" });
         return;
       }
 
-      const ticketStats = db.getTicketStats(orgId);
-      const priorityBreakdown = db.getPriorityBreakdown(orgId);
-      const allTickets = db.getTicketsByOrganization(orgId);
+      const ticketStats = await db.getTicketStats(orgId);
+      const priorityBreakdown = await db.getPriorityBreakdown(orgId);
+      const allTickets = await db.getTicketsByOrganization(orgId);
       const recentTickets = allTickets.slice(0, 10);
 
       // Get escalated tickets (only open/active tickets)
@@ -158,16 +158,16 @@ export function createCachedRoutes(db: DatabaseService): Router {
   router.get("/:id/detailed", async (req: Request, res: Response) => {
     try {
       const orgId = parseInt(req.params.id, 10);
-      const org = db.getOrganization(orgId);
+      const org = await db.getOrganization(orgId);
 
       if (!org) {
         res.status(404).json({ error: "Organization not found" });
         return;
       }
 
-      const tickets = db.getTicketsByOrganization(orgId);
-      const ticketStats = db.getTicketStats(orgId);
-      const priorityBreakdown = db.getPriorityBreakdown(orgId);
+      const tickets = await db.getTicketsByOrganization(orgId);
+      const ticketStats = await db.getTicketStats(orgId);
+      const priorityBreakdown = await db.getPriorityBreakdown(orgId);
       const recentTickets = tickets
         .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
         .slice(0, 10);
@@ -268,7 +268,7 @@ export function createCachedRoutes(db: DatabaseService): Router {
     try {
       const orgId = parseInt(req.params.id, 10);
       const status = req.params.status;
-      const tickets = db.getTicketsByStatus(orgId, status);
+      const tickets = await db.getTicketsByStatus(orgId, status);
 
       res.json({
         tickets: tickets.map((t) => ({
@@ -299,7 +299,7 @@ export function createCachedRoutes(db: DatabaseService): Router {
     try {
       const orgId = parseInt(req.params.id, 10);
       const priority = req.params.priority;
-      const tickets = db.getTicketsByPriority(orgId, priority);
+      const tickets = await db.getTicketsByPriority(orgId, priority);
 
       res.json({
         tickets: tickets.map((t) => ({
@@ -329,14 +329,14 @@ export function createCachedRoutes(db: DatabaseService): Router {
   router.get("/customers/:orgId/summary", async (req: Request, res: Response) => {
     try {
       const orgId = parseInt(req.params.orgId, 10);
-      const org = db.getOrganization(orgId);
+      const org = await db.getOrganization(orgId);
 
       if (!org) {
         res.status(404).json({ error: "Organization not found" });
         return;
       }
 
-      const tickets = db.getTicketsByOrganization(orgId);
+      const tickets = await db.getTicketsByOrganization(orgId);
 
       // Calculate velocity snapshot
       const velocity = calculateVelocitySnapshot(tickets);
@@ -456,8 +456,8 @@ export function createCachedRoutes(db: DatabaseService): Router {
   // Get all tickets grouped by product, then by request type, then by issue subtype
   router.get("/products", async (_req: Request, res: Response) => {
     try {
-      const allTickets = db.getAllTickets();
-      const orgs = db.getOrganizations();
+      const allTickets = await db.getAllTickets();
+      const orgs = await db.getOrganizations();
       const orgMap = new Map(orgs.map((o) => [o.id, o]));
 
       // Group tickets: Product -> Request Type -> Issue Subtype
@@ -588,16 +588,16 @@ export function createCachedRoutes(db: DatabaseService): Router {
 
       if (userIsAdmin) {
         // Admin users can see all CSM portfolios
-        csmPortfolios = db.getCSMPortfolios();
+        csmPortfolios = await db.getCSMPortfolios();
         console.log(`Admin ${userEmail}: viewing all ${csmPortfolios.length} CSM portfolios`);
       } else if (userEmail) {
         // Regular users only see their own portfolio
-        const myPortfolio = db.getCSMPortfolioByEmail(userEmail);
+        const myPortfolio = await db.getCSMPortfolioByEmail(userEmail);
         csmPortfolios = myPortfolio ? [myPortfolio] : [];
         console.log(`CSM portfolio for ${userEmail}: ${myPortfolio ? myPortfolio.org_ids.length : 0} customers`);
       } else {
         // No authentication - return all portfolios (for backwards compatibility)
-        csmPortfolios = db.getCSMPortfolios();
+        csmPortfolios = await db.getCSMPortfolios();
       }
 
       const portfolios: CSMPortfolio[] = [];
@@ -608,11 +608,11 @@ export function createCachedRoutes(db: DatabaseService): Router {
         let openTickets = 0;
 
         for (const orgId of portfolio.org_ids) {
-          const org = db.getOrganization(orgId);
+          const org = await db.getOrganization(orgId);
           if (!org) continue;
 
-          const tickets = db.getTicketsByOrganization(orgId);
-          const ticketStats = db.getTicketStats(orgId);
+          const tickets = await db.getTicketsByOrganization(orgId);
+          const ticketStats = await db.getTicketStats(orgId);
 
           // Count feature requests, problem reports, and priority breakdown
           let featureRequests = 0;
@@ -718,16 +718,16 @@ export function createCachedRoutes(db: DatabaseService): Router {
 
       if (userIsAdmin) {
         // Admin users can see all PM portfolios
-        pmPortfolios = db.getPMPortfolios();
+        pmPortfolios = await db.getPMPortfolios();
         console.log(`Admin ${userEmail}: viewing all ${pmPortfolios.length} PM portfolios`);
       } else if (userEmail) {
         // Regular users only see their own portfolio if they are a PM
-        const myPortfolio = db.getPMPortfolioByEmail(userEmail);
+        const myPortfolio = await db.getPMPortfolioByEmail(userEmail);
         pmPortfolios = myPortfolio ? [myPortfolio] : [];
         console.log(`PM portfolio for ${userEmail}: ${myPortfolio ? myPortfolio.org_ids.length : 0} customers`);
       } else {
         // No authentication - return all portfolios (for backwards compatibility)
-        pmPortfolios = db.getPMPortfolios();
+        pmPortfolios = await db.getPMPortfolios();
       }
 
       const portfolios: PMPortfolio[] = [];
@@ -738,11 +738,11 @@ export function createCachedRoutes(db: DatabaseService): Router {
         let openTickets = 0;
 
         for (const orgId of portfolio.org_ids) {
-          const org = db.getOrganization(orgId);
+          const org = await db.getOrganization(orgId);
           if (!org) continue;
 
-          const tickets = db.getTicketsByOrganization(orgId);
-          const ticketStats = db.getTicketStats(orgId);
+          const tickets = await db.getTicketsByOrganization(orgId);
+          const ticketStats = await db.getTicketStats(orgId);
 
           // Count feature requests, problem reports, and priority breakdown
           let featureRequests = 0;

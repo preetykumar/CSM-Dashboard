@@ -1,112 +1,52 @@
 import Database from "better-sqlite3";
 import path from "path";
 import { fileURLToPath } from "url";
+import type {
+  IDatabaseService,
+  CachedOrganization,
+  CachedTicket,
+  CachedCSMAssignment,
+  CachedPMAssignment,
+  SyncStatus,
+  CachedGitHubLink,
+  Conversation,
+  ConversationMessage,
+  TicketStats,
+  PriorityBreakdown,
+  CSMPortfolio,
+  PMPortfolio,
+} from "./database-interface.js";
+
+// Re-export all interfaces so existing imports from "./database.js" still work
+export type {
+  IDatabaseService,
+  CachedOrganization,
+  CachedTicket,
+  CachedCSMAssignment,
+  CachedPMAssignment,
+  SyncStatus,
+  CachedGitHubLink,
+  Conversation,
+  ConversationMessage,
+  TicketStats,
+  PriorityBreakdown,
+  CSMPortfolio,
+  PMPortfolio,
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export interface CachedOrganization {
-  id: number;
-  name: string;
-  domain_names: string;
-  salesforce_id: string | null; // 18-char SF Account ID from Zendesk org custom field
-  salesforce_account_name: string | null; // SF Account Name for display
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CachedTicket {
-  id: number;
-  organization_id: number;
-  subject: string;
-  status: string;
-  priority: string;
-  requester_id: number;
-  assignee_id: number | null;
-  tags: string;
-  created_at: string;
-  updated_at: string;
-  // Enhanced fields for product backlog view
-  product: string | null;
-  module: string | null;
-  ticket_type: string | null; // 'bug', 'feature', or 'other'
-  workflow_status: string | null;
-  issue_subtype: string | null; // More specific categorization within type
-  is_escalated: number; // 0 or 1, for SQLite boolean
-}
-
-export interface CachedCSMAssignment {
-  account_id: string;
-  account_name: string;
-  csm_id: string;
-  csm_name: string;
-  csm_email: string;
-  zendesk_org_id: number | null;
-}
-
-export interface CachedPMAssignment {
-  account_id: string;
-  account_name: string;
-  pm_id: string;
-  pm_name: string;
-  pm_email: string;
-  zendesk_org_id: number | null;
-}
-
-export interface SyncStatus {
-  type: string;
-  last_sync: string;
-  status: string;
-  record_count: number;
-}
-
-export interface CachedGitHubLink {
-  id?: number;
-  zendesk_ticket_id: number;
-  github_issue_number: number;
-  github_repo: string;
-  github_project_title: string | null;
-  project_status: string | null;
-  sprint: string | null;
-  milestone: string | null;
-  release_version: string | null;
-  github_url: string | null;
-  github_updated_at: string | null;
-  cached_at?: string;
-}
-
-// Agent conversation types
-export interface Conversation {
-  id: string;
-  user_id: string;
-  user_email: string;
-  channel: "web" | "slack" | "email";
-  created_at: string;
-  updated_at: string;
-  metadata?: string; // JSON string
-}
-
-export interface ConversationMessage {
-  id?: number;
-  conversation_id: string;
-  role: "user" | "assistant" | "system" | "tool_use" | "tool_result";
-  content: string;
-  tool_name?: string | null;
-  tool_input?: string | null; // JSON string
-  tool_result?: string | null; // JSON string
-  created_at: string;
-}
-
-export class DatabaseService {
+export class DatabaseService implements IDatabaseService {
   private db: Database.Database;
 
   constructor(dbPath?: string) {
     const defaultPath = path.join(__dirname, "../../data/zendesk-cache.db");
     this.db = new Database(dbPath || defaultPath);
-    this.initialize();
+    this.initializeSync();
   }
 
-  private initialize(): void {
+  private initializeSync(): void {
     // Enable WAL mode for better concurrent read performance
     this.db.pragma("journal_mode = WAL");
 
@@ -274,7 +214,7 @@ export class DatabaseService {
   }
 
   // Organizations
-  upsertOrganization(org: CachedOrganization): void {
+  async upsertOrganization(org: CachedOrganization): Promise<void> {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO organizations (id, name, domain_names, salesforce_id, salesforce_account_name, created_at, updated_at, cached_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -282,7 +222,7 @@ export class DatabaseService {
     stmt.run(org.id, org.name, org.domain_names, org.salesforce_id, org.salesforce_account_name, org.created_at, org.updated_at);
   }
 
-  upsertOrganizations(orgs: CachedOrganization[]): void {
+  async upsertOrganizations(orgs: CachedOrganization[]): Promise<void> {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO organizations (id, name, domain_names, salesforce_id, salesforce_account_name, created_at, updated_at, cached_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -296,22 +236,22 @@ export class DatabaseService {
   }
 
   // Get organizations by Salesforce ID
-  getOrganizationBySalesforceId(salesforceId: string): CachedOrganization | undefined {
+  async getOrganizationBySalesforceId(salesforceId: string): Promise<CachedOrganization | undefined> {
     return this.db.prepare("SELECT * FROM organizations WHERE salesforce_id = ?").get(salesforceId) as CachedOrganization | undefined;
   }
 
   // Update organization with SF Account Name
-  updateOrganizationSfAccountName(zendeskOrgId: number, sfAccountName: string): void {
+  async updateOrganizationSfAccountName(zendeskOrgId: number, sfAccountName: string): Promise<void> {
     this.db.prepare("UPDATE organizations SET salesforce_account_name = ? WHERE id = ?").run(sfAccountName, zendeskOrgId);
   }
 
-  getOrganizations(): CachedOrganization[] {
+  async getOrganizations(): Promise<CachedOrganization[]> {
     return this.db.prepare("SELECT * FROM organizations ORDER BY name").all() as CachedOrganization[];
   }
 
   // Get domain to account name mapping
-  getDomainToAccountMap(): Map<string, string> {
-    const orgs = this.getOrganizations();
+  async getDomainToAccountMap(): Promise<Map<string, string>> {
+    const orgs = await this.getOrganizations();
     const domainMap = new Map<string, string>();
 
     for (const org of orgs) {
@@ -319,7 +259,6 @@ export class DatabaseService {
       const domains = JSON.parse(org.domain_names || "[]") as string[];
 
       for (const domain of domains) {
-        // Map domain and subdomain patterns
         domainMap.set(domain.toLowerCase(), accountName);
       }
     }
@@ -327,12 +266,12 @@ export class DatabaseService {
     return domainMap;
   }
 
-  getOrganization(id: number): CachedOrganization | undefined {
+  async getOrganization(id: number): Promise<CachedOrganization | undefined> {
     return this.db.prepare("SELECT * FROM organizations WHERE id = ?").get(id) as CachedOrganization | undefined;
   }
 
   // Tickets
-  upsertTicket(ticket: CachedTicket): void {
+  async upsertTicket(ticket: CachedTicket): Promise<void> {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO tickets (id, organization_id, subject, status, priority, requester_id, assignee_id, tags, created_at, updated_at, cached_at, product, module, ticket_type, workflow_status, issue_subtype, is_escalated)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?)
@@ -357,7 +296,7 @@ export class DatabaseService {
     );
   }
 
-  upsertTickets(tickets: CachedTicket[]): void {
+  async upsertTickets(tickets: CachedTicket[]): Promise<void> {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO tickets (id, organization_id, subject, status, priority, requester_id, assignee_id, tags, created_at, updated_at, cached_at, product, module, ticket_type, workflow_status, issue_subtype, is_escalated)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?)
@@ -388,7 +327,7 @@ export class DatabaseService {
   }
 
   // Get escalation count for an organization
-  getEscalationCount(orgId: number): number {
+  async getEscalationCount(orgId: number): Promise<number> {
     const row = this.db.prepare(`
       SELECT COUNT(*) as count FROM tickets
       WHERE organization_id = ? AND is_escalated = 1 AND status NOT IN ('solved', 'closed')
@@ -396,35 +335,35 @@ export class DatabaseService {
     return row.count || 0;
   }
 
-  getTicketsByOrganization(orgId: number): CachedTicket[] {
+  async getTicketsByOrganization(orgId: number): Promise<CachedTicket[]> {
     return this.db.prepare("SELECT * FROM tickets WHERE organization_id = ? ORDER BY updated_at DESC").all(orgId) as CachedTicket[];
   }
 
-  getTicketsByStatus(orgId: number, status: string): CachedTicket[] {
+  async getTicketsByStatus(orgId: number, status: string): Promise<CachedTicket[]> {
     return this.db.prepare("SELECT * FROM tickets WHERE organization_id = ? AND status = ? ORDER BY updated_at DESC").all(orgId, status) as CachedTicket[];
   }
 
-  getTicketsByPriority(orgId: number, priority: string): CachedTicket[] {
+  async getTicketsByPriority(orgId: number, priority: string): Promise<CachedTicket[]> {
     return this.db.prepare("SELECT * FROM tickets WHERE organization_id = ? AND priority = ? AND status NOT IN ('solved', 'closed') ORDER BY updated_at DESC").all(orgId, priority) as CachedTicket[];
   }
 
-  getTicketsByProduct(orgId: number, product: string): CachedTicket[] {
+  async getTicketsByProduct(orgId: number, product: string): Promise<CachedTicket[]> {
     return this.db.prepare("SELECT * FROM tickets WHERE organization_id = ? AND product = ? ORDER BY updated_at DESC").all(orgId, product) as CachedTicket[];
   }
 
-  getTicketsByModule(orgId: number, product: string, module: string): CachedTicket[] {
+  async getTicketsByModule(orgId: number, product: string, module: string): Promise<CachedTicket[]> {
     return this.db.prepare("SELECT * FROM tickets WHERE organization_id = ? AND product = ? AND module = ? ORDER BY updated_at DESC").all(orgId, product, module) as CachedTicket[];
   }
 
-  getTicketsByType(orgId: number, ticketType: string): CachedTicket[] {
+  async getTicketsByType(orgId: number, ticketType: string): Promise<CachedTicket[]> {
     return this.db.prepare("SELECT * FROM tickets WHERE organization_id = ? AND ticket_type = ? ORDER BY updated_at DESC").all(orgId, ticketType) as CachedTicket[];
   }
 
-  getAllTickets(): CachedTicket[] {
+  async getAllTickets(): Promise<CachedTicket[]> {
     return this.db.prepare("SELECT * FROM tickets ORDER BY updated_at DESC").all() as CachedTicket[];
   }
 
-  getTicketStats(orgId: number): { total: number; new: number; open: number; pending: number; hold: number; solved: number; closed: number } {
+  async getTicketStats(orgId: number): Promise<TicketStats> {
     const row = this.db.prepare(`
       SELECT
         COUNT(*) as total,
@@ -448,7 +387,7 @@ export class DatabaseService {
     };
   }
 
-  getPriorityBreakdown(orgId: number): { low: number; normal: number; high: number; urgent: number } {
+  async getPriorityBreakdown(orgId: number): Promise<PriorityBreakdown> {
     const row = this.db.prepare(`
       SELECT
         SUM(CASE WHEN priority = 'low' THEN 1 ELSE 0 END) as low,
@@ -467,7 +406,7 @@ export class DatabaseService {
   }
 
   // CSM Assignments
-  upsertCSMAssignment(assignment: CachedCSMAssignment): void {
+  async upsertCSMAssignment(assignment: CachedCSMAssignment): Promise<void> {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO csm_assignments (account_id, account_name, csm_id, csm_name, csm_email, zendesk_org_id, cached_at)
       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -482,7 +421,7 @@ export class DatabaseService {
     );
   }
 
-  upsertCSMAssignments(assignments: CachedCSMAssignment[]): void {
+  async upsertCSMAssignments(assignments: CachedCSMAssignment[]): Promise<void> {
     // Clear existing assignments first
     this.db.prepare("DELETE FROM csm_assignments").run();
 
@@ -498,11 +437,11 @@ export class DatabaseService {
     transaction(assignments);
   }
 
-  getCSMAssignments(): CachedCSMAssignment[] {
+  async getCSMAssignments(): Promise<CachedCSMAssignment[]> {
     return this.db.prepare("SELECT * FROM csm_assignments ORDER BY csm_name, account_name").all() as CachedCSMAssignment[];
   }
 
-  getCSMPortfolios(): { csm_email: string; csm_name: string; org_ids: number[] }[] {
+  async getCSMPortfolios(): Promise<CSMPortfolio[]> {
     // Group by csm_name to consolidate CSMs with multiple Salesforce IDs/emails
     // Prefer @deque.com emails, fall back to any email
     const rows = this.db.prepare(`
@@ -532,7 +471,7 @@ export class DatabaseService {
 
   // Get portfolio for a specific CSM by email
   // Finds CSM by email, then returns ALL their accounts (even if they have multiple Salesforce IDs)
-  getCSMPortfolioByEmail(email: string): { csm_email: string; csm_name: string; org_ids: number[] } | null {
+  async getCSMPortfolioByEmail(email: string): Promise<CSMPortfolio | null> {
     // First, find the CSM name for this email
     const csmName = this.db.prepare(`
       SELECT csm_name FROM csm_assignments WHERE LOWER(csm_email) = LOWER(?) LIMIT 1
@@ -567,7 +506,7 @@ export class DatabaseService {
   }
 
   // Get CSM assignment details for an organization
-  getCSMAssignmentByOrgId(orgId: number): CachedCSMAssignment | null {
+  async getCSMAssignmentByOrgId(orgId: number): Promise<CachedCSMAssignment | null> {
     const row = this.db.prepare(`
       SELECT * FROM csm_assignments WHERE zendesk_org_id = ?
     `).get(orgId) as CachedCSMAssignment | undefined;
@@ -575,7 +514,7 @@ export class DatabaseService {
   }
 
   // Project Manager Assignment Methods
-  upsertPMAssignments(assignments: CachedPMAssignment[]): void {
+  async upsertPMAssignments(assignments: CachedPMAssignment[]): Promise<void> {
     // Clear existing assignments first
     this.db.prepare("DELETE FROM pm_assignments").run();
 
@@ -591,11 +530,11 @@ export class DatabaseService {
     transaction(assignments);
   }
 
-  getPMAssignments(): CachedPMAssignment[] {
+  async getPMAssignments(): Promise<CachedPMAssignment[]> {
     return this.db.prepare("SELECT * FROM pm_assignments ORDER BY pm_name, account_name").all() as CachedPMAssignment[];
   }
 
-  getPMPortfolios(): { pm_email: string; pm_name: string; org_ids: number[] }[] {
+  async getPMPortfolios(): Promise<PMPortfolio[]> {
     // Group by pm_name to consolidate PMs with multiple Salesforce IDs/emails
     // Prefer @deque.com emails, fall back to any email
     const rows = this.db.prepare(`
@@ -624,7 +563,7 @@ export class DatabaseService {
   }
 
   // Get portfolio for a specific PM by email
-  getPMPortfolioByEmail(email: string): { pm_email: string; pm_name: string; org_ids: number[] } | null {
+  async getPMPortfolioByEmail(email: string): Promise<PMPortfolio | null> {
     // First, find the PM name for this email
     const pmName = this.db.prepare(`
       SELECT pm_name FROM pm_assignments WHERE LOWER(pm_email) = LOWER(?) LIMIT 1
@@ -659,7 +598,7 @@ export class DatabaseService {
   }
 
   // Get PM assignment details for an organization
-  getPMAssignmentByOrgId(orgId: number): CachedPMAssignment | null {
+  async getPMAssignmentByOrgId(orgId: number): Promise<CachedPMAssignment | null> {
     const row = this.db.prepare(`
       SELECT * FROM pm_assignments WHERE zendesk_org_id = ?
     `).get(orgId) as CachedPMAssignment | undefined;
@@ -667,7 +606,7 @@ export class DatabaseService {
   }
 
   // Sync Status
-  updateSyncStatus(type: string, status: string, recordCount: number, errorMessage?: string): void {
+  async updateSyncStatus(type: string, status: string, recordCount: number, errorMessage?: string): Promise<void> {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO sync_status (type, last_sync, status, record_count, error_message)
       VALUES (?, CURRENT_TIMESTAMP, ?, ?, ?)
@@ -675,22 +614,22 @@ export class DatabaseService {
     stmt.run(type, status, recordCount, errorMessage || null);
   }
 
-  getSyncStatus(): SyncStatus[] {
+  async getSyncStatus(): Promise<SyncStatus[]> {
     return this.db.prepare("SELECT * FROM sync_status ORDER BY type").all() as SyncStatus[];
   }
 
-  getLastSyncTime(type: string): string | null {
+  async getLastSyncTime(type: string): Promise<string | null> {
     const row = this.db.prepare("SELECT last_sync FROM sync_status WHERE type = ?").get(type) as any;
     return row?.last_sync || null;
   }
 
   // Sync Metadata - for storing delta sync timestamps
-  getSyncMetadata(key: string): string | null {
+  async getSyncMetadata(key: string): Promise<string | null> {
     const row = this.db.prepare("SELECT value FROM sync_metadata WHERE key = ?").get(key) as { value: string } | undefined;
     return row?.value || null;
   }
 
-  setSyncMetadata(key: string, value: string): void {
+  async setSyncMetadata(key: string, value: string): Promise<void> {
     this.db.prepare(`
       INSERT OR REPLACE INTO sync_metadata (key, value, updated_at)
       VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -698,7 +637,7 @@ export class DatabaseService {
   }
 
   // GitHub Issue Links
-  upsertGitHubLinks(links: CachedGitHubLink[]): void {
+  async upsertGitHubLinks(links: CachedGitHubLink[]): Promise<void> {
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO github_issue_links
       (zendesk_ticket_id, github_issue_number, github_repo, github_project_title, project_status, sprint, milestone, release_version, github_url, github_updated_at, cached_at)
@@ -723,11 +662,11 @@ export class DatabaseService {
     transaction(links);
   }
 
-  getGitHubLinksByTicketId(ticketId: number): CachedGitHubLink[] {
+  async getGitHubLinksByTicketId(ticketId: number): Promise<CachedGitHubLink[]> {
     return this.db.prepare("SELECT * FROM github_issue_links WHERE zendesk_ticket_id = ?").all(ticketId) as CachedGitHubLink[];
   }
 
-  getGitHubLinksByTicketIds(ticketIds: number[]): Map<number, CachedGitHubLink[]> {
+  async getGitHubLinksByTicketIds(ticketIds: number[]): Promise<Map<number, CachedGitHubLink[]>> {
     if (ticketIds.length === 0) return new Map();
 
     const placeholders = ticketIds.map(() => "?").join(",");
@@ -742,17 +681,17 @@ export class DatabaseService {
     return linkMap;
   }
 
-  clearGitHubLinks(): void {
+  async clearGitHubLinks(): Promise<void> {
     this.db.prepare("DELETE FROM github_issue_links").run();
   }
 
-  getAllTicketIds(): number[] {
+  async getAllTicketIds(): Promise<number[]> {
     const rows = this.db.prepare("SELECT id FROM tickets").all() as { id: number }[];
     return rows.map((r) => r.id);
   }
 
   // Utility
-  clearAll(): void {
+  async clearAll(): Promise<void> {
     this.db.exec(`
       DELETE FROM tickets;
       DELETE FROM organizations;
@@ -766,7 +705,7 @@ export class DatabaseService {
   // Conversation Methods
   // ==================
 
-  createConversation(conversation: Omit<Conversation, "created_at" | "updated_at">): Conversation {
+  async createConversation(conversation: Omit<Conversation, "created_at" | "updated_at">): Promise<Conversation> {
     const stmt = this.db.prepare(`
       INSERT INTO conversations (id, user_id, user_email, channel, metadata, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -778,25 +717,25 @@ export class DatabaseService {
       conversation.channel,
       conversation.metadata || null
     );
-    return this.getConversation(conversation.id)!;
+    return (await this.getConversation(conversation.id))!;
   }
 
-  getConversation(id: string): Conversation | null {
+  async getConversation(id: string): Promise<Conversation | null> {
     const row = this.db.prepare("SELECT * FROM conversations WHERE id = ?").get(id) as Conversation | undefined;
     return row || null;
   }
 
-  getConversationsByUser(userEmail: string, limit: number = 50): Conversation[] {
+  async getConversationsByUser(userEmail: string, limit: number = 50): Promise<Conversation[]> {
     return this.db
       .prepare("SELECT * FROM conversations WHERE user_email = ? ORDER BY updated_at DESC LIMIT ?")
       .all(userEmail, limit) as Conversation[];
   }
 
-  updateConversationTimestamp(conversationId: string): void {
+  async updateConversationTimestamp(conversationId: string): Promise<void> {
     this.db.prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(conversationId);
   }
 
-  deleteConversation(conversationId: string): void {
+  async deleteConversation(conversationId: string): Promise<void> {
     const transaction = this.db.transaction(() => {
       this.db.prepare("DELETE FROM conversation_messages WHERE conversation_id = ?").run(conversationId);
       this.db.prepare("DELETE FROM conversations WHERE id = ?").run(conversationId);
@@ -805,7 +744,7 @@ export class DatabaseService {
   }
 
   // Conversation Messages
-  saveMessage(message: Omit<ConversationMessage, "id" | "created_at">): ConversationMessage {
+  async saveMessage(message: Omit<ConversationMessage, "id" | "created_at">): Promise<ConversationMessage> {
     const stmt = this.db.prepare(`
       INSERT INTO conversation_messages (conversation_id, role, content, tool_name, tool_input, tool_result, created_at)
       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -820,7 +759,7 @@ export class DatabaseService {
     );
 
     // Update conversation timestamp
-    this.updateConversationTimestamp(message.conversation_id);
+    await this.updateConversationTimestamp(message.conversation_id);
 
     return {
       id: Number(result.lastInsertRowid),
@@ -834,13 +773,13 @@ export class DatabaseService {
     };
   }
 
-  getMessages(conversationId: string): ConversationMessage[] {
+  async getMessages(conversationId: string): Promise<ConversationMessage[]> {
     return this.db
       .prepare("SELECT * FROM conversation_messages WHERE conversation_id = ? ORDER BY created_at ASC")
       .all(conversationId) as ConversationMessage[];
   }
 
-  getRecentMessages(conversationId: string, limit: number = 20): ConversationMessage[] {
+  async getRecentMessages(conversationId: string, limit: number = 20): Promise<ConversationMessage[]> {
     // Get most recent messages, but return them in chronological order
     const messages = this.db
       .prepare(

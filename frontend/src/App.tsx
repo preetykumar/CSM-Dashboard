@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from "react-router-dom";
 import { fetchOrganizations, fetchCustomerSummary } from "./services/api";
 import { SyncButton } from "./components/SyncButton";
 import { CustomerSummaryCard } from "./components/CustomerSummaryCard";
@@ -19,10 +20,6 @@ import { useAuth } from "./contexts/AuthContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import type { CustomerSummary, Organization } from "./types";
 
-type MainTab = "support" | "usage" | "renewals";
-type SupportSubTab = "customers" | "csm" | "pm" | "product";
-type UsageSubTab = "customers" | "csm";
-type RenewalsSubTab = "upcoming" | "prs";
 type SmartFilter = "all" | "escalated" | "critical";
 type AlphabetRange = "all" | "A-D" | "E-H" | "I-L" | "M-P" | "Q-T" | "U-Z";
 
@@ -43,14 +40,20 @@ interface TicketFilter {
   filterValue: string;
 }
 
-function Dashboard() {
-  useAuth(); // Ensures user is authenticated
-  const [mainTab, setMainTab] = useState<MainTab>("support");
-  const [supportSubTab, setSupportSubTab] = useState<SupportSubTab>("customers");
-  const [usageSubTab, setUsageSubTab] = useState<UsageSubTab>("customers");
-  const [renewalsSubTab, setRenewalsSubTab] = useState<RenewalsSubTab>("upcoming");
-  const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
-  const [alphabetRange, setAlphabetRange] = useState<AlphabetRange>("all");
+// Route configuration for easy reference
+const ROUTES = {
+  SUPPORT_CUSTOMERS: "/support/customers",
+  SUPPORT_CSM: "/support/csm",
+  SUPPORT_PM: "/support/pm",
+  SUPPORT_PRODUCT: "/support/product",
+  USAGE_CUSTOMERS: "/usage/customers",
+  USAGE_CSM: "/usage/csm",
+  RENEWALS_UPCOMING: "/renewals/upcoming",
+  RENEWALS_PRS: "/renewals/prs",
+} as const;
+
+// Support Tickets - By Customer View Component
+function SupportCustomersView() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [summaries, setSummaries] = useState<Map<number, CustomerSummary>>(new Map());
   const [loadingOrgs, setLoadingOrgs] = useState(true);
@@ -58,18 +61,15 @@ function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<{ id: number; name: string } | null>(null);
   const [ticketFilter, setTicketFilter] = useState<TicketFilter | null>(null);
-
-  // Search state
+  const [smartFilter, setSmartFilter] = useState<SmartFilter>("all");
+  const [alphabetRange, setAlphabetRange] = useState<AlphabetRange>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSearchOrg, setSelectedSearchOrg] = useState<Organization | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
-
-  // Pagination state for By Customer view
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Load organizations first (fast)
   useEffect(() => {
     async function loadOrganizations() {
       try {
@@ -77,7 +77,6 @@ function Dashboard() {
         setOrganizations(orgs);
         setLoadingProgress({ loaded: 0, total: orgs.length });
 
-        // Then load summaries incrementally
         for (const org of orgs) {
           try {
             const summary = await fetchCustomerSummary(org.id);
@@ -98,33 +97,27 @@ function Dashboard() {
     loadOrganizations();
   }, []);
 
-  // Filter and sort organizations based on search, smart filter and alphabet range
   const filteredAndSortedOrgs = useMemo(() => {
-    // If a specific org is selected via search, only show that one
     if (selectedSearchOrg) {
       return [selectedSearchOrg];
     }
 
     let filtered = [...organizations];
 
-    // Apply smart filter
     if (smartFilter === "escalated") {
       filtered = filtered.filter((org) => {
         const summary = summaries.get(org.id);
         if (!summary) return false;
-        // Check if organization has any escalated tickets
         return summary.escalations > 0;
       });
     } else if (smartFilter === "critical") {
       filtered = filtered.filter((org) => {
         const summary = summaries.get(org.id);
         if (!summary) return false;
-        // Critical = urgent or high priority active tickets (not solved/closed)
         return summary.criticalDefects > 0;
       });
     }
 
-    // Apply alphabet range filter
     if (alphabetRange !== "all") {
       const range = ALPHABET_RANGES.find((r) => r.value === alphabetRange);
       if (range) {
@@ -135,7 +128,6 @@ function Dashboard() {
       }
     }
 
-    // Sort by total tickets (descending)
     return filtered.sort((a, b) => {
       const summaryA = summaries.get(a.id);
       const summaryB = summaries.get(b.id);
@@ -145,7 +137,6 @@ function Dashboard() {
     });
   }, [organizations, summaries, smartFilter, alphabetRange, selectedSearchOrg]);
 
-  // Count organizations matching each filter for badges
   const filterCounts = useMemo(() => {
     let escalated = 0;
     let critical = 0;
@@ -158,24 +149,20 @@ function Dashboard() {
     return { escalated, critical };
   }, [organizations, summaries]);
 
-  // Apply pagination to filtered orgs
   const paginatedOrgs = usePagination(filteredAndSortedOrgs, pageSize, currentPage);
 
-  // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [smartFilter, alphabetRange, selectedSearchOrg]);
 
-  // Search suggestions
   const searchSuggestions = useMemo(() => {
     if (!searchQuery.trim() || searchQuery.length < 2) return [];
     const query = searchQuery.toLowerCase();
     return organizations
       .filter((org) => org.name.toLowerCase().includes(query))
-      .slice(0, 8); // Limit to 8 suggestions
+      .slice(0, 8);
   }, [organizations, searchQuery]);
 
-  // Close suggestions when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
@@ -186,17 +173,14 @@ function Dashboard() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Handle search selection
   const handleSearchSelect = useCallback((org: Organization) => {
     setSelectedSearchOrg(org);
     setSearchQuery(org.name);
     setShowSuggestions(false);
-    // Reset other filters when searching
     setSmartFilter("all");
     setAlphabetRange("all");
   }, []);
 
-  // Clear search
   const clearSearch = useCallback(() => {
     setSelectedSearchOrg(null);
     setSearchQuery("");
@@ -216,6 +200,219 @@ function Dashboard() {
   };
 
   return (
+    <>
+      {/* Search with Autocomplete */}
+      <div className="search-container" ref={searchRef}>
+        <div className="search-input-wrapper">
+          <input
+            type="text"
+            className="search-input"
+            placeholder="Search accounts..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setShowSuggestions(true);
+              if (!e.target.value) {
+                setSelectedSearchOrg(null);
+              }
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            aria-label="Search accounts"
+          />
+          {(searchQuery || selectedSearchOrg) && (
+            <button className="search-clear" onClick={clearSearch} aria-label="Clear search">
+              ×
+            </button>
+          )}
+        </div>
+        {showSuggestions && searchSuggestions.length > 0 && (
+          <ul className="search-suggestions" role="listbox" aria-label="Search suggestions">
+            {searchSuggestions.map((org) => (
+              <li
+                key={org.id}
+                onClick={() => handleSearchSelect(org)}
+                className="search-suggestion-item"
+                role="option"
+              >
+                <span className="suggestion-name">{org.name}</span>
+                {summaries.get(org.id) && (
+                  <span className="suggestion-tickets">
+                    {summaries.get(org.id)?.ticketStats.total} tickets
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Smart Filters */}
+      <div className="smart-filters">
+        <span className="filter-label">Quick Filters:</span>
+        <button
+          className={`filter-btn ${smartFilter === "all" ? "active" : ""}`}
+          onClick={() => setSmartFilter("all")}
+        >
+          All Accounts
+        </button>
+        <button
+          className={`filter-btn ${smartFilter === "escalated" ? "active" : ""}`}
+          onClick={() => setSmartFilter("escalated")}
+        >
+          Escalated {filterCounts.escalated > 0 && <span className="badge urgent">{filterCounts.escalated}</span>}
+        </button>
+        <button
+          className={`filter-btn ${smartFilter === "critical" ? "active" : ""}`}
+          onClick={() => setSmartFilter("critical")}
+        >
+          Critical Defects {filterCounts.critical > 0 && <span className="badge high">{filterCounts.critical}</span>}
+        </button>
+      </div>
+
+      {/* Alphabet Range Navigation */}
+      <div className="alphabet-nav">
+        <span className="filter-label">Browse:</span>
+        {ALPHABET_RANGES.map((range) => (
+          <button
+            key={range.value}
+            className={`alpha-btn ${alphabetRange === range.value ? "active" : ""}`}
+            onClick={() => setAlphabetRange(range.value)}
+          >
+            {range.label}
+          </button>
+        ))}
+      </div>
+
+      <p className="hint">Click on status/priority counts to filter tickets, or click the card for full details</p>
+
+      {loadingProgress.total > 0 && loadingProgress.loaded < loadingProgress.total && (
+        <div className="progress-bar" role="progressbar" aria-valuenow={loadingProgress.loaded} aria-valuemax={loadingProgress.total} aria-label="Loading customers progress">
+          <div
+            className="progress-fill"
+            style={{ width: `${(loadingProgress.loaded / loadingProgress.total) * 100}%` }}
+          />
+          <span className="progress-text">
+            Loading {loadingProgress.loaded} of {loadingProgress.total} customers...
+          </span>
+        </div>
+      )}
+
+      {error && <div className="error" role="alert">{error}</div>}
+
+      {loadingOrgs ? (
+        <div className="loading" aria-live="polite">Loading organizations...</div>
+      ) : (
+        <>
+          <Pagination
+            totalItems={filteredAndSortedOrgs.length}
+            pageSize={pageSize}
+            currentPage={currentPage}
+            onPageChange={setCurrentPage}
+            onPageSizeChange={setPageSize}
+          />
+          <div className="results-summary">
+            Showing {paginatedOrgs.length} of {filteredAndSortedOrgs.length} accounts
+            {smartFilter !== "all" && ` (${smartFilter})`}
+            {alphabetRange !== "all" && ` • ${alphabetRange}`}
+          </div>
+          <div className="summaries-grid">
+            {paginatedOrgs.map((org) => {
+              const summary = summaries.get(org.id);
+              if (summary) {
+                return (
+                  <CustomerSummaryCard
+                    key={org.id}
+                    summary={summary}
+                    onClick={() => handleOrgClick(org)}
+                    onStatusClick={(status) => handleStatusClick(org, status)}
+                    onPriorityClick={(priority) => handlePriorityClick(org, priority)}
+                    isEscalatedView={smartFilter === "escalated"}
+                    isCriticalView={smartFilter === "critical"}
+                  />
+                );
+              }
+              return (
+                <div key={org.id} className="summary-card loading-card">
+                  <div className="summary-card-header">
+                    <h2>{org.name}</h2>
+                    <div className="total-tickets">Loading...</div>
+                  </div>
+                </div>
+              );
+            })}
+            {filteredAndSortedOrgs.length === 0 && organizations.length > 0 && (
+              <p className="no-results">No accounts match the current filters.</p>
+            )}
+            {organizations.length === 0 && !error && (
+              <p>No customer data found. Make sure your Zendesk credentials are configured.</p>
+            )}
+          </div>
+        </>
+      )}
+
+      {selectedOrg && (
+        <OrganizationDrilldown
+          orgId={selectedOrg.id}
+          orgName={selectedOrg.name}
+          onClose={() => setSelectedOrg(null)}
+        />
+      )}
+
+      {ticketFilter && (
+        <TicketListModal
+          orgId={ticketFilter.orgId}
+          orgName={ticketFilter.orgName}
+          filterType={ticketFilter.filterType}
+          filterValue={ticketFilter.filterValue}
+          onClose={() => setTicketFilter(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// Dashboard with routing
+function Dashboard() {
+  useAuth();
+  const location = useLocation();
+
+  // Determine active main tab based on current path
+  const getActiveMainTab = () => {
+    if (location.pathname.startsWith("/support")) return "support";
+    if (location.pathname.startsWith("/usage")) return "usage";
+    if (location.pathname.startsWith("/renewals")) return "renewals";
+    return "support";
+  };
+
+  const activeMainTab = getActiveMainTab();
+
+  // Get hint text based on current route
+  const getHintText = () => {
+    switch (location.pathname) {
+      case ROUTES.SUPPORT_CUSTOMERS:
+        return null; // Handled in SupportCustomersView
+      case ROUTES.SUPPORT_CSM:
+        return "View tickets grouped by CSM and their customer portfolio";
+      case ROUTES.SUPPORT_PM:
+        return "View tickets and analytics grouped by Project Manager for report compilation";
+      case ROUTES.SUPPORT_PRODUCT:
+        return "View tickets grouped by product, request type, and issue subtype";
+      case ROUTES.USAGE_CUSTOMERS:
+        return "View product usage metrics by customer organization";
+      case ROUTES.USAGE_CSM:
+        return "View product usage metrics grouped by CSM portfolio";
+      case ROUTES.RENEWALS_UPCOMING:
+        return "View all upcoming renewal opportunities across accounts";
+      case ROUTES.RENEWALS_PRS:
+        return "View renewal opportunities grouped by Product Renewal Specialist";
+      default:
+        return null;
+    }
+  };
+
+  const hintText = getHintText();
+
+  return (
     <div className="app">
       <header>
         <div className="header-top">
@@ -229,323 +426,99 @@ function Dashboard() {
         </div>
 
         {/* Main Tab Navigation */}
-        <div className="main-tabs">
-          <button
-            className={mainTab === "support" ? "active" : ""}
-            onClick={() => setMainTab("support")}
+        <nav className="main-tabs" aria-label="Main navigation">
+          <NavLink
+            to={ROUTES.SUPPORT_CUSTOMERS}
+            className={activeMainTab === "support" ? "active" : ""}
           >
             Support Tickets
-          </button>
-          <button
-            className={mainTab === "usage" ? "active" : ""}
-            onClick={() => setMainTab("usage")}
+          </NavLink>
+          <NavLink
+            to={ROUTES.USAGE_CUSTOMERS}
+            className={activeMainTab === "usage" ? "active" : ""}
           >
             Usage Analytics
-          </button>
-          <button
-            className={mainTab === "renewals" ? "active" : ""}
-            onClick={() => setMainTab("renewals")}
+          </NavLink>
+          <NavLink
+            to={ROUTES.RENEWALS_UPCOMING}
+            className={activeMainTab === "renewals" ? "active" : ""}
           >
             Renewals
-          </button>
-        </div>
+          </NavLink>
+        </nav>
 
-        {/* Support Tickets Sub-tabs and Filters */}
-        {mainTab === "support" && (
-          <>
-            <div className="sub-tabs">
-              <button
-                className={supportSubTab === "customers" ? "active" : ""}
-                onClick={() => setSupportSubTab("customers")}
-              >
-                By Customer
-              </button>
-              <button
-                className={supportSubTab === "csm" ? "active" : ""}
-                onClick={() => setSupportSubTab("csm")}
-              >
-                By CSM (QBR View)
-              </button>
-              <button
-                className={supportSubTab === "pm" ? "active" : ""}
-                onClick={() => setSupportSubTab("pm")}
-              >
-                By PM (Reports)
-              </button>
-              <button
-                className={supportSubTab === "product" ? "active" : ""}
-                onClick={() => setSupportSubTab("product")}
-              >
-                By Product
-              </button>
-            </div>
-
-            {supportSubTab === "customers" && (
-              <>
-                {/* Search with Autocomplete */}
-                <div className="search-container" ref={searchRef}>
-                  <div className="search-input-wrapper">
-                    <input
-                      type="text"
-                      className="search-input"
-                      placeholder="Search accounts..."
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setShowSuggestions(true);
-                        if (!e.target.value) {
-                          setSelectedSearchOrg(null);
-                        }
-                      }}
-                      onFocus={() => setShowSuggestions(true)}
-                    />
-                    {(searchQuery || selectedSearchOrg) && (
-                      <button className="search-clear" onClick={clearSearch} title="Clear search">
-                        ×
-                      </button>
-                    )}
-                  </div>
-                  {showSuggestions && searchSuggestions.length > 0 && (
-                    <ul className="search-suggestions">
-                      {searchSuggestions.map((org) => (
-                        <li
-                          key={org.id}
-                          onClick={() => handleSearchSelect(org)}
-                          className="search-suggestion-item"
-                        >
-                          <span className="suggestion-name">{org.name}</span>
-                          {summaries.get(org.id) && (
-                            <span className="suggestion-tickets">
-                              {summaries.get(org.id)?.ticketStats.total} tickets
-                            </span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-
-                {/* Smart Filters */}
-                <div className="smart-filters">
-                  <span className="filter-label">Quick Filters:</span>
-                  <button
-                    className={`filter-btn ${smartFilter === "all" ? "active" : ""}`}
-                    onClick={() => setSmartFilter("all")}
-                  >
-                    All Accounts
-                  </button>
-                  <button
-                    className={`filter-btn ${smartFilter === "escalated" ? "active" : ""}`}
-                    onClick={() => setSmartFilter("escalated")}
-                  >
-                    Escalated {filterCounts.escalated > 0 && <span className="badge urgent">{filterCounts.escalated}</span>}
-                  </button>
-                  <button
-                    className={`filter-btn ${smartFilter === "critical" ? "active" : ""}`}
-                    onClick={() => setSmartFilter("critical")}
-                  >
-                    Critical Defects {filterCounts.critical > 0 && <span className="badge high">{filterCounts.critical}</span>}
-                  </button>
-                </div>
-
-                {/* Alphabet Range Navigation */}
-                <div className="alphabet-nav">
-                  <span className="filter-label">Browse:</span>
-                  {ALPHABET_RANGES.map((range) => (
-                    <button
-                      key={range.value}
-                      className={`alpha-btn ${alphabetRange === range.value ? "active" : ""}`}
-                      onClick={() => setAlphabetRange(range.value)}
-                    >
-                      {range.label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {supportSubTab === "customers" && (
-              <p className="hint">Click on status/priority counts to filter tickets, or click the card for full details</p>
-            )}
-            {supportSubTab === "csm" && (
-              <p className="hint">View tickets grouped by CSM and their customer portfolio</p>
-            )}
-            {supportSubTab === "pm" && (
-              <p className="hint">View tickets and analytics grouped by Project Manager for report compilation</p>
-            )}
-            {supportSubTab === "product" && (
-              <p className="hint">View tickets grouped by product, request type, and issue subtype</p>
-            )}
-          </>
+        {/* Support Tickets Sub-tabs */}
+        {activeMainTab === "support" && (
+          <nav className="sub-tabs" aria-label="Support tickets views">
+            <NavLink to={ROUTES.SUPPORT_CUSTOMERS} end>
+              By Customer
+            </NavLink>
+            <NavLink to={ROUTES.SUPPORT_CSM}>
+              By CSM (QBR View)
+            </NavLink>
+            <NavLink to={ROUTES.SUPPORT_PM}>
+              By PM (Reports)
+            </NavLink>
+            <NavLink to={ROUTES.SUPPORT_PRODUCT}>
+              By Product
+            </NavLink>
+          </nav>
         )}
 
         {/* Usage Analytics Sub-tabs */}
-        {mainTab === "usage" && (
-          <>
-            <div className="sub-tabs">
-              <button
-                className={usageSubTab === "customers" ? "active" : ""}
-                onClick={() => setUsageSubTab("customers")}
-              >
-                By Customer
-              </button>
-              <button
-                className={usageSubTab === "csm" ? "active" : ""}
-                onClick={() => setUsageSubTab("csm")}
-              >
-                By CSM (QBR View)
-              </button>
-            </div>
-
-            {usageSubTab === "customers" && (
-              <p className="hint">View product usage metrics by customer organization</p>
-            )}
-            {usageSubTab === "csm" && (
-              <p className="hint">View product usage metrics grouped by CSM portfolio</p>
-            )}
-          </>
+        {activeMainTab === "usage" && (
+          <nav className="sub-tabs" aria-label="Usage analytics views">
+            <NavLink to={ROUTES.USAGE_CUSTOMERS} end>
+              By Customer
+            </NavLink>
+            <NavLink to={ROUTES.USAGE_CSM}>
+              By CSM (QBR View)
+            </NavLink>
+          </nav>
         )}
 
         {/* Renewals Sub-tabs */}
-        {mainTab === "renewals" && (
-          <>
-            <div className="sub-tabs">
-              <button
-                className={renewalsSubTab === "upcoming" ? "active" : ""}
-                onClick={() => setRenewalsSubTab("upcoming")}
-              >
-                Upcoming Renewals (All)
-              </button>
-              <button
-                className={renewalsSubTab === "prs" ? "active" : ""}
-                onClick={() => setRenewalsSubTab("prs")}
-              >
-                By PRS (QBR View)
-              </button>
-            </div>
-
-            {renewalsSubTab === "upcoming" && (
-              <p className="hint">View all upcoming renewal opportunities across accounts</p>
-            )}
-            {renewalsSubTab === "prs" && (
-              <p className="hint">View renewal opportunities grouped by Product Renewal Specialist</p>
-            )}
-          </>
+        {activeMainTab === "renewals" && (
+          <nav className="sub-tabs" aria-label="Renewals views">
+            <NavLink to={ROUTES.RENEWALS_UPCOMING} end>
+              Upcoming Renewals (All)
+            </NavLink>
+            <NavLink to={ROUTES.RENEWALS_PRS}>
+              By PRS (QBR View)
+            </NavLink>
+          </nav>
         )}
 
-        {mainTab === "support" && supportSubTab === "customers" && loadingProgress.total > 0 && loadingProgress.loaded < loadingProgress.total && (
-          <div className="progress-bar">
-            <div
-              className="progress-fill"
-              style={{ width: `${(loadingProgress.loaded / loadingProgress.total) * 100}%` }}
-            />
-            <span className="progress-text">
-              Loading {loadingProgress.loaded} of {loadingProgress.total} customers...
-            </span>
-          </div>
-        )}
+        {hintText && <p className="hint">{hintText}</p>}
       </header>
 
-      {error && <div className="error">{error}</div>}
+      {/* Route-based content */}
+      <main>
+        <Routes>
+          {/* Support Routes */}
+          <Route path="/support/customers" element={<SupportCustomersView />} />
+          <Route path="/support/csm" element={<CSMPortfolioView />} />
+          <Route path="/support/pm" element={<PMPortfolioView />} />
+          <Route path="/support/product" element={<ProductView />} />
 
-      {/* Support Tickets Tab Content - By Customer view stays mounted to preserve state */}
-      <div style={{ display: mainTab === "support" && supportSubTab === "customers" ? "block" : "none" }}>
-        {loadingOrgs ? (
-          <div className="loading">Loading organizations...</div>
-        ) : (
-          <>
-            <Pagination
-              totalItems={filteredAndSortedOrgs.length}
-              pageSize={pageSize}
-              currentPage={currentPage}
-              onPageChange={setCurrentPage}
-              onPageSizeChange={setPageSize}
-            />
-            <div className="results-summary">
-              Showing {paginatedOrgs.length} of {filteredAndSortedOrgs.length} accounts
-              {smartFilter !== "all" && ` (${smartFilter})`}
-              {alphabetRange !== "all" && ` • ${alphabetRange}`}
-            </div>
-            <div className="summaries-grid">
-              {paginatedOrgs.map((org) => {
-                const summary = summaries.get(org.id);
-                if (summary) {
-                  return (
-                    <CustomerSummaryCard
-                      key={org.id}
-                      summary={summary}
-                      onClick={() => handleOrgClick(org)}
-                      onStatusClick={(status) => handleStatusClick(org, status)}
-                      onPriorityClick={(priority) => handlePriorityClick(org, priority)}
-                      isEscalatedView={smartFilter === "escalated"}
-                      isCriticalView={smartFilter === "critical"}
-                    />
-                  );
-                }
-                return (
-                  <div key={org.id} className="summary-card loading-card">
-                    <div className="summary-card-header">
-                      <h2>{org.name}</h2>
-                      <div className="total-tickets">Loading...</div>
-                    </div>
-                  </div>
-                );
-              })}
-              {filteredAndSortedOrgs.length === 0 && organizations.length > 0 && (
-                <p className="no-results">No accounts match the current filters.</p>
-              )}
-              {organizations.length === 0 && !error && (
-                <p>No customer data found. Make sure your Zendesk credentials are configured.</p>
-              )}
-            </div>
-          </>
-        )}
+          {/* Usage Routes */}
+          <Route path="/usage/customers" element={<CustomerUsageView />} />
+          <Route path="/usage/csm" element={<CSMUsageView />} />
 
-        {selectedOrg && (
-          <OrganizationDrilldown
-            orgId={selectedOrg.id}
-            orgName={selectedOrg.name}
-            onClose={() => setSelectedOrg(null)}
-          />
-        )}
+          {/* Renewals Routes */}
+          <Route path="/renewals/upcoming" element={<RenewalAgent />} />
+          <Route path="/renewals/prs" element={<PRSRenewalView />} />
 
-        {ticketFilter && (
-          <TicketListModal
-            orgId={ticketFilter.orgId}
-            orgName={ticketFilter.orgName}
-            filterType={ticketFilter.filterType}
-            filterValue={ticketFilter.filterValue}
-            onClose={() => setTicketFilter(null)}
-          />
-        )}
-      </div>
+          {/* Default redirect */}
+          <Route path="/" element={<Navigate to={ROUTES.SUPPORT_CUSTOMERS} replace />} />
+          <Route path="/support" element={<Navigate to={ROUTES.SUPPORT_CUSTOMERS} replace />} />
+          <Route path="/usage" element={<Navigate to={ROUTES.USAGE_CUSTOMERS} replace />} />
+          <Route path="/renewals" element={<Navigate to={ROUTES.RENEWALS_UPCOMING} replace />} />
 
-      {/* Support Tickets - CSM, PM and Product views */}
-      <div style={{ display: mainTab === "support" && supportSubTab === "csm" ? "block" : "none" }}>
-        <CSMPortfolioView />
-      </div>
-      <div style={{ display: mainTab === "support" && supportSubTab === "pm" ? "block" : "none" }}>
-        <PMPortfolioView />
-      </div>
-      <div style={{ display: mainTab === "support" && supportSubTab === "product" ? "block" : "none" }}>
-        <ProductView />
-      </div>
-
-      {/* Usage Analytics Tab Content - Components stay mounted to preserve state */}
-      <div style={{ display: mainTab === "usage" && usageSubTab === "customers" ? "block" : "none" }}>
-        <CustomerUsageView />
-      </div>
-      <div style={{ display: mainTab === "usage" && usageSubTab === "csm" ? "block" : "none" }}>
-        <CSMUsageView />
-      </div>
-
-      {/* Renewals Tab Content - Components stay mounted to preserve state */}
-      <div style={{ display: mainTab === "renewals" && renewalsSubTab === "upcoming" ? "block" : "none" }}>
-        <RenewalAgent />
-      </div>
-      <div style={{ display: mainTab === "renewals" && renewalsSubTab === "prs" ? "block" : "none" }}>
-        <PRSRenewalView />
-      </div>
+          {/* Catch-all redirect */}
+          <Route path="*" element={<Navigate to={ROUTES.SUPPORT_CUSTOMERS} replace />} />
+        </Routes>
+      </main>
 
       {/* AI Chat Assistant */}
       <ChatWidget />
@@ -577,7 +550,7 @@ function App() {
   if (loading) {
     return (
       <div className="app">
-        <div className="loading">Loading...</div>
+        <div className="loading" aria-live="polite">Loading...</div>
       </div>
     );
   }
@@ -587,11 +560,13 @@ function App() {
     return <LoginPage />;
   }
 
-  // Otherwise show the dashboard with chat
+  // Otherwise show the dashboard with chat and routing
   return (
-    <ChatProvider>
-      <Dashboard />
-    </ChatProvider>
+    <BrowserRouter>
+      <ChatProvider>
+        <Dashboard />
+      </ChatProvider>
+    </BrowserRouter>
   );
 }
 

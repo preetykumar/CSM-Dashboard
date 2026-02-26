@@ -1,4 +1,4 @@
-import { DatabaseService, CachedOrganization, CachedTicket, CachedCSMAssignment, CachedPMAssignment, CachedGitHubLink } from "./database.js";
+import type { IDatabaseService, CachedOrganization, CachedTicket, CachedCSMAssignment, CachedPMAssignment, CachedGitHubLink } from "./database-interface.js";
 import { ZendeskService } from "./zendesk.js";
 import { SalesforceService, CSMAssignment, PMAssignment } from "./salesforce.js";
 import { GitHubService } from "./github.js";
@@ -11,14 +11,14 @@ function normalizeAccents(text: string): string {
 }
 
 export class SyncService {
-  private db: DatabaseService;
+  private db: IDatabaseService;
   private zendesk: ZendeskService;
   private salesforce: SalesforceService | null;
   private github: GitHubService | null;
   private isSyncing = false;
 
   constructor(
-    db: DatabaseService,
+    db: IDatabaseService,
     zendesk: ZendeskService,
     salesforce: SalesforceService | null,
     github: GitHubService | null = null
@@ -54,7 +54,7 @@ export class SyncService {
 
   async syncOrganizations(): Promise<number> {
     console.log("Syncing organizations...");
-    this.db.updateSyncStatus("organizations", "in_progress", 0);
+    await this.db.updateSyncStatus("organizations", "in_progress", 0);
 
     try {
       const orgs = await this.zendesk.getOrganizations();
@@ -88,25 +88,26 @@ export class SyncService {
         };
       });
 
-      this.db.upsertOrganizations(cachedOrgs);
-      this.db.updateSyncStatus("organizations", "success", orgs.length);
+      await this.db.upsertOrganizations(cachedOrgs);
+      await this.db.updateSyncStatus("organizations", "success", orgs.length);
 
       const orgsWithSfId = cachedOrgs.filter((o) => o.salesforce_id).length;
       console.log(`Synced ${orgs.length} organizations (${orgsWithSfId} with Salesforce ID)`);
       return orgs.length;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      this.db.updateSyncStatus("organizations", "error", 0, message);
+      await this.db.updateSyncStatus("organizations", "error", 0, message);
       throw error;
     }
   }
 
   // Get the last ticket sync end_time for delta syncs
-  private getLastTicketSyncTime(): number | null {
-    const status = this.db.getSyncStatus().find(s => s.type === "tickets");
+  private async getLastTicketSyncTime(): Promise<number | null> {
+    const statuses = await this.db.getSyncStatus();
+    const status = statuses.find(s => s.type === "tickets");
     if (status && status.status === "success" && status.last_sync) {
       // Get the stored end_time from metadata if available
-      const metadata = this.db.getSyncMetadata("tickets_end_time");
+      const metadata = await this.db.getSyncMetadata("tickets_end_time");
       if (metadata) {
         return parseInt(metadata, 10);
       }
@@ -145,14 +146,14 @@ export class SyncService {
   // 3. Older closed/solved: Skip entirely
   async syncTickets(deltaOnly = false): Promise<number> {
     console.log(`Syncing tickets (${deltaOnly ? "delta" : "full"} mode - optimized)...`);
-    this.db.updateSyncStatus("tickets", "in_progress", 0);
+    await this.db.updateSyncStatus("tickets", "in_progress", 0);
 
     try {
       // Ensure ticket fields are loaded for custom field extraction
       await this.zendesk.getTicketFields();
 
       // Get all organization IDs from cache for filtering
-      const orgs = this.db.getOrganizations();
+      const orgs = await this.db.getOrganizations();
       const orgIdSet = new Set(orgs.map(o => o.id));
 
       // Calculate QBR cutoff date (e.g., for Feb 2026, this is Jul 1, 2025)
@@ -198,7 +199,7 @@ export class SyncService {
         }
 
         console.log(`    Found ${relevantTickets.length} ${status} tickets (${tickets.length} total)`);
-        this.db.updateSyncStatus("tickets", "in_progress", allCachedTickets.length);
+        await this.db.updateSyncStatus("tickets", "in_progress", allCachedTickets.length);
       }
 
       console.log(`  Step 1 complete: ${allCachedTickets.length} open/active tickets`);
@@ -240,7 +241,7 @@ export class SyncService {
         }
 
         console.log(`    Found ${relevantTickets.length} ${status} tickets in QBR window (${tickets.length} total)`);
-        this.db.updateSyncStatus("tickets", "in_progress", allCachedTickets.length);
+        await this.db.updateSyncStatus("tickets", "in_progress", allCachedTickets.length);
       }
 
       console.log(`  Step 2 complete: Total ${allCachedTickets.length} tickets`);
@@ -255,12 +256,12 @@ export class SyncService {
 
       // Batch upsert all tickets
       if (dedupedTickets.length > 0) {
-        this.db.upsertTickets(dedupedTickets);
+        await this.db.upsertTickets(dedupedTickets);
       }
 
       // Store sync timestamp for delta syncs
       const validEndTime = Math.floor(Date.now() / 1000);
-      this.db.setSyncMetadata("tickets_end_time", validEndTime.toString());
+      await this.db.setSyncMetadata("tickets_end_time", validEndTime.toString());
 
       // Count by org for summary
       const orgCounts = new Map<number, number>();
@@ -276,12 +277,12 @@ export class SyncService {
       }
       console.log(`  Status breakdown: ${JSON.stringify(Object.fromEntries(statusCounts))}`);
 
-      this.db.updateSyncStatus("tickets", "success", dedupedTickets.length);
+      await this.db.updateSyncStatus("tickets", "success", dedupedTickets.length);
       console.log(`Synced ${dedupedTickets.length} tickets total (optimized: open + QBR-window closed)`);
       return dedupedTickets.length;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      this.db.updateSyncStatus("tickets", "error", 0, message);
+      await this.db.updateSyncStatus("tickets", "error", 0, message);
       throw error;
     }
   }
@@ -317,7 +318,7 @@ export class SyncService {
         };
       });
 
-      this.db.upsertTickets(cachedTickets);
+      await this.db.upsertTickets(cachedTickets);
       console.log(`  Synced ${tickets.length} tickets for org ${orgId}`);
       return tickets.length;
     } catch (error) {
@@ -333,13 +334,13 @@ export class SyncService {
     }
 
     console.log("Syncing CSM assignments from Salesforce...");
-    this.db.updateSyncStatus("csm_assignments", "in_progress", 0);
+    await this.db.updateSyncStatus("csm_assignments", "in_progress", 0);
 
     try {
       const assignments = await this.salesforce.getCSMAssignments();
 
       // Get organizations for matching
-      const orgs = this.db.getOrganizations();
+      const orgs = await this.db.getOrganizations();
 
       // Primary: Build a map of Salesforce ID -> Zendesk org
       const sfIdToOrg = new Map<string, CachedOrganization>();
@@ -356,7 +357,8 @@ export class SyncService {
       let additionalOrgsMapped = 0;
 
       // Match Salesforce accounts to Zendesk organizations
-      const cachedAssignments: CachedCSMAssignment[] = assignments.map((a) => {
+      const cachedAssignments: CachedCSMAssignment[] = [];
+      for (const a of assignments) {
         let primaryZendeskOrg: CachedOrganization | undefined;
 
         // Primary: Match by Salesforce Account ID
@@ -364,7 +366,7 @@ export class SyncService {
         if (primaryZendeskOrg) {
           matchedBySfId++;
           // Update the org's salesforce_account_name for display
-          this.db.updateOrganizationSfAccountName(primaryZendeskOrg.id, a.accountName);
+          await this.db.updateOrganizationSfAccountName(primaryZendeskOrg.id, a.accountName);
         }
 
         // ALSO find ALL orgs whose name contains or is contained by the SF account name
@@ -401,7 +403,7 @@ export class SyncService {
 
           if (isMatch) {
             // Update this org's salesforce_account_name
-            this.db.updateOrganizationSfAccountName(org.id, a.accountName);
+            await this.db.updateOrganizationSfAccountName(org.id, a.accountName);
             additionalOrgsMapped++;
 
             // If no primary match yet, use this as the primary
@@ -412,17 +414,17 @@ export class SyncService {
           }
         }
 
-        return {
+        cachedAssignments.push({
           account_id: a.accountId,
           account_name: a.accountName,
           csm_id: a.csmId,
           csm_name: a.csmName,
           csm_email: a.csmEmail,
           zendesk_org_id: primaryZendeskOrg?.id || null,
-        };
-      });
+        });
+      }
 
-      this.db.upsertCSMAssignments(cachedAssignments);
+      await this.db.upsertCSMAssignments(cachedAssignments);
 
       const matchedCount = cachedAssignments.filter((a) => a.zendesk_org_id !== null).length;
       console.log(`Synced ${assignments.length} CSM assignments:`);
@@ -431,11 +433,11 @@ export class SyncService {
       console.log(`  - ${additionalOrgsMapped} additional orgs mapped to SF accounts`);
       console.log(`  - ${assignments.length - matchedCount} unmatched`);
 
-      this.db.updateSyncStatus("csm_assignments", "success", assignments.length);
+      await this.db.updateSyncStatus("csm_assignments", "success", assignments.length);
       return assignments.length;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
-      this.db.updateSyncStatus("csm_assignments", "error", 0, message);
+      await this.db.updateSyncStatus("csm_assignments", "error", 0, message);
       throw error;
     }
   }
@@ -447,19 +449,19 @@ export class SyncService {
     }
 
     console.log("Syncing Project Manager assignments from Salesforce...");
-    this.db.updateSyncStatus("pm_assignments", "in_progress", 0);
+    await this.db.updateSyncStatus("pm_assignments", "in_progress", 0);
 
     try {
       const assignments = await this.salesforce.getProjectManagerAssignments();
 
       if (assignments.length === 0) {
         console.log("No Project Manager assignments found (Project_Manager__c field may not exist)");
-        this.db.updateSyncStatus("pm_assignments", "success", 0);
+        await this.db.updateSyncStatus("pm_assignments", "success", 0);
         return 0;
       }
 
       // Get organizations for matching
-      const orgs = this.db.getOrganizations();
+      const orgs = await this.db.getOrganizations();
 
       // Primary: Build a map of Salesforce ID -> Zendesk org
       const sfIdToOrg = new Map<string, CachedOrganization>();
@@ -525,7 +527,7 @@ export class SyncService {
         };
       });
 
-      this.db.upsertPMAssignments(cachedAssignments);
+      await this.db.upsertPMAssignments(cachedAssignments);
 
       const matchedCount = cachedAssignments.filter((a) => a.zendesk_org_id !== null).length;
       console.log(`Synced ${assignments.length} PM assignments:`);
@@ -533,12 +535,12 @@ export class SyncService {
       console.log(`  - ${matchedByName} matched by name (fallback)`);
       console.log(`  - ${assignments.length - matchedCount} unmatched`);
 
-      this.db.updateSyncStatus("pm_assignments", "success", assignments.length);
+      await this.db.updateSyncStatus("pm_assignments", "success", assignments.length);
       return assignments.length;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error("Error syncing PM assignments:", message);
-      this.db.updateSyncStatus("pm_assignments", "error", 0, message);
+      await this.db.updateSyncStatus("pm_assignments", "error", 0, message);
       // Don't throw - PM sync failure shouldn't break the entire sync
       return 0;
     }
@@ -551,20 +553,20 @@ export class SyncService {
     }
 
     console.log("Syncing GitHub issue links (projects + repository search)...");
-    this.db.updateSyncStatus("github_links", "in_progress", 0);
+    await this.db.updateSyncStatus("github_links", "in_progress", 0);
 
     try {
       // Use getAllLinkedIssues to search both projects AND repositories
       const links = await this.github.getAllLinkedIssues();
 
       // Filter to only tickets that exist in our database
-      const ticketIds = this.db.getAllTicketIds();
+      const ticketIds = await this.db.getAllTicketIds();
       const ticketIdSet = new Set(ticketIds);
 
       const validLinks = links.filter((link) => ticketIdSet.has(link.zendeskTicketId));
 
       // Clear old links and insert new ones
-      this.db.clearGitHubLinks();
+      await this.db.clearGitHubLinks();
 
       const cachedLinks: CachedGitHubLink[] = validLinks.map((link) => ({
         zendesk_ticket_id: link.zendeskTicketId,
@@ -579,21 +581,21 @@ export class SyncService {
         github_updated_at: link.updatedAt,
       }));
 
-      this.db.upsertGitHubLinks(cachedLinks);
+      await this.db.upsertGitHubLinks(cachedLinks);
 
       console.log(`Synced ${validLinks.length} GitHub issue links (${links.length - validLinks.length} unmatched tickets filtered)`);
-      this.db.updateSyncStatus("github_links", "success", validLinks.length);
+      await this.db.updateSyncStatus("github_links", "success", validLinks.length);
 
       return validLinks.length;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown error";
       console.error("GitHub sync error:", message);
-      this.db.updateSyncStatus("github_links", "error", 0, message);
+      await this.db.updateSyncStatus("github_links", "error", 0, message);
       throw error;
     }
   }
 
-  getSyncStatus() {
+  async getSyncStatus() {
     return this.db.getSyncStatus();
   }
 

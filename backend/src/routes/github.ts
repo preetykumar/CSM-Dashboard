@@ -6,10 +6,10 @@
  */
 
 import { Router, Request, Response } from "express";
-import { DatabaseService, CachedGitHubLink } from "../services/database.js";
+import type { IDatabaseService, CachedGitHubLink } from "../services/database-interface.js";
 import type { GitHubDevelopmentStatus } from "../types/index.js";
 
-export function createGitHubRoutes(db: DatabaseService): Router {
+export function createGitHubRoutes(db: IDatabaseService): Router {
   const router = Router();
 
   /**
@@ -41,7 +41,7 @@ export function createGitHubRoutes(db: DatabaseService): Router {
         return res.status(400).json({ error: "Invalid ticket ID" });
       }
 
-      const links = db.getGitHubLinksByTicketId(ticketId);
+      const links = await db.getGitHubLinksByTicketId(ticketId);
       const githubStatuses = links.map(toGitHubDevelopmentStatus);
 
       res.json({
@@ -76,7 +76,7 @@ export function createGitHubRoutes(db: DatabaseService): Router {
         return res.json({ links: {} });
       }
 
-      const linksMap = db.getGitHubLinksByTicketIds(validTicketIds);
+      const linksMap = await db.getGitHubLinksByTicketIds(validTicketIds);
 
       // Transform to response format
       const response: Record<number, GitHubDevelopmentStatus[]> = {};

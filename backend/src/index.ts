@@ -13,6 +13,8 @@ import { ZendeskService } from "./services/zendesk.js";
 import { SalesforceService } from "./services/salesforce.js";
 import { GitHubService } from "./services/github.js";
 import { DatabaseService } from "./services/database.js";
+import { DatabaseServicePg } from "./services/database-pg.js";
+import type { IDatabaseService } from "./services/database-interface.js";
 import { SyncService } from "./services/sync.js";
 import { configureAuth, optionalAuth } from "./services/auth.js";
 import { createTicketRoutes } from "./routes/tickets.js";
@@ -383,13 +385,28 @@ const salesforce = sfConfig ? new SalesforceService(sfConfig) : null;
 const ghConfig = loadGitHubConfig();
 const github = ghConfig ? new GitHubService(ghConfig) : null;
 
-const db = new DatabaseService();
-const sync = new SyncService(db, zendesk, salesforce, github);
+// Database will be initialized async in the startup function
+let db!: IDatabaseService;
+let sync!: SyncService;
+let agent: AgentService | null = null;
 
-// Initialize AI Agent with Salesforce integration for renewals
+// Initialize database based on environment
+async function initializeDatabase(): Promise<IDatabaseService> {
+  const usePostgres = !!(process.env.PG_DATABASE || process.env.INSTANCE_CONNECTION_NAME);
+
+  if (usePostgres) {
+    console.log("Using PostgreSQL database");
+    const pgDb = new DatabaseServicePg();
+    await pgDb.initialize();
+    return pgDb;
+  } else {
+    console.log("Using SQLite database");
+    return new DatabaseService();
+  }
+}
+
 const anthropicConfig = loadAnthropicConfig();
 const apiBaseUrl = `http://localhost:${PORT}`;
-const agent = anthropicConfig ? new AgentService(db, zendesk, anthropicConfig, salesforce, apiBaseUrl) : null;
 
 // Auth routes (no auth required)
 app.use("/api/auth", createAuthRoutes());
@@ -398,8 +415,8 @@ app.use("/api/auth", createAuthRoutes());
 const amplitudeProducts = loadAmplitudeConfig();
 
 // Health check (no auth required)
-app.get("/api/health", (_req, res) => {
-  const syncStatus = sync.getSyncStatus();
+app.get("/api/health", async (_req, res) => {
+  const syncStatus = await sync.getSyncStatus();
   const authEnabled = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
   res.json({
     status: "ok",
@@ -417,9 +434,9 @@ app.get("/api/health", (_req, res) => {
 });
 
 // Test endpoint for GitHub links (no auth, for debugging)
-app.get("/api/test/github-links", (_req, res) => {
+app.get("/api/test/github-links", async (_req, res) => {
   const ticketId = parseInt((_req.query.ticketId as string) || "44641", 10);
-  const links = db.getGitHubLinksByTicketId(ticketId);
+  const links = await db.getGitHubLinksByTicketId(ticketId);
   res.json({
     ticketId,
     linkCount: links.length,
@@ -438,100 +455,118 @@ app.use("/api/live/tickets", optionalAuth, createTicketRoutes(zendesk));
 app.use("/api/live/organizations", optionalAuth, createOrganizationRoutes(zendesk));
 app.use("/api/live/csm", optionalAuth, createCSMRoutes(zendesk, salesforce));
 
-// Cached routes (fast, uses SQLite)
-app.use("/api/organizations", optionalAuth, createCachedRoutes(db));
-app.use("/api/csm", optionalAuth, createCachedRoutes(db));
-
-// Other routes
+// Other routes that don't depend on async-initialized services
 app.use("/api/fields", optionalAuth, createFieldRoutes(zendesk));
-app.use("/api/sync", optionalAuth, createSyncRoutes(sync));
 
 if (salesforce) {
   app.use("/api/salesforce", optionalAuth, createSalesforceRoutes(salesforce));
 }
 
-// GitHub routes (for development status)
-app.use("/api/github", optionalAuth, createGitHubRoutes(db));
-
-// AI Agent routes
-if (agent) {
-  app.use("/api/agent", optionalAuth, createAgentRoutes(agent));
-}
+// Routes that depend on db/sync/agent are registered in startServer() after initialization
 
 // Amplitude usage analytics routes
 if (amplitudeProducts) {
   app.use("/api/amplitude", optionalAuth, createAmplitudeRoutes(amplitudeProducts));
 }
 
-// Serve static frontend files in production
 const publicPath = path.join(__dirname, "..", "public");
-app.use(express.static(publicPath));
 
-// SPA fallback - serve index.html for non-API routes
-app.get("*", (req, res) => {
-  if (!req.path.startsWith("/api")) {
-    res.sendFile(path.join(publicPath, "index.html"));
-  } else {
-    res.status(404).json({ error: "API endpoint not found" });
-  }
-});
+// Async startup function
+async function startServer() {
+  try {
+    // Initialize database (SQLite or PostgreSQL based on environment)
+    db = await initializeDatabase();
 
-app.listen(PORT, async () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Connected to Zendesk: ${zendeskConfig.subdomain}.zendesk.com`);
-  if (salesforce) {
-    console.log("Salesforce integration: enabled");
-  } else {
-    console.log("Salesforce integration: disabled (no credentials)");
-  }
-  if (github) {
-    console.log(`GitHub integration: enabled (org: ${ghConfig?.org}, projects: ${ghConfig?.projectNumbers?.join(", ") || "none"})`);
-  } else {
-    console.log("GitHub integration: disabled (no token)");
-  }
-  if (agent) {
-    console.log(`AI Agent: enabled (model: ${anthropicConfig?.model})`);
-  } else {
-    console.log("AI Agent: disabled (no ANTHROPIC_API_KEY)");
-  }
-  if (amplitudeProducts) {
-    console.log(`Amplitude analytics: enabled (${amplitudeProducts.length} product(s))`);
-  } else {
-    console.log("Amplitude analytics: disabled (no credentials)");
-  }
-  console.log("SQLite cache: enabled");
+    // Initialize sync service
+    sync = new SyncService(db, zendesk, salesforce, github);
 
-  // Check cache status and sync
-  const orgs = db.getOrganizations();
-  if (orgs.length === 0) {
-    console.log("Cache is empty. Starting full initial sync...");
-    sync.syncAll().catch((error) => {
-      console.error("Initial sync failed:", error);
-    });
-  } else {
-    console.log(`Cache contains ${orgs.length} organizations`);
-    // Always sync CSM assignments on startup to update org-to-SF-account mappings
-    if (salesforce) {
-      console.log("Syncing CSM assignments to update org mappings...");
-      sync.syncCSMAssignments().catch((error) => {
-        console.error("CSM sync failed:", error);
-      });
+    // Initialize AI Agent with Salesforce integration for renewals
+    agent = anthropicConfig ? new AgentService(db, zendesk, anthropicConfig, salesforce, apiBaseUrl) : null;
+
+    // Register routes that depend on async-initialized services
+    app.use("/api/organizations", optionalAuth, createCachedRoutes(db));
+    app.use("/api/csm", optionalAuth, createCachedRoutes(db));
+    app.use("/api/sync", optionalAuth, createSyncRoutes(sync));
+    app.use("/api/github", optionalAuth, createGitHubRoutes(db));
+    if (agent) {
+      app.use("/api/agent", optionalAuth, createAgentRoutes(agent));
     }
-  }
 
-  // Schedule automatic nightly sync
-  if (cron.validate(SYNC_SCHEDULE)) {
-    cron.schedule(SYNC_SCHEDULE, async () => {
-      console.log(`[${new Date().toISOString()}] Starting scheduled sync...`);
-      try {
-        const result = await sync.syncAll();
-        console.log(`[${new Date().toISOString()}] Scheduled sync complete:`, result);
-      } catch (error) {
-        console.error(`[${new Date().toISOString()}] Scheduled sync failed:`, error);
+    // Static files and SPA fallback must be registered AFTER all API routes
+    app.use(express.static(publicPath));
+    app.get("*", (req, res) => {
+      if (!req.path.startsWith("/api")) {
+        res.sendFile(path.join(publicPath, "index.html"));
+      } else {
+        res.status(404).json({ error: "API endpoint not found" });
       }
     });
-    console.log(`Scheduled sync: ${SYNC_SCHEDULE} (cron format)`);
-  } else {
-    console.warn(`Invalid SYNC_SCHEDULE: ${SYNC_SCHEDULE}. Scheduled sync disabled.`);
+
+    app.listen(PORT, async () => {
+      console.log(`Server running on http://localhost:${PORT}`);
+      console.log(`Connected to Zendesk: ${zendeskConfig.subdomain}.zendesk.com`);
+      if (salesforce) {
+        console.log("Salesforce integration: enabled");
+      } else {
+        console.log("Salesforce integration: disabled (no credentials)");
+      }
+      if (github) {
+        console.log(`GitHub integration: enabled (org: ${ghConfig?.org}, projects: ${ghConfig?.projectNumbers?.join(", ") || "none"})`);
+      } else {
+        console.log("GitHub integration: disabled (no token)");
+      }
+      if (agent) {
+        console.log(`AI Agent: enabled (model: ${anthropicConfig?.model})`);
+      } else {
+        console.log("AI Agent: disabled (no ANTHROPIC_API_KEY)");
+      }
+      if (amplitudeProducts) {
+        console.log(`Amplitude analytics: enabled (${amplitudeProducts.length} product(s))`);
+      } else {
+        console.log("Amplitude analytics: disabled (no credentials)");
+      }
+      const usePostgres = !!(process.env.PG_DATABASE || process.env.INSTANCE_CONNECTION_NAME);
+      console.log(`Database: ${usePostgres ? "PostgreSQL" : "SQLite"}`);
+
+      // Check cache status and sync
+      const orgs = await db.getOrganizations();
+      if (orgs.length === 0) {
+        console.log("Cache is empty. Starting full initial sync...");
+        sync.syncAll().catch((error) => {
+          console.error("Initial sync failed:", error);
+        });
+      } else {
+        console.log(`Cache contains ${orgs.length} organizations`);
+        // Always sync CSM assignments on startup to update org-to-SF-account mappings
+        if (salesforce) {
+          console.log("Syncing CSM assignments to update org mappings...");
+          sync.syncCSMAssignments().catch((error) => {
+            console.error("CSM sync failed:", error);
+          });
+        }
+      }
+
+      // Schedule automatic nightly sync
+      if (cron.validate(SYNC_SCHEDULE)) {
+        cron.schedule(SYNC_SCHEDULE, async () => {
+          console.log(`[${new Date().toISOString()}] Starting scheduled sync...`);
+          try {
+            const result = await sync.syncAll();
+            console.log(`[${new Date().toISOString()}] Scheduled sync complete:`, result);
+          } catch (error) {
+            console.error(`[${new Date().toISOString()}] Scheduled sync failed:`, error);
+          }
+        });
+        console.log(`Scheduled sync: ${SYNC_SCHEDULE} (cron format)`);
+      } else {
+        console.warn(`Invalid SYNC_SCHEDULE: ${SYNC_SCHEDULE}. Scheduled sync disabled.`);
+      }
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+    process.exit(1);
   }
-});
+}
+
+// Start the server
+startServer();

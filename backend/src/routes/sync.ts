@@ -100,9 +100,9 @@ export function createSyncRoutes(sync: SyncService): Router {
   });
 
   // Get sync status
-  router.get("/status", (_req: Request, res: Response) => {
+  router.get("/status", async (_req: Request, res: Response) => {
     try {
-      const status = sync.getSyncStatus();
+      const status = await sync.getSyncStatus();
       const inProgress = sync.isSyncInProgress();
       res.json({ status, inProgress });
     } catch (error) {

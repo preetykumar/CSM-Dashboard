@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { DatabaseService, CachedTicket, CachedOrganization } from "./database.js";
+import type { IDatabaseService, CachedTicket, CachedOrganization } from "./database-interface.js";
 import { ZendeskService } from "./zendesk.js";
 import { SalesforceService, RenewalOpportunity } from "./salesforce.js";
 import { v4 as uuidv4 } from "uuid";
@@ -39,7 +39,7 @@ interface ChatMessage {
 
 export class AgentService {
   private anthropic: Anthropic;
-  private db: DatabaseService;
+  private db: IDatabaseService;
   private zendesk: ZendeskService;
   private salesforce: SalesforceService | null;
   private apiBaseUrl: string;
@@ -47,7 +47,7 @@ export class AgentService {
   private maxTokens: number;
 
   constructor(
-    db: DatabaseService,
+    db: IDatabaseService,
     zendesk: ZendeskService,
     config: {
       apiKey: string;
@@ -319,28 +319,28 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     try {
       switch (toolName) {
         case "get_tickets_for_organization":
-          return this.toolGetTicketsForOrganization(toolInput as any);
+          return await this.toolGetTicketsForOrganization(toolInput as any);
 
         case "get_escalated_tickets":
-          return this.toolGetEscalatedTickets(toolInput as any);
+          return await this.toolGetEscalatedTickets(toolInput as any);
 
         case "get_customer_summary":
-          return this.toolGetCustomerSummary(toolInput as any);
+          return await this.toolGetCustomerSummary(toolInput as any);
 
         case "get_csm_portfolio":
-          return this.toolGetCSMPortfolio(toolInput as any, context);
+          return await this.toolGetCSMPortfolio(toolInput as any, context);
 
         case "search_tickets":
-          return this.toolSearchTickets(toolInput as any);
+          return await this.toolSearchTickets(toolInput as any);
 
         case "get_ticket_details":
-          return this.toolGetTicketDetails(toolInput as any);
+          return await this.toolGetTicketDetails(toolInput as any);
 
         case "get_github_status":
-          return this.toolGetGitHubStatus(toolInput as any);
+          return await this.toolGetGitHubStatus(toolInput as any);
 
         case "get_organization_list":
-          return this.toolGetOrganizationList(toolInput as any);
+          return await this.toolGetOrganizationList(toolInput as any);
 
         // Usage Analytics tools
         case "get_product_usage_summary":
@@ -365,17 +365,17 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
   }
 
   // Tool implementations
-  private toolGetTicketsForOrganization(input: {
+  private async toolGetTicketsForOrganization(input: {
     organization_name: string;
     status?: string;
     priority?: string;
     ticket_type?: string;
     limit?: number;
-  }): string {
+  }): Promise<string> {
     const limit = input.limit || 20;
 
     // Find organization by name (partial match)
-    const orgs = this.db.getOrganizations();
+    const orgs = await this.db.getOrganizations();
     const org = orgs.find((o) => o.name.toLowerCase().includes(input.organization_name.toLowerCase()));
 
     if (!org) {
@@ -385,7 +385,7 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
       });
     }
 
-    let tickets = this.db.getTicketsByOrganization(org.id);
+    let tickets = await this.db.getTicketsByOrganization(org.id);
 
     // Apply filters
     if (input.status) {
@@ -418,8 +418,8 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     });
   }
 
-  private toolGetEscalatedTickets(input: { organization_name?: string; include_resolved?: boolean }): string {
-    const orgs = this.db.getOrganizations();
+  private async toolGetEscalatedTickets(input: { organization_name?: string; include_resolved?: boolean }): Promise<string> {
+    const orgs = await this.db.getOrganizations();
     let targetOrgs = orgs;
 
     if (input.organization_name) {
@@ -432,7 +432,7 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     const escalatedTickets: Array<CachedTicket & { organization_name: string }> = [];
 
     for (const org of targetOrgs) {
-      const tickets = this.db.getTicketsByOrganization(org.id);
+      const tickets = await this.db.getTicketsByOrganization(org.id);
       const escalated = tickets.filter((t) => {
         if (t.is_escalated !== 1) return false;
         if (!input.include_resolved && (t.status === "solved" || t.status === "closed")) return false;
@@ -458,18 +458,18 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     });
   }
 
-  private toolGetCustomerSummary(input: { organization_name: string }): string {
-    const orgs = this.db.getOrganizations();
+  private async toolGetCustomerSummary(input: { organization_name: string }): Promise<string> {
+    const orgs = await this.db.getOrganizations();
     const org = orgs.find((o) => o.name.toLowerCase().includes(input.organization_name.toLowerCase()));
 
     if (!org) {
       return JSON.stringify({ error: `Organization not found: ${input.organization_name}` });
     }
 
-    const tickets = this.db.getTicketsByOrganization(org.id);
-    const stats = this.db.getTicketStats(org.id);
-    const priorityBreakdown = this.db.getPriorityBreakdown(org.id);
-    const escalationCount = this.db.getEscalationCount(org.id);
+    const tickets = await this.db.getTicketsByOrganization(org.id);
+    const stats = await this.db.getTicketStats(org.id);
+    const priorityBreakdown = await this.db.getPriorityBreakdown(org.id);
+    const escalationCount = await this.db.getEscalationCount(org.id);
 
     // Calculate additional metrics
     const openTickets = tickets.filter((t) => !["solved", "closed"].includes(t.status));
@@ -479,7 +479,7 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     const openFeatures = features.filter((t) => !["solved", "closed"].includes(t.status));
 
     // Get CSM assignment
-    const csmAssignment = this.db.getCSMAssignmentByOrgId(org.id);
+    const csmAssignment = await this.db.getCSMAssignmentByOrgId(org.id);
 
     // Recent high priority tickets
     const recentHighPriority = openTickets
@@ -520,9 +520,9 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     });
   }
 
-  private toolGetCSMPortfolio(input: { csm_email?: string }, context: ConversationContext): string {
+  private async toolGetCSMPortfolio(input: { csm_email?: string }, context: ConversationContext): Promise<string> {
     const email = input.csm_email || context.userEmail;
-    const portfolio = this.db.getCSMPortfolioByEmail(email);
+    const portfolio = await this.db.getCSMPortfolioByEmail(email);
 
     if (!portfolio) {
       return JSON.stringify({
@@ -532,24 +532,32 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     }
 
     // Get summary for each organization
-    const customerSummaries = portfolio.org_ids.map((orgId) => {
-      const org = this.db.getOrganization(orgId);
-      if (!org) return null;
+    const customerSummaries: Array<{
+      id: number;
+      name: string;
+      open_tickets: number;
+      escalations: number;
+      high_priority: number;
+      urgent: number;
+    }> = [];
+    for (const orgId of portfolio.org_ids) {
+      const org = await this.db.getOrganization(orgId);
+      if (!org) continue;
 
-      const stats = this.db.getTicketStats(orgId);
-      const escalations = this.db.getEscalationCount(orgId);
+      const stats = await this.db.getTicketStats(orgId);
+      const escalations = await this.db.getEscalationCount(orgId);
+      const highPriorityTickets = await this.db.getTicketsByPriority(orgId, "high");
+      const urgentTickets = await this.db.getTicketsByPriority(orgId, "urgent");
 
-      return {
+      customerSummaries.push({
         id: orgId,
         name: org.name,
         open_tickets: stats.new + stats.open + stats.pending + stats.hold,
         escalations,
-        high_priority: this.db.getTicketsByPriority(orgId, "high").filter((t) => !["solved", "closed"].includes(t.status))
-          .length,
-        urgent: this.db.getTicketsByPriority(orgId, "urgent").filter((t) => !["solved", "closed"].includes(t.status))
-          .length,
-      };
-    }).filter(Boolean);
+        high_priority: highPriorityTickets.filter((t) => !["solved", "closed"].includes(t.status)).length,
+        urgent: urgentTickets.filter((t) => !["solved", "closed"].includes(t.status)).length,
+      });
+    }
 
     return JSON.stringify({
       csm: {
@@ -559,26 +567,26 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
       total_customers: customerSummaries.length,
       customers: customerSummaries,
       totals: {
-        open_tickets: customerSummaries.reduce((sum, c) => sum + (c?.open_tickets || 0), 0),
-        escalations: customerSummaries.reduce((sum, c) => sum + (c?.escalations || 0), 0),
-        high_priority: customerSummaries.reduce((sum, c) => sum + (c?.high_priority || 0), 0),
-        urgent: customerSummaries.reduce((sum, c) => sum + (c?.urgent || 0), 0),
+        open_tickets: customerSummaries.reduce((sum, c) => sum + c.open_tickets, 0),
+        escalations: customerSummaries.reduce((sum, c) => sum + c.escalations, 0),
+        high_priority: customerSummaries.reduce((sum, c) => sum + c.high_priority, 0),
+        urgent: customerSummaries.reduce((sum, c) => sum + c.urgent, 0),
       },
     });
   }
 
-  private toolSearchTickets(input: { query: string; status?: string; limit?: number }): string {
+  private async toolSearchTickets(input: { query: string; status?: string; limit?: number }): Promise<string> {
     const limit = input.limit || 20;
     const query = input.query.toLowerCase();
 
     // Get all organizations and their tickets
-    const orgs = this.db.getOrganizations();
+    const orgs = await this.db.getOrganizations();
     const orgMap = new Map(orgs.map((o) => [o.id, o.name]));
 
     const matchingTickets: Array<CachedTicket & { organization_name: string }> = [];
 
     for (const org of orgs) {
-      let tickets = this.db.getTicketsByOrganization(org.id);
+      let tickets = await this.db.getTicketsByOrganization(org.id);
 
       // Filter by status if provided
       if (input.status) {
@@ -611,17 +619,17 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     });
   }
 
-  private toolGetTicketDetails(input: { ticket_id: number }): string {
+  private async toolGetTicketDetails(input: { ticket_id: number }): Promise<string> {
     // Find ticket across all organizations
-    const orgs = this.db.getOrganizations();
+    const orgs = await this.db.getOrganizations();
 
     for (const org of orgs) {
-      const tickets = this.db.getTicketsByOrganization(org.id);
+      const tickets = await this.db.getTicketsByOrganization(org.id);
       const ticket = tickets.find((t) => t.id === input.ticket_id);
 
       if (ticket) {
         // Get GitHub links
-        const githubLinks = this.db.getGitHubLinksByTicketId(ticket.id);
+        const githubLinks = await this.db.getGitHubLinksByTicketId(ticket.id);
 
         return JSON.stringify({
           ticket: {
@@ -656,8 +664,8 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     return JSON.stringify({ error: `Ticket not found: ${input.ticket_id}` });
   }
 
-  private toolGetGitHubStatus(input: { ticket_id: number }): string {
-    const links = this.db.getGitHubLinksByTicketId(input.ticket_id);
+  private async toolGetGitHubStatus(input: { ticket_id: number }): Promise<string> {
+    const links = await this.db.getGitHubLinksByTicketId(input.ticket_id);
 
     if (links.length === 0) {
       return JSON.stringify({
@@ -683,9 +691,9 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     });
   }
 
-  private toolGetOrganizationList(input: { search?: string; limit?: number }): string {
+  private async toolGetOrganizationList(input: { search?: string; limit?: number }): Promise<string> {
     const limit = input.limit || 50;
-    let orgs = this.db.getOrganizations();
+    let orgs = await this.db.getOrganizations();
 
     if (input.search) {
       const search = input.search.toLowerCase();
@@ -867,9 +875,9 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
   // Main chat method
   async chat(message: string, context: ConversationContext): Promise<AgentResponse> {
     // Get or create conversation
-    let conversation = this.db.getConversation(context.conversationId);
+    let conversation = await this.db.getConversation(context.conversationId);
     if (!conversation) {
-      conversation = this.db.createConversation({
+      conversation = await this.db.createConversation({
         id: context.conversationId,
         user_id: context.userId,
         user_email: context.userEmail,
@@ -878,14 +886,14 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     }
 
     // Save user message
-    this.db.saveMessage({
+    await this.db.saveMessage({
       conversation_id: context.conversationId,
       role: "user",
       content: message,
     });
 
     // Get conversation history for context
-    const history = this.db.getRecentMessages(context.conversationId, 20);
+    const history = await this.db.getRecentMessages(context.conversationId, 20);
 
     // Build messages array for Claude
     const messages: Anthropic.MessageParam[] = history
@@ -923,7 +931,7 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
         toolsUsed.push(toolUse.name);
 
         // Save tool use to conversation
-        this.db.saveMessage({
+        await this.db.saveMessage({
           conversation_id: context.conversationId,
           role: "tool_use",
           content: `Using tool: ${toolUse.name}`,
@@ -935,7 +943,7 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
         const result = await this.executeTool(toolUse.name, toolUse.input as Record<string, any>, context);
 
         // Save tool result
-        this.db.saveMessage({
+        await this.db.saveMessage({
           conversation_id: context.conversationId,
           role: "tool_result",
           content: `Tool result: ${toolUse.name}`,
@@ -968,7 +976,7 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     const finalResponse = textBlocks.map((b) => b.text).join("\n");
 
     // Save assistant response
-    this.db.saveMessage({
+    await this.db.saveMessage({
       conversation_id: context.conversationId,
       role: "assistant",
       content: finalResponse,
@@ -982,8 +990,8 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
   }
 
   // Get conversation history
-  getConversationHistory(conversationId: string): ChatMessage[] {
-    const messages = this.db.getMessages(conversationId);
+  async getConversationHistory(conversationId: string): Promise<ChatMessage[]> {
+    const messages = await this.db.getMessages(conversationId);
     return messages
       .filter((m) => m.role === "user" || m.role === "assistant")
       .map((m) => ({
@@ -993,8 +1001,8 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
   }
 
   // List user's conversations
-  getUserConversations(userEmail: string): Array<{ id: string; created_at: string; updated_at: string }> {
-    const conversations = this.db.getConversationsByUser(userEmail);
+  async getUserConversations(userEmail: string): Promise<Array<{ id: string; created_at: string; updated_at: string }>> {
+    const conversations = await this.db.getConversationsByUser(userEmail);
     return conversations.map((c) => ({
       id: c.id,
       created_at: c.created_at,
@@ -1003,8 +1011,8 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
   }
 
   // Delete a conversation
-  deleteConversation(conversationId: string): void {
-    this.db.deleteConversation(conversationId);
+  async deleteConversation(conversationId: string): Promise<void> {
+    await this.db.deleteConversation(conversationId);
   }
 
   // Create a new conversation ID
