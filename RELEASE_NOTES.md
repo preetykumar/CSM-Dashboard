@@ -1,6 +1,47 @@
-# CSM Dashboard - MVP Release Notes
+# CSM Dashboard - Release Notes
 
-**Version:** 1.0.0 (MVP)
+## Version 1.3.0
+
+**Release Date:** February 27, 2026
+
+### Salesforce Parent Account Consolidation
+
+Support ticket views now consolidate child Zendesk organizations under their Salesforce ultimate parent account. For example, "ADP-Corp", "ADP Enterprise", "ADP, Inc.", and "ADP-WFN" all roll up under a single "ADP" entry.
+
+**Changes:**
+- **By Customer view**: Accounts are grouped by Salesforce parent hierarchy. Consolidated accounts show "(X accounts)" subtitle and aggregate all ticket stats across child orgs.
+- **By CSM / By PM views**: Portfolio endpoints now expand org assignments to include all sibling orgs sharing the same parent account, so ticket counts match the By Customer view.
+- **Critical Defects pill**: CSM and PM card headers now show an orange "critical" pill for accounts with urgent or high priority active tickets (clickable for drilldown).
+- **Salesforce pagination**: Account hierarchy fetch now supports paginated SOQL queries (previously capped at 2,000 records, now fetches all 12,000+).
+- **New database table**: `account_hierarchy` stores resolved Salesforce parent-child relationships with ultimate parent resolution.
+
+---
+
+## Version 1.2.0
+
+**Release Date:** February 26, 2026
+
+### PostgreSQL Support & Persistent Storage
+
+- Added Cloud SQL PostgreSQL as production database for persistent cache across deployments
+- SQLite remains available for local development
+
+---
+
+## Version 1.1.0
+
+**Release Date:** February 24-26, 2026
+
+### GitHub Integration, Subscription Dates & PM Portfolio
+
+- GitHub development status pills on all ticket views (By Customer, By CSM, By PM, By Product)
+- Enterprise subscription start/end dates in license views
+- PM Portfolio view for support tickets
+
+---
+
+## Version 1.0.0 (MVP)
+
 **Release Date:** February 9, 2026
 
 ---
