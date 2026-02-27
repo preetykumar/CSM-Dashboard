@@ -330,6 +330,9 @@ gcloud run services describe csm-dashboard --region=us-central1 --project=csm-da
   --format="yaml(spec.template.metadata.annotations)" | grep -E "minScale|maxScale"
 ```
 
+### 11. Release Notes
+**Always update `/RELEASE_NOTES.md` when deploying new features or significant changes to production.** This file is linked from the dashboard footer and serves as the user-facing changelog. Add a new version section at the top with the date and a summary of changes.
+
 ---
 
 ## Key Files
@@ -344,6 +347,7 @@ gcloud run services describe csm-dashboard --region=us-central1 --project=csm-da
 | `/backend/src/services/sync.ts` | Sync service (Zendesk, Salesforce, GitHub) |
 | `/backend/src/services/agent.ts` | AI chat agent with tool definitions |
 | `/frontend/src/App.tsx` | Main React app with routing and layout |
+| `/RELEASE_NOTES.md` | User-facing changelog (linked from dashboard footer) |
 | `/Dockerfile` | Multi-stage Docker build for Cloud Run |
 | `/cloudbuild.yaml` | Cloud Build configuration (includes Cloud SQL instance) |
 
