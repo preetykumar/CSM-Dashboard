@@ -7,6 +7,7 @@ import type {
   CachedTicket,
   CachedCSMAssignment,
   CachedPMAssignment,
+  CachedAccountHierarchy,
   SyncStatus,
   CachedGitHubLink,
   Conversation,
@@ -24,6 +25,7 @@ export type {
   CachedTicket,
   CachedCSMAssignment,
   CachedPMAssignment,
+  CachedAccountHierarchy,
   SyncStatus,
   CachedGitHubLink,
   Conversation,
@@ -101,6 +103,19 @@ export class DatabaseService implements IDatabaseService {
         zendesk_org_id INTEGER,
         cached_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS account_hierarchy (
+        account_id TEXT PRIMARY KEY,
+        account_name TEXT NOT NULL,
+        parent_id TEXT,
+        parent_name TEXT,
+        ultimate_parent_id TEXT NOT NULL,
+        ultimate_parent_name TEXT NOT NULL,
+        cached_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_hierarchy_parent ON account_hierarchy(ultimate_parent_id);
+      CREATE INDEX IF NOT EXISTS idx_hierarchy_parent_name ON account_hierarchy(ultimate_parent_name);
 
       CREATE TABLE IF NOT EXISTS sync_status (
         type TEXT PRIMARY KEY,
@@ -210,6 +225,9 @@ export class DatabaseService implements IDatabaseService {
     }
     if (!orgColumnNames.includes("salesforce_account_name")) {
       this.db.exec("ALTER TABLE organizations ADD COLUMN salesforce_account_name TEXT");
+    }
+    if (!orgColumnNames.includes("sf_ultimate_parent_name")) {
+      this.db.exec("ALTER TABLE organizations ADD COLUMN sf_ultimate_parent_name TEXT");
     }
   }
 
@@ -603,6 +621,30 @@ export class DatabaseService implements IDatabaseService {
       SELECT * FROM pm_assignments WHERE zendesk_org_id = ?
     `).get(orgId) as CachedPMAssignment | undefined;
     return row || null;
+  }
+
+  // Account Hierarchy
+  async upsertAccountHierarchy(entries: CachedAccountHierarchy[]): Promise<void> {
+    this.db.prepare("DELETE FROM account_hierarchy").run();
+
+    const stmt = this.db.prepare(`
+      INSERT INTO account_hierarchy (account_id, account_name, parent_id, parent_name, ultimate_parent_id, ultimate_parent_name, cached_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+    const transaction = this.db.transaction((entries: CachedAccountHierarchy[]) => {
+      for (const e of entries) {
+        stmt.run(e.account_id, e.account_name, e.parent_id, e.parent_name, e.ultimate_parent_id, e.ultimate_parent_name);
+      }
+    });
+    transaction(entries);
+  }
+
+  async getAccountHierarchy(): Promise<CachedAccountHierarchy[]> {
+    return this.db.prepare("SELECT * FROM account_hierarchy ORDER BY ultimate_parent_name, account_name").all() as CachedAccountHierarchy[];
+  }
+
+  async updateOrganizationParentName(zendeskOrgId: number, parentName: string): Promise<void> {
+    this.db.prepare("UPDATE organizations SET sf_ultimate_parent_name = ? WHERE id = ?").run(parentName, zendeskOrgId);
   }
 
   // Sync Status

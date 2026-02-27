@@ -5,6 +5,7 @@ import type {
   CachedTicket,
   CachedCSMAssignment,
   CachedPMAssignment,
+  CachedAccountHierarchy,
   SyncStatus,
   CachedGitHubLink,
   Conversation,
@@ -135,6 +136,16 @@ export class DatabaseServicePg implements IDatabaseService {
         cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS account_hierarchy (
+        account_id TEXT PRIMARY KEY,
+        account_name TEXT NOT NULL,
+        parent_id TEXT,
+        parent_name TEXT,
+        ultimate_parent_id TEXT NOT NULL,
+        ultimate_parent_name TEXT NOT NULL,
+        cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
       CREATE TABLE IF NOT EXISTS sync_status (
         type TEXT PRIMARY KEY,
         last_sync TEXT NOT NULL,
@@ -200,6 +211,8 @@ export class DatabaseServicePg implements IDatabaseService {
       CREATE INDEX IF NOT EXISTS idx_messages_conversation ON conversation_messages(conversation_id);
       CREATE INDEX IF NOT EXISTS idx_messages_created ON conversation_messages(created_at);
       CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_email);
+      CREATE INDEX IF NOT EXISTS idx_hierarchy_parent ON account_hierarchy(ultimate_parent_id);
+      CREATE INDEX IF NOT EXISTS idx_hierarchy_parent_name ON account_hierarchy(ultimate_parent_name);
     `);
   }
 
@@ -242,6 +255,9 @@ export class DatabaseServicePg implements IDatabaseService {
     }
     if (!orgColumnNames.includes("salesforce_account_name")) {
       await this.pool.query("ALTER TABLE organizations ADD COLUMN salesforce_account_name TEXT");
+    }
+    if (!orgColumnNames.includes("sf_ultimate_parent_name")) {
+      await this.pool.query("ALTER TABLE organizations ADD COLUMN sf_ultimate_parent_name TEXT");
     }
   }
 
@@ -746,6 +762,41 @@ export class DatabaseServicePg implements IDatabaseService {
   async getPMAssignmentByOrgId(orgId: number): Promise<CachedPMAssignment | null> {
     const result = await this.pool.query("SELECT * FROM pm_assignments WHERE zendesk_org_id = $1", [orgId]);
     return result.rows[0] as CachedPMAssignment | null;
+  }
+
+  // ==================
+  // Account Hierarchy
+  // ==================
+
+  async upsertAccountHierarchy(entries: CachedAccountHierarchy[]): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM account_hierarchy");
+
+      for (const e of entries) {
+        await client.query(
+          `INSERT INTO account_hierarchy (account_id, account_name, parent_id, parent_name, ultimate_parent_id, ultimate_parent_name, cached_at)
+           VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
+          [e.account_id, e.account_name, e.parent_id, e.parent_name, e.ultimate_parent_id, e.ultimate_parent_name]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getAccountHierarchy(): Promise<CachedAccountHierarchy[]> {
+    const result = await this.pool.query("SELECT * FROM account_hierarchy ORDER BY ultimate_parent_name, account_name");
+    return result.rows as CachedAccountHierarchy[];
+  }
+
+  async updateOrganizationParentName(zendeskOrgId: number, parentName: string): Promise<void> {
+    await this.pool.query("UPDATE organizations SET sf_ultimate_parent_name = $1 WHERE id = $2", [parentName, zendeskOrgId]);
   }
 
   // ==================

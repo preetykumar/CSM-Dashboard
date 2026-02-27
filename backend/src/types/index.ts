@@ -55,6 +55,7 @@ export interface Organization {
   tags?: string[];
   organization_fields?: Record<string, any>; // Custom fields like salesforce_id
   salesforce_account_name?: string; // SF Account Name for display (from CSM sync)
+  sf_ultimate_parent_name?: string; // Ultimate parent account from SF hierarchy
   created_at: string;
   updated_at: string;
 }

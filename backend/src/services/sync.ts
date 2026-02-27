@@ -1,6 +1,6 @@
-import type { IDatabaseService, CachedOrganization, CachedTicket, CachedCSMAssignment, CachedPMAssignment, CachedGitHubLink } from "./database-interface.js";
+import type { IDatabaseService, CachedOrganization, CachedTicket, CachedCSMAssignment, CachedPMAssignment, CachedGitHubLink, CachedAccountHierarchy } from "./database-interface.js";
 import { ZendeskService } from "./zendesk.js";
-import { SalesforceService, CSMAssignment, PMAssignment } from "./salesforce.js";
+import { SalesforceService, CSMAssignment, PMAssignment, AccountHierarchyEntry } from "./salesforce.js";
 import { GitHubService } from "./github.js";
 import type { Organization, Ticket } from "../types/index.js";
 
@@ -40,6 +40,12 @@ export class SyncService {
     try {
       const orgCount = await this.syncOrganizations();
       const ticketCount = await this.syncTickets();
+
+      // Sync account hierarchy before CSM/PM assignments so parent names are available
+      if (this.salesforce) {
+        await this.syncAccountHierarchy();
+      }
+
       const csmCount = this.salesforce ? await this.syncCSMAssignments() : 0;
       const pmCount = this.salesforce ? await this.syncPMAssignments() : 0;
       const githubCount = this.github ? await this.syncGitHubLinks() : 0;
@@ -83,6 +89,7 @@ export class SyncService {
           domain_names: JSON.stringify(org.domain_names || []),
           salesforce_id: salesforceId,
           salesforce_account_name: null, // Will be populated during CSM sync
+          sf_ultimate_parent_name: null, // Will be populated during hierarchy sync
           created_at: org.created_at,
           updated_at: org.updated_at,
         };
@@ -324,6 +331,105 @@ export class SyncService {
     } catch (error) {
       console.error(`  Error syncing tickets for org ${orgId}:`, error);
       throw error;
+    }
+  }
+
+  async syncAccountHierarchy(): Promise<void> {
+    if (!this.salesforce) {
+      console.log("Salesforce not configured, skipping account hierarchy sync");
+      return;
+    }
+
+    console.log("Syncing Salesforce account hierarchy...");
+
+    try {
+      const hierarchy = await this.salesforce.getAccountHierarchy();
+      console.log(`  Fetched ${hierarchy.length} accounts from Salesforce hierarchy`);
+
+      // Store hierarchy entries in database
+      const cachedEntries: CachedAccountHierarchy[] = hierarchy.map((entry) => ({
+        account_id: entry.accountId,
+        account_name: entry.accountName,
+        parent_id: entry.parentId,
+        parent_name: entry.parentName,
+        ultimate_parent_id: entry.ultimateParentId,
+        ultimate_parent_name: entry.ultimateParentName,
+      }));
+
+      await this.db.upsertAccountHierarchy(cachedEntries);
+
+      // Build SF Account ID -> ultimate parent name map
+      const sfIdToParentName = new Map<string, string>();
+      for (const entry of hierarchy) {
+        sfIdToParentName.set(entry.accountId, entry.ultimateParentName);
+      }
+
+      // Also build a name-based lookup for orgs without SF ID
+      // Map normalized SF account name -> ultimate parent name
+      const sfNameToParentName = new Map<string, string>();
+      for (const entry of hierarchy) {
+        const normalized = normalizeAccents(entry.accountName.toLowerCase().trim());
+        sfNameToParentName.set(normalized, entry.ultimateParentName);
+      }
+
+      // Update organizations with their ultimate parent name
+      const orgs = await this.db.getOrganizations();
+      let updatedBySfId = 0;
+      let updatedByName = 0;
+
+      for (const org of orgs) {
+        let parentName: string | null = null;
+
+        // Primary: Match by Salesforce ID
+        if (org.salesforce_id && sfIdToParentName.has(org.salesforce_id)) {
+          parentName = sfIdToParentName.get(org.salesforce_id)!;
+          updatedBySfId++;
+        }
+
+        // Fallback: Match by name
+        if (!parentName) {
+          const orgNameNormalized = normalizeAccents(org.name.toLowerCase().trim());
+          // Try exact match first
+          if (sfNameToParentName.has(orgNameNormalized)) {
+            parentName = sfNameToParentName.get(orgNameNormalized)!;
+            updatedByName++;
+          } else {
+            // Try partial match: strip suffixes and try again
+            const orgNameStripped = orgNameNormalized
+              .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
+              .replace(/\s*-\s*(corp|enterprise|wfn|llc|inc)$/i, "")
+              .trim();
+
+            for (const [sfName, ultimateParent] of sfNameToParentName) {
+              const sfNameStripped = sfName
+                .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
+                .trim();
+
+              // Exact match (after stripping suffixes) or org name starts with SF name
+              // startsWith requires a word boundary (space or dash) to avoid partial matches
+              if (orgNameStripped === sfNameStripped ||
+                  (sfNameStripped.length >= 3 && orgNameStripped.startsWith(sfNameStripped + " ")) ||
+                  (sfNameStripped.length >= 3 && orgNameStripped.startsWith(sfNameStripped + "-"))) {
+                parentName = ultimateParent;
+                updatedByName++;
+                break;
+              }
+            }
+          }
+        }
+
+        if (parentName) {
+          await this.db.updateOrganizationParentName(org.id, parentName);
+        }
+      }
+
+      const withParent = hierarchy.filter((h) => h.parentId !== null).length;
+      console.log(`  Account hierarchy: ${hierarchy.length} total, ${withParent} with parent accounts`);
+      console.log(`  Updated org parent names: ${updatedBySfId} by SF ID, ${updatedByName} by name match`);
+    } catch (error) {
+      // Non-fatal: log error but don't break sync
+      const message = error instanceof Error ? error.message : "Unknown error";
+      console.error("Account hierarchy sync error (non-fatal):", message);
     }
   }
 

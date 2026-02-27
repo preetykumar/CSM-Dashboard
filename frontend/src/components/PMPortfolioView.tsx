@@ -26,7 +26,7 @@ function consolidateCustomerSummaries(customers: CSMCustomerSummary[]): Consolid
 
   for (const customer of customers) {
     const org = customer.organization;
-    const accountName = org.salesforce_account_name || org.name;
+    const accountName = org.sf_ultimate_parent_name || org.salesforce_account_name || org.name;
     const existing = accountMap.get(accountName) || [];
     existing.push(customer);
     accountMap.set(accountName, existing);
@@ -291,6 +291,14 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
     setDrilldownTickets({ title: "Escalated Tickets", tickets: escalatedTickets });
   };
 
+  const handleCriticalClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const criticalTickets = tickets.filter(
+      (t) => (t.priority === "urgent" || t.priority === "high") && !["solved", "closed"].includes(t.status)
+    );
+    setDrilldownTickets({ title: "Critical Defects (Urgent + High Priority)", tickets: criticalTickets });
+  };
+
   // Velocity drill-down handlers
   const handleBugsFixedClick = () => {
     const bugsFixed = tickets.filter(
@@ -387,6 +395,11 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
     hold: tickets.filter(t => t.status === 'hold').length,
   };
 
+  // Calculate critical defects (urgent + high priority, open/active only)
+  const criticalDefects = tickets.filter(
+    (t) => (t.priority === "urgent" || t.priority === "high") && !["solved", "closed"].includes(t.status)
+  ).length;
+
   return (
     <div className={`customer-card ${expanded ? "expanded" : ""}`}>
       <div className="customer-header" onClick={onToggle}>
@@ -430,6 +443,11 @@ function ConsolidatedCustomerCard({ customer, expanded, onToggle }: Consolidated
             {escalations > 0 && (
               <span className="escalation-count clickable" onClick={handleEscalationsClick}>
                 {escalations} escalated
+              </span>
+            )}
+            {criticalDefects > 0 && (
+              <span className="critical-defect-count clickable" onClick={handleCriticalClick}>
+                {criticalDefects} critical
               </span>
             )}
           </div>

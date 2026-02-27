@@ -19,6 +19,41 @@ function isAdmin(email: string | undefined): boolean {
   return ADMIN_EMAILS.some((admin) => admin.toLowerCase() === email.toLowerCase());
 }
 
+// Helper: Expand org IDs to include all sibling orgs sharing the same sf_ultimate_parent_name
+// This ensures CSM/PM portfolio views show the same consolidated ticket counts as the By Customer view
+async function expandOrgIdsByParentName(
+  db: IDatabaseService,
+  orgIds: number[],
+  allOrgs?: Awaited<ReturnType<IDatabaseService["getOrganizations"]>>
+): Promise<number[]> {
+  const orgs = allOrgs || (await db.getOrganizations());
+
+  // Build parent name -> org IDs map
+  const parentToOrgIds = new Map<string, number[]>();
+  const orgLookup = new Map(orgs.map((o) => [o.id, o]));
+  for (const org of orgs) {
+    if (org.sf_ultimate_parent_name) {
+      const existing = parentToOrgIds.get(org.sf_ultimate_parent_name) || [];
+      existing.push(org.id);
+      parentToOrgIds.set(org.sf_ultimate_parent_name, existing);
+    }
+  }
+
+  // Expand: for each original org, add all siblings with the same parent name
+  const expandedSet = new Set(orgIds);
+  for (const orgId of orgIds) {
+    const org = orgLookup.get(orgId);
+    if (org?.sf_ultimate_parent_name) {
+      const siblings = parentToOrgIds.get(org.sf_ultimate_parent_name) || [];
+      for (const siblingId of siblings) {
+        expandedSet.add(siblingId);
+      }
+    }
+  }
+
+  return Array.from(expandedSet);
+}
+
 export function createCachedRoutes(db: IDatabaseService): Router {
   const router = Router();
 
@@ -32,6 +67,7 @@ export function createCachedRoutes(db: IDatabaseService): Router {
           name: org.name,
           domain_names: JSON.parse(org.domain_names || "[]"),
           salesforce_account_name: org.salesforce_account_name,
+          sf_ultimate_parent_name: org.sf_ultimate_parent_name,
           created_at: org.created_at,
           updated_at: org.updated_at,
         })),
@@ -95,6 +131,7 @@ export function createCachedRoutes(db: IDatabaseService): Router {
           name: org.name,
           domain_names: JSON.parse(org.domain_names || "[]"),
           salesforce_account_name: org.salesforce_account_name || undefined,
+          sf_ultimate_parent_name: org.sf_ultimate_parent_name || undefined,
           created_at: org.created_at,
           updated_at: org.updated_at,
         },
@@ -244,6 +281,7 @@ export function createCachedRoutes(db: IDatabaseService): Router {
           name: org.name,
           domain_names: JSON.parse(org.domain_names || "[]"),
           salesforce_account_name: org.salesforce_account_name || undefined,
+          sf_ultimate_parent_name: org.sf_ultimate_parent_name || undefined,
           created_at: org.created_at,
           updated_at: org.updated_at,
         },
@@ -354,6 +392,7 @@ export function createCachedRoutes(db: IDatabaseService): Router {
           name: org.name,
           domain_names: JSON.parse(org.domain_names || "[]"),
           salesforce_account_name: org.salesforce_account_name || undefined,
+          sf_ultimate_parent_name: org.sf_ultimate_parent_name || undefined,
           created_at: org.created_at,
           updated_at: org.updated_at,
         },
@@ -600,14 +639,20 @@ export function createCachedRoutes(db: IDatabaseService): Router {
         csmPortfolios = await db.getCSMPortfolios();
       }
 
+      // Pre-fetch all orgs for parent name expansion (shared across all portfolios)
+      const allOrgs = await db.getOrganizations();
+
       const portfolios: CSMPortfolio[] = [];
 
       for (const portfolio of csmPortfolios) {
+        // Expand org_ids to include sibling orgs sharing the same parent account
+        const expandedOrgIds = await expandOrgIdsByParentName(db, portfolio.org_ids, allOrgs);
+
         const customers: CSMCustomerSummary[] = [];
         let totalTickets = 0;
         let openTickets = 0;
 
-        for (const orgId of portfolio.org_ids) {
+        for (const orgId of expandedOrgIds) {
           const org = await db.getOrganization(orgId);
           if (!org) continue;
 
@@ -647,6 +692,7 @@ export function createCachedRoutes(db: IDatabaseService): Router {
               name: org.name,
               domain_names: JSON.parse(org.domain_names || "[]"),
               salesforce_account_name: org.salesforce_account_name || undefined,
+              sf_ultimate_parent_name: org.sf_ultimate_parent_name || undefined,
               created_at: org.created_at,
               updated_at: org.updated_at,
             },
@@ -730,14 +776,20 @@ export function createCachedRoutes(db: IDatabaseService): Router {
         pmPortfolios = await db.getPMPortfolios();
       }
 
+      // Pre-fetch all orgs for parent name expansion (shared across all portfolios)
+      const allOrgsForPM = await db.getOrganizations();
+
       const portfolios: PMPortfolio[] = [];
 
       for (const portfolio of pmPortfolios) {
+        // Expand org_ids to include sibling orgs sharing the same parent account
+        const expandedOrgIds = await expandOrgIdsByParentName(db, portfolio.org_ids, allOrgsForPM);
+
         const customers: CSMCustomerSummary[] = [];
         let totalTickets = 0;
         let openTickets = 0;
 
-        for (const orgId of portfolio.org_ids) {
+        for (const orgId of expandedOrgIds) {
           const org = await db.getOrganization(orgId);
           if (!org) continue;
 
@@ -776,6 +828,7 @@ export function createCachedRoutes(db: IDatabaseService): Router {
               name: org.salesforce_account_name || org.name,
               domain_names: JSON.parse(org.domain_names || "[]"),
               salesforce_account_name: org.salesforce_account_name || undefined,
+              sf_ultimate_parent_name: org.sf_ultimate_parent_name || undefined,
               created_at: org.created_at,
               updated_at: org.updated_at,
             },

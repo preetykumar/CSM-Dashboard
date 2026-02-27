@@ -54,6 +54,25 @@ interface SFAccount {
   };
 }
 
+interface SFAccountWithParent {
+  Id: string;
+  Name: string;
+  ParentId: string | null;
+  Parent?: {
+    Id: string;
+    Name: string;
+  };
+}
+
+export interface AccountHierarchyEntry {
+  accountId: string;
+  accountName: string;
+  parentId: string | null;
+  parentName: string | null;
+  ultimateParentId: string;
+  ultimateParentName: string;
+}
+
 interface SFUser {
   Id: string;
   Name: string;
@@ -331,6 +350,27 @@ export class SalesforceService {
     return result.records;
   }
 
+  // Query with automatic pagination for large result sets (>2000 records)
+  async queryAll<T>(soql: string): Promise<T[]> {
+    const encodedQuery = encodeURIComponent(soql);
+    const firstPage = await this.apiCall<{ records: T[]; done: boolean; nextRecordsUrl?: string }>(
+      "get", `/services/data/v59.0/query?q=${encodedQuery}`
+    );
+
+    const allRecords = [...firstPage.records];
+    let nextUrl = firstPage.nextRecordsUrl;
+
+    while (nextUrl) {
+      const nextPage = await this.apiCall<{ records: T[]; done: boolean; nextRecordsUrl?: string }>(
+        "get", nextUrl
+      );
+      allRecords.push(...nextPage.records);
+      nextUrl = nextPage.nextRecordsUrl;
+    }
+
+    return allRecords;
+  }
+
   async describeObject(objectName: string): Promise<any> {
     return this.apiCall("get", `/services/data/v59.0/sobjects/${objectName}/describe`);
   }
@@ -434,6 +474,66 @@ export class SalesforceService {
       console.error("Error fetching Project Manager assignments:", error);
       // Return empty array if field doesn't exist or query fails
       return [];
+    }
+  }
+
+  async getAccountHierarchy(): Promise<AccountHierarchyEntry[]> {
+    console.log("Fetching account hierarchy from Salesforce...");
+
+    try {
+      const accounts = await this.queryAll<SFAccountWithParent>(`
+        SELECT Id, Name, ParentId, Parent.Id, Parent.Name
+        FROM Account
+      `);
+
+      console.log(`Found ${accounts.length} accounts for hierarchy resolution`);
+
+      // Build lookup map: accountId -> { name, parentId }
+      const accountMap = new Map<string, { name: string; parentId: string | null }>();
+      for (const account of accounts) {
+        accountMap.set(account.Id, {
+          name: account.Name,
+          parentId: account.ParentId || null,
+        });
+      }
+
+      // Resolve ultimate parent for each account (walk up the tree)
+      const hierarchy: AccountHierarchyEntry[] = [];
+
+      for (const account of accounts) {
+        let currentId = account.Id;
+        let ultimateParentId = account.Id;
+        let ultimateParentName = account.Name;
+        const visited = new Set<string>();
+
+        while (true) {
+          const current = accountMap.get(currentId);
+          if (!current || !current.parentId || visited.has(current.parentId)) {
+            ultimateParentId = currentId;
+            ultimateParentName = current?.name || account.Name;
+            break;
+          }
+          visited.add(currentId);
+          currentId = current.parentId;
+        }
+
+        hierarchy.push({
+          accountId: account.Id,
+          accountName: account.Name,
+          parentId: account.ParentId || null,
+          parentName: account.Parent?.Name || null,
+          ultimateParentId,
+          ultimateParentName,
+        });
+      }
+
+      const withParent = hierarchy.filter(h => h.parentId !== null);
+      console.log(`Hierarchy resolved: ${hierarchy.length} accounts, ${withParent.length} have parent accounts`);
+
+      return hierarchy;
+    } catch (error) {
+      console.error("Error fetching account hierarchy:", error);
+      throw error;
     }
   }
 

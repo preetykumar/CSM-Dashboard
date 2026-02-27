@@ -3059,6 +3059,19 @@ header .hint {
   background: #ee5a5a;
 }
 
+.critical-defect-count {
+  background: #ea580c;
+  color: white;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.critical-defect-count:hover {
+  background: #c2410c;
+}
+
 .escalation-indicator {
   display: inline-block;
   background: #ff6b6b;

@@ -2,6 +2,7 @@ import type { CustomerSummary } from "../types";
 
 interface Props {
   summary: CustomerSummary;
+  subtitle?: string;
   onClick?: () => void;
   onStatusClick?: (status: string) => void;
   onPriorityClick?: (priority: string) => void;
@@ -12,7 +13,7 @@ interface Props {
 type StatusKey = "new" | "open" | "pending" | "hold" | "solved" | "closed";
 type PriorityKey = "low" | "normal" | "high" | "urgent";
 
-export function CustomerSummaryCard({ summary, onClick, onStatusClick, onPriorityClick, isEscalatedView, isCriticalView }: Props) {
+export function CustomerSummaryCard({ summary, subtitle, onClick, onStatusClick, onPriorityClick, isEscalatedView, isCriticalView }: Props) {
   const { organization, ticketStats, priorityBreakdown, recentTickets, escalatedTickets, criticalTickets } = summary;
 
   const handleStatusClick = (e: React.MouseEvent, status: StatusKey) => {
@@ -51,7 +52,7 @@ export function CustomerSummaryCard({ summary, onClick, onStatusClick, onPriorit
     return (
       <div className="summary-card escalated-view">
         <div className="summary-card-header">
-          <h2>{organization.name}</h2>
+          <h2>{organization.name}{subtitle && <span className="account-subtitle"> ({subtitle})</span>}</h2>
           <span className="escalation-count">{summary.escalations} escalation{summary.escalations !== 1 ? "s" : ""}</span>
         </div>
 
@@ -90,7 +91,7 @@ export function CustomerSummaryCard({ summary, onClick, onStatusClick, onPriorit
     return (
       <div className="summary-card critical-view">
         <div className="summary-card-header">
-          <h2>{organization.name}</h2>
+          <h2>{organization.name}{subtitle && <span className="account-subtitle"> ({subtitle})</span>}</h2>
           <span className="critical-count">{summary.criticalDefects} critical defect{summary.criticalDefects !== 1 ? "s" : ""}</span>
         </div>
 
@@ -128,7 +129,7 @@ export function CustomerSummaryCard({ summary, onClick, onStatusClick, onPriorit
   return (
     <div className={`summary-card ${onClick ? "clickable" : ""}`} onClick={onClick}>
       <div className="summary-card-header">
-        <h2>{organization.name}</h2>
+        <h2>{organization.name}{subtitle && <span className="account-subtitle"> ({subtitle})</span>}</h2>
         <div className="total-tickets">{ticketStats.total} total tickets</div>
       </div>
 

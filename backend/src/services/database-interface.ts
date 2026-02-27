@@ -6,6 +6,7 @@ export interface CachedOrganization {
   domain_names: string;
   salesforce_id: string | null;
   salesforce_account_name: string | null;
+  sf_ultimate_parent_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -45,6 +46,15 @@ export interface CachedPMAssignment {
   pm_name: string;
   pm_email: string;
   zendesk_org_id: number | null;
+}
+
+export interface CachedAccountHierarchy {
+  account_id: string;
+  account_name: string;
+  parent_id: string | null;
+  parent_name: string | null;
+  ultimate_parent_id: string;
+  ultimate_parent_name: string;
 }
 
 export interface SyncStatus {
@@ -159,6 +169,11 @@ export interface IDatabaseService {
   getPMPortfolios(): Promise<PMPortfolio[]>;
   getPMPortfolioByEmail(email: string): Promise<PMPortfolio | null>;
   getPMAssignmentByOrgId(orgId: number): Promise<CachedPMAssignment | null>;
+
+  // Account Hierarchy
+  upsertAccountHierarchy(entries: CachedAccountHierarchy[]): Promise<void>;
+  getAccountHierarchy(): Promise<CachedAccountHierarchy[]>;
+  updateOrganizationParentName(zendeskOrgId: number, parentName: string): Promise<void>;
 
   // Sync Status
   updateSyncStatus(type: string, status: string, recordCount: number, errorMessage?: string): Promise<void>;
