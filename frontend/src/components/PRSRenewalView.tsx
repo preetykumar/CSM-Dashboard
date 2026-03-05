@@ -4,7 +4,7 @@ import { fetchRenewalOpportunities } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Opportunity, RequiredAction, SortConfig, SortField } from '../types/renewal';
 import { transformApiOpportunity } from '../types/renewal';
-import { WorkflowEngine, getStageBadgeVariant, isClosedLost } from '../services/workflow-engine';
+import { WorkflowEngine, getStageBadgeVariant, isClosedLost, isClosedWon } from '../services/workflow-engine';
 import { RENEWAL_EMAIL_TEMPLATES, getTemplateForAction } from '../services/email-templates';
 import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
@@ -21,9 +21,6 @@ interface PRSPortfolio {
   urgentCount: number;
 }
 
-// PRS users configuration - these users can execute email actions
-const PRS_USER_EMAILS = ['rashi@deque.com', 'brandi@deque.com'];
-
 // Group opportunities by PRS
 function groupByPRS(opportunities: Opportunity[]): PRSPortfolio[] {
   const prsMap = new Map<string, Opportunity[]>();
@@ -39,10 +36,7 @@ function groupByPRS(opportunities: Opportunity[]): PRSPortfolio[] {
     .map(([email, opps]) => {
       const prsName = opps[0]?.prsName || (email === 'Unassigned' ? 'Unassigned' : email);
       const totalValue = opps.reduce((sum, o) => sum + (o.amount || 0), 0);
-      const urgentCount = opps.filter(o => {
-        const actions = WorkflowEngine.getRequiredActions(o);
-        return actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
-      }).length;
+      const urgentCount = opps.filter(o => WorkflowEngine.getRequiredActions(o).length > 0).length;
 
       return { prsName, prsEmail: email, opportunities: opps, totalValue, urgentCount };
     })
@@ -55,14 +49,13 @@ interface PRSCardProps {
   expanded: boolean;
   onToggle: () => void;
   isCurrentUser: boolean;
-  canExecute: boolean;
-  onExecuteAction: (opp: Opportunity, action: RequiredAction) => void;
+  onDraftEmail: (opp: Opportunity, action: RequiredAction) => void;
   sortConfig: SortConfig;
   onSort: (field: SortField) => void;
 }
 
 const PRSCard: React.FC<PRSCardProps> = ({
-  portfolio, expanded, onToggle, isCurrentUser, canExecute, onExecuteAction, sortConfig, onSort
+  portfolio, expanded, onToggle, isCurrentUser, onDraftEmail, sortConfig, onSort
 }) => {
   const sortedOpportunities = useMemo(() => {
     if (!sortConfig.direction) return portfolio.opportunities;
@@ -130,6 +123,7 @@ const PRSCard: React.FC<PRSCardProps> = ({
           <table className="renewal-table">
             <thead>
               <tr>
+                <th className="row-number-header">#</th>
                 <SortHeader label="Account" field="companyName" sortConfig={sortConfig} onSort={onSort} />
                 <SortHeader label="AE" field="ownerName" sortConfig={sortConfig} onSort={onSort} />
                 <SortHeader label="Opportunity Name" field="opportunityName" sortConfig={sortConfig} onSort={onSort} />
@@ -141,15 +135,17 @@ const PRSCard: React.FC<PRSCardProps> = ({
                 <SortHeader label="Total Price" field="amount" sortConfig={sortConfig} onSort={onSort} />
                 <SortHeader label="Renewal Date" field="renewalDate" sortConfig={sortConfig} onSort={onSort} />
                 <SortHeader label="Action Needed" field="action" sortConfig={sortConfig} onSort={onSort} />
+                <th>Leadership Notes</th>
               </tr>
             </thead>
             <tbody>
-              {sortedOpportunities.map(opp => {
+              {sortedOpportunities.map((opp, idx) => {
                 const actions = WorkflowEngine.getRequiredActions(opp);
                 const primaryAction = actions[0];
                 const isUrgent = actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
                 return (
                   <tr key={opp.id} className={`renewal-opp-row ${isUrgent ? 'urgent' : ''} ${opp.atRisk ? 'at-risk' : ''}`}>
+                    <td className="row-number-cell">{idx + 1}</td>
                     <td className="renewal-account-cell">{opp.companyName}</td>
                     <td>{opp.ownerName || '-'}</td>
                     <td>{opp.opportunityName}</td>
@@ -200,16 +196,15 @@ const PRSCard: React.FC<PRSCardProps> = ({
                             {isUrgent && <AlertTriangle size={14} />}
                             {primaryAction.description}
                           </span>
-                          {canExecute && (
-                            <button className="renewal-btn primary sm" onClick={() => onExecuteAction(opp, primaryAction)}>
-                              Execute
-                            </button>
-                          )}
+                          <button className="renewal-btn secondary sm" onClick={() => onDraftEmail(opp, primaryAction)}>
+                            Draft Email
+                          </button>
                         </div>
                       ) : (
                         <span className="renewal-no-action"><CheckCircle size={14} /> No action needed</span>
                       )}
                     </td>
+                    <td className="renewal-notes-cell">{opp.leadershipNotes || '-'}</td>
                   </tr>
                 );
               })}
@@ -239,8 +234,6 @@ export function PRSRenewalView() {
   const [showAtRiskModal, setShowAtRiskModal] = useState(false);
 
   const currentUserEmail = user?.email?.toLowerCase() || '';
-  const isPRS = PRS_USER_EMAILS.some(email => email.toLowerCase() === currentUserEmail);
-  const canExecute = isPRS || isAdmin;
   const userName = user?.name || user?.email?.split('@')[0] || 'PRS User';
 
   const { overdueItems } = useOverdueAlerts(opportunities);
@@ -251,7 +244,7 @@ export function PRSRenewalView() {
         setLoading(true);
         const response = await fetchRenewalOpportunities(daysAhead);
         const opps = response.opportunities.map(transformApiOpportunity)
-          .filter(opp => !isClosedLost(opp.stage));
+          .filter(opp => !isClosedLost(opp.stage) && !isClosedWon(opp.stage));
         setOpportunities(opps);
       } catch (err) {
         console.error('Failed to fetch renewal opportunities:', err);
@@ -282,38 +275,23 @@ export function PRSRenewalView() {
                             (opp.prsName || '').toLowerCase().includes(searchQuery.toLowerCase());
       if (filter === 'all') return matchesSearch;
       if (filter === 'urgent') {
-        const actions = WorkflowEngine.getRequiredActions(opp);
-        return matchesSearch && actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
+        return matchesSearch && WorkflowEngine.getRequiredActions(opp).length > 0;
       }
       return matchesSearch;
     });
     return groupByPRS(filtered);
   }, [opportunities, searchQuery, filter]);
 
-  const handleExecuteAction = useCallback((opp: Opportunity, action: RequiredAction) => {
+  const handleDraftEmail = useCallback((opp: Opportunity, action: RequiredAction) => {
     setSelectedOpportunity(opp);
     const templateKey = getTemplateForAction(action.type);
-    if (templateKey) {
-      setCurrentTemplateKey(templateKey);
-      setShowEmailComposer(true);
-    } else {
-      console.log('Executing action:', action.type, 'for', opp.opportunityName);
-    }
+    setCurrentTemplateKey(templateKey);
+    setShowEmailComposer(true);
   }, []);
-
-  const handleSendEmail = useCallback(({ subject, body }: { subject: string; body: string }) => {
-    console.log('Sending email:', { subject, body, to: selectedOpportunity?.contactEmail });
-    setShowEmailComposer(false);
-    setCurrentTemplateKey(null);
-    setSelectedOpportunity(null);
-  }, [selectedOpportunity]);
 
   const { totalValue, urgentCount, uniqueAccounts, atRiskOpportunities, atRiskCount, atRiskValue } = useMemo(() => {
     const total = opportunities.reduce((sum, opp) => sum + (opp.amount || 0), 0);
-    const urgent = opportunities.filter(opp => {
-      const actions = WorkflowEngine.getRequiredActions(opp);
-      return actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
-    }).length;
+    const urgent = opportunities.filter(opp => WorkflowEngine.getRequiredActions(opp).length > 0).length;
     const accounts = new Set(opportunities.map(opp => opp.accountId)).size;
     const atRiskOpps = opportunities.filter(opp => opp.atRisk === true);
     return {
@@ -353,7 +331,7 @@ export function PRSRenewalView() {
       )}
 
       <div className="renewal-stats-grid">
-        <div className="renewal-stat-card">
+        <div className={`renewal-stat-card clickable ${filter === 'all' ? 'active-filter' : ''}`} onClick={() => setFilter('all')} style={{ cursor: 'pointer' }}>
           <div className="renewal-stat-content">
             <div className="renewal-stat-icon slate"><FileText size={20} /></div>
             <div>
@@ -380,7 +358,7 @@ export function PRSRenewalView() {
             </div>
           </div>
         </div>
-        <div className="renewal-stat-card">
+        <div className={`renewal-stat-card clickable ${filter === 'urgent' ? 'active-filter' : ''}`} onClick={() => setFilter('urgent')} style={{ cursor: 'pointer' }}>
           <div className="renewal-stat-content">
             <div className="renewal-stat-icon red"><AlertTriangle size={20} /></div>
             <div>
@@ -440,8 +418,7 @@ export function PRSRenewalView() {
               expanded={expandedPRS === portfolio.prsEmail}
               onToggle={() => setExpandedPRS(expandedPRS === portfolio.prsEmail ? null : portfolio.prsEmail)}
               isCurrentUser={isCurrentUser}
-              canExecute={canExecute}
-              onExecuteAction={handleExecuteAction}
+              onDraftEmail={handleDraftEmail}
               sortConfig={sortConfig}
               onSort={handleSort}
             />
@@ -460,9 +437,7 @@ export function PRSRenewalView() {
           template={currentTemplateKey ? RENEWAL_EMAIL_TEMPLATES[currentTemplateKey] : null}
           opportunity={selectedOpportunity}
           prsName={userName}
-          onSend={handleSendEmail}
           onClose={() => { setShowEmailComposer(false); setCurrentTemplateKey(null); setSelectedOpportunity(null); }}
-          canSend={canExecute}
         />
       )}
 

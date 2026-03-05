@@ -15,6 +15,7 @@ import { CSMRenewalView } from "./components/CSMRenewalView";
 import { CustomerRenewalView } from "./components/CustomerRenewalView";
 import { MonthlyRenewalView } from "./components/MonthlyRenewalView";
 import { QuarterlyRenewalView } from "./components/QuarterlyRenewalView";
+import { ClosedWonView } from "./components/ClosedWonView";
 import { ClosedLostView } from "./components/ClosedLostView";
 import { ProcessAuditView } from "./components/ProcessAuditView";
 import { ComingSoonPlaceholder } from "./components/ComingSoonPlaceholder";
@@ -46,6 +47,7 @@ const ROUTES = {
   RENEWALS_MONTHLY: "/renewals/monthly",
   RENEWALS_PRS: "/renewals/prs",
   RENEWALS_QUARTERLY: "/renewals/quarterly",
+  RENEWALS_CLOSED_WON: "/renewals/closed-won",
   RENEWALS_CLOSED_LOST: "/renewals/closed-lost",
   RENEWALS_AUDIT: "/renewals/audit",
 } as const;
@@ -104,6 +106,8 @@ function Dashboard() {
         return "View renewal opportunities grouped by Product Renewal Specialist";
       case ROUTES.RENEWALS_QUARTERLY:
         return "View renewal opportunities grouped by fiscal quarter";
+      case ROUTES.RENEWALS_CLOSED_WON:
+        return "View renewals with Closed Won status";
       case ROUTES.RENEWALS_CLOSED_LOST:
         return "View renewals with Closed Lost status";
       case ROUTES.RENEWALS_AUDIT:
@@ -240,6 +244,9 @@ function Dashboard() {
             <NavLink to={ROUTES.RENEWALS_QUARTERLY}>
               By Quarter
             </NavLink>
+            <NavLink to={ROUTES.RENEWALS_CLOSED_WON}>
+              Closed Won
+            </NavLink>
             <NavLink to={ROUTES.RENEWALS_CLOSED_LOST}>
               Closed Lost
             </NavLink>
@@ -281,6 +288,7 @@ function Dashboard() {
           <Route path="/renewals/monthly" element={<MonthlyRenewalView />} />
           <Route path="/renewals/prs" element={<PRSRenewalView />} />
           <Route path="/renewals/quarterly" element={<QuarterlyRenewalView />} />
+          <Route path="/renewals/closed-won" element={<ClosedWonView />} />
           <Route path="/renewals/closed-lost" element={<ClosedLostView />} />
           <Route path="/renewals/audit" element={<ProcessAuditView />} />
 

@@ -38,6 +38,10 @@ export function isClosedLost(stage: string): boolean {
   return CLOSED_LOST_STAGES.includes(stage);
 }
 
+export function isClosedWon(stage: string): boolean {
+  return stage === '8 - Closed Won';
+}
+
 export function getStageBadgeVariant(stage: string): 'success' | 'info' | 'warning' | 'danger' | 'default' {
   if (isInvoicedOrDone(stage)) return 'success';
   if (isClosedLost(stage)) return 'danger';

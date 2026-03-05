@@ -3,7 +3,7 @@ import { Mail, AlertTriangle, CheckCircle, FileText, Phone, RefreshCw, User as U
 import { fetchRenewalOpportunities, RenewalOpportunity as ApiRenewalOpportunity } from '../services/api';
 import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
-import { getStageBadgeVariant, isClosedLost } from '../services/workflow-engine';
+import { getStageBadgeVariant, isClosedLost, isClosedWon } from '../services/workflow-engine';
 import { SortHeader as SharedSortHeader } from './renewal/SortHeader';
 import { OverdueBanner } from './renewal/OverdueBanner';
 import { useOverdueAlerts } from '../hooks/useOverdueAlerts';
@@ -667,10 +667,7 @@ const OpportunityDetail: React.FC<OpportunityDetailProps> = ({ opportunity, onCl
 // Dashboard stats
 const DashboardStats: React.FC<{ opportunities: Opportunity[] }> = ({ opportunities }) => {
   const totalValue = opportunities.reduce((sum, opp) => sum + (opp.amount || 0), 0);
-  const urgentCount = opportunities.filter(opp => {
-    const actions = WorkflowEngine.getRequiredActions(opp);
-    return actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
-  }).length;
+  const urgentCount = opportunities.filter(opp => WorkflowEngine.getRequiredActions(opp).length > 0).length;
   const uniqueAccounts = new Set(opportunities.map(opp => opp.accountId)).size;
 
   const stats = [
@@ -763,7 +760,7 @@ export default function RenewalAgent() {
         dispatch({ type: 'SET_LOADING', payload: true });
         const response = await fetchRenewalOpportunities(daysAhead);
         const opportunities = response.opportunities.map(transformApiOpportunity)
-          .filter(opp => !isClosedLost(opp.stage));
+          .filter(opp => !isClosedLost(opp.stage) && !isClosedWon(opp.stage));
         dispatch({ type: 'SET_OPPORTUNITIES', payload: opportunities });
       } catch (error) {
         console.error('Failed to fetch renewal opportunities:', error);
@@ -796,8 +793,7 @@ export default function RenewalAgent() {
 
       if (filter === 'all') return matchesSearch;
       if (filter === 'urgent') {
-        const actions = WorkflowEngine.getRequiredActions(opp);
-        return matchesSearch && actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
+        return matchesSearch && WorkflowEngine.getRequiredActions(opp).length > 0;
       }
       return matchesSearch;
     });

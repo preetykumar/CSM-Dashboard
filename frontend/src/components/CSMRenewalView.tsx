@@ -4,7 +4,7 @@ import { fetchRenewalOpportunities } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Opportunity, SortConfig, SortField } from '../types/renewal';
 import { transformApiOpportunity } from '../types/renewal';
-import { WorkflowEngine, getStageBadgeVariant, isClosedLost } from '../services/workflow-engine';
+import { WorkflowEngine, getStageBadgeVariant, isClosedLost, isClosedWon } from '../services/workflow-engine';
 import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
 import { SortHeader } from './renewal/SortHeader';
@@ -31,10 +31,7 @@ function groupByCSM(opportunities: Opportunity[]): CSMRenewalPortfolio[] {
     .map(([email, opps]) => {
       const csmName = opps[0]?.csmName || (email === 'Unassigned' ? 'Unassigned' : email);
       const totalValue = opps.reduce((sum, o) => sum + (o.amount || 0), 0);
-      const urgentCount = opps.filter(o => {
-        const actions = WorkflowEngine.getRequiredActions(o);
-        return actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
-      }).length;
+      const urgentCount = opps.filter(o => WorkflowEngine.getRequiredActions(o).length > 0).length;
       return { csmName, csmEmail: email, opportunities: opps, totalValue, urgentCount };
     })
     .sort((a, b) => a.csmName.localeCompare(b.csmName));
@@ -113,6 +110,7 @@ const CSMCard: React.FC<CSMCardProps> = ({ portfolio, expanded, onToggle, isCurr
           <table className="renewal-table">
             <thead>
               <tr>
+                <th className="row-number-header">#</th>
                 <SortHeader label="Account" field="companyName" sortConfig={sortConfig} onSort={onSort} />
                 <SortHeader label="AE" field="ownerName" sortConfig={sortConfig} onSort={onSort} />
                 <SortHeader label="Opportunity Name" field="opportunityName" sortConfig={sortConfig} onSort={onSort} />
@@ -124,15 +122,17 @@ const CSMCard: React.FC<CSMCardProps> = ({ portfolio, expanded, onToggle, isCurr
                 <SortHeader label="Total Price" field="amount" sortConfig={sortConfig} onSort={onSort} />
                 <SortHeader label="Renewal Date" field="renewalDate" sortConfig={sortConfig} onSort={onSort} />
                 <SortHeader label="Action Needed" field="action" sortConfig={sortConfig} onSort={onSort} />
+                <th>Leadership Notes</th>
               </tr>
             </thead>
             <tbody>
-              {sortedOpportunities.map(opp => {
+              {sortedOpportunities.map((opp, idx) => {
                 const actions = WorkflowEngine.getRequiredActions(opp);
                 const primaryAction = actions[0];
                 const isUrgent = actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
                 return (
                   <tr key={opp.id} className={`renewal-opp-row ${isUrgent ? 'urgent' : ''} ${opp.atRisk ? 'at-risk' : ''}`}>
+                    <td className="row-number-cell">{idx + 1}</td>
                     <td className="renewal-account-cell">{opp.companyName}</td>
                     <td>{opp.ownerName || '-'}</td>
                     <td>{opp.opportunityName}</td>
@@ -159,6 +159,7 @@ const CSMCard: React.FC<CSMCardProps> = ({ portfolio, expanded, onToggle, isCurr
                         </div>
                       ) : <span className="renewal-no-action"><CheckCircle size={14} /> No action needed</span>}
                     </td>
+                    <td className="renewal-notes-cell">{opp.leadershipNotes || '-'}</td>
                   </tr>
                 );
               })}
@@ -193,7 +194,7 @@ export function CSMRenewalView() {
         setLoading(true);
         const response = await fetchRenewalOpportunities(daysAhead);
         const opps = response.opportunities.map(transformApiOpportunity)
-          .filter(opp => !isClosedLost(opp.stage));
+          .filter(opp => !isClosedLost(opp.stage) && !isClosedWon(opp.stage));
         setOpportunities(opps);
       } catch (err) {
         console.error('Failed to fetch renewal opportunities:', err);
@@ -224,8 +225,7 @@ export function CSMRenewalView() {
                             (opp.csmName || '').toLowerCase().includes(searchQuery.toLowerCase());
       if (filter === 'all') return matchesSearch;
       if (filter === 'urgent') {
-        const actions = WorkflowEngine.getRequiredActions(opp);
-        return matchesSearch && actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
+        return matchesSearch && WorkflowEngine.getRequiredActions(opp).length > 0;
       }
       return matchesSearch;
     });
@@ -234,10 +234,7 @@ export function CSMRenewalView() {
 
   const { totalValue, urgentCount, uniqueAccounts, atRiskOpportunities, atRiskCount, atRiskValue } = useMemo(() => {
     const total = opportunities.reduce((sum, opp) => sum + (opp.amount || 0), 0);
-    const urgent = opportunities.filter(opp => {
-      const actions = WorkflowEngine.getRequiredActions(opp);
-      return actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
-    }).length;
+    const urgent = opportunities.filter(opp => WorkflowEngine.getRequiredActions(opp).length > 0).length;
     const accounts = new Set(opportunities.map(opp => opp.accountId)).size;
     const atRiskOpps = opportunities.filter(opp => opp.atRisk === true);
     return {
@@ -265,10 +262,10 @@ export function CSMRenewalView() {
       )}
 
       <div className="renewal-stats-grid">
-        <div className="renewal-stat-card"><div className="renewal-stat-content"><div className="renewal-stat-icon slate"><FileText size={20} /></div><div><p className="renewal-stat-value">{opportunities.length}</p><p className="renewal-stat-label">Total Renewals</p></div></div></div>
+        <div className={`renewal-stat-card clickable ${filter === 'all' ? 'active-filter' : ''}`} onClick={() => setFilter('all')} style={{ cursor: 'pointer' }}><div className="renewal-stat-content"><div className="renewal-stat-icon slate"><FileText size={20} /></div><div><p className="renewal-stat-value">{opportunities.length}</p><p className="renewal-stat-label">Total Renewals</p></div></div></div>
         <div className="renewal-stat-card"><div className="renewal-stat-content"><div className="renewal-stat-icon blue"><UserIcon size={20} /></div><div><p className="renewal-stat-value">{uniqueAccounts}</p><p className="renewal-stat-label">Accounts</p></div></div></div>
         <div className="renewal-stat-card"><div className="renewal-stat-content"><div className="renewal-stat-icon green"><DollarSign size={20} /></div><div><p className="renewal-stat-value">{formatCurrency(totalValue)}</p><p className="renewal-stat-label">Total Value</p></div></div></div>
-        <div className="renewal-stat-card"><div className="renewal-stat-content"><div className="renewal-stat-icon red"><AlertTriangle size={20} /></div><div><p className="renewal-stat-value">{urgentCount}</p><p className="renewal-stat-label">Needs Action</p></div></div></div>
+        <div className={`renewal-stat-card clickable ${filter === 'urgent' ? 'active-filter' : ''}`} onClick={() => setFilter('urgent')} style={{ cursor: 'pointer' }}><div className="renewal-stat-content"><div className="renewal-stat-icon red"><AlertTriangle size={20} /></div><div><p className="renewal-stat-value">{urgentCount}</p><p className="renewal-stat-label">Needs Action</p></div></div></div>
         <div className={`renewal-stat-card clickable ${atRiskCount > 0 ? 'at-risk' : ''}`} onClick={() => atRiskCount > 0 && setShowAtRiskModal(true)} style={{ cursor: atRiskCount > 0 ? 'pointer' : 'default' }}>
           <div className="renewal-stat-content"><div className="renewal-stat-icon orange"><AlertTriangle size={20} /></div><div><p className="renewal-stat-value">{atRiskCount}</p><p className="renewal-stat-label">At Risk</p>{atRiskCount > 0 && <p className="renewal-stat-subtext">{formatCurrency(atRiskValue)} value</p>}</div></div>
         </div>

@@ -27,6 +27,7 @@ export interface Opportunity {
   r6Notes?: string;
   r3Notes?: string;
   accountingNotes?: string;
+  leadershipNotes?: string;
 }
 
 export interface RequiredAction {
@@ -85,5 +86,6 @@ export function transformApiOpportunity(apiOpp: ApiRenewalOpportunity): Opportun
     r6Notes: apiOpp.r6Notes,
     r3Notes: apiOpp.r3Notes,
     accountingNotes: apiOpp.accountingNotes,
+    leadershipNotes: apiOpp.leadershipNotes,
   };
 }

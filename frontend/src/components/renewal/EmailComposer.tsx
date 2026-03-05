@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Send, X } from 'lucide-react';
+import { Send, X } from 'lucide-react';
 import type { EmailTemplate, Opportunity } from '../../types/renewal';
 import { RENEWAL_EMAIL_TEMPLATES, getTemplateOptions } from '../../services/email-templates';
 import { formatCurrency } from '../../utils/format';
@@ -8,9 +8,7 @@ interface EmailComposerProps {
   template: EmailTemplate | null;
   opportunity: Opportunity | null;
   prsName: string;
-  onSend?: (data: { subject: string; body: string }) => void;
   onClose: () => void;
-  canSend?: boolean;
   readOnly?: boolean;
 }
 
@@ -18,9 +16,7 @@ export const EmailComposer: React.FC<EmailComposerProps> = ({
   template,
   opportunity,
   prsName,
-  onSend,
   onClose,
-  canSend = false,
   readOnly = false
 }) => {
   const [subject, setSubject] = useState(template?.subject || '');
@@ -85,24 +81,12 @@ export const EmailComposer: React.FC<EmailComposerProps> = ({
     <div className="renewal-email-modal">
       <div className="renewal-email-content">
         <div className="renewal-email-header">
-          <h3 className="renewal-email-title">{readOnly ? 'Email Preview' : 'Compose Email'}</h3>
+          <h3 className="renewal-email-title">{readOnly ? 'Email Preview' : 'Draft Email'}</h3>
           <button onClick={onClose} className="renewal-close-btn">
             <X size={20} />
           </button>
         </div>
         <div className="renewal-email-body">
-          {readOnly && (
-            <div className="renewal-email-warning">
-              <AlertTriangle size={16} />
-              <span>This is a preview only. To send emails, use the &quot;By PRS (QBR View)&quot; tab.</span>
-            </div>
-          )}
-          {!readOnly && !canSend && (
-            <div className="renewal-email-warning">
-              <AlertTriangle size={16} />
-              <span>Only authorized PRS users (Rashi, Brandi) can send emails. You can preview but not send.</span>
-            </div>
-          )}
           {!readOnly && (
             <div className="renewal-email-field">
               <label>Template</label>
@@ -159,17 +143,18 @@ export const EmailComposer: React.FC<EmailComposerProps> = ({
         </div>
         <div className="renewal-email-footer">
           <button className="renewal-btn secondary" onClick={onClose}>
-            {readOnly ? 'Close' : 'Cancel'}
+            Close
           </button>
-          {!readOnly && (
-            <button
-              className={`renewal-btn primary ${!canSend ? 'disabled' : ''}`}
-              onClick={() => canSend && onSend?.({ subject, body })}
-              disabled={!canSend}
-              title={!canSend ? 'Only Rashi or Brandi can send emails' : 'Send email'}
+          {!readOnly && toEmail && (
+            <a
+              className="renewal-btn primary"
+              href={`mailto:${toEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}
             >
-              <Send size={16} /> {canSend ? 'Send Email' : 'Cannot Send'}
-            </button>
+              <Send size={16} /> Open in Email Client
+            </a>
           )}
         </div>
       </div>

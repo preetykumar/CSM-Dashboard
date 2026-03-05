@@ -853,6 +853,7 @@ export interface RenewalOpportunity {
   r6Notes?: string;
   r3Notes?: string;
   accountingNotes?: string;
+  leadershipNotes?: string;
 }
 
 export interface RenewalOpportunitiesResponse {
