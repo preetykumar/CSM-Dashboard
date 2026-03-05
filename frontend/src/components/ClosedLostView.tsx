@@ -72,29 +72,29 @@ export const ClosedLostView: React.FC = () => {
   }
 
   if (loading) {
-    return <div className="prs-loading"><div className="loading-spinner" /><p>Loading closed lost renewals...</p></div>;
+    return <div className="renewal-loading"><div className="loading-spinner" /><p>Loading closed lost renewals...</p></div>;
   }
   if (error) {
-    return <div className="prs-error"><p>Error: {error}</p><button onClick={loadData} className="prs-retry-btn">Retry</button></div>;
+    return <div className="renewal-loading"><p>Error: {error}</p><button onClick={loadData} className="btn btn-primary">Retry</button></div>;
   }
 
   return (
-    <div className="prs-renewal-view">
+    <div className="renewal-view">
       {/* Header */}
-      <div className="prs-controls">
-        <div className="prs-search-container">
-          <Search size={16} className="prs-search-icon" />
+      <div className="renewal-filter-bar">
+        <div className="renewal-search-wrapper">
+          <Search size={16} className="renewal-search-icon" />
           <input
             type="text"
             placeholder="Search accounts, AEs, CSMs..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            className="prs-search-input"
+            className="renewal-search-input"
           />
         </div>
-        <div className="prs-filter-group">
+        <div className="renewal-filter-buttons">
           <label>Lookahead:</label>
-          <select value={daysAhead} onChange={e => setDaysAhead(Number(e.target.value))} className="prs-select">
+          <select value={daysAhead} onChange={e => setDaysAhead(Number(e.target.value))} className="renewal-search-input" style={{ width: 'auto', paddingLeft: '12px' }}>
             <option value={90}>90 days</option>
             <option value={180}>180 days</option>
             <option value={365}>1 year</option>
@@ -103,27 +103,35 @@ export const ClosedLostView: React.FC = () => {
       </div>
 
       {/* Summary Stats */}
-      <div className="prs-stats-row">
-        <div className="prs-stat">
-          <XCircle size={16} />
-          <span className="prs-stat-value">{opportunities.length}</span>
-          <span className="prs-stat-label">Closed Lost</span>
+      <div className="renewal-stats-grid">
+        <div className="renewal-stat-card">
+          <div className="renewal-stat-content">
+            <div className="renewal-stat-icon red"><XCircle size={20} /></div>
+            <div>
+              <p className="renewal-stat-value">{opportunities.length}</p>
+              <p className="renewal-stat-label">Closed Lost</p>
+            </div>
+          </div>
         </div>
-        <div className="prs-stat">
-          <DollarSign size={16} />
-          <span className="prs-stat-value">{formatCurrency(totalLostValue)}</span>
-          <span className="prs-stat-label">Total Lost Value</span>
+        <div className="renewal-stat-card">
+          <div className="renewal-stat-content">
+            <div className="renewal-stat-icon red"><DollarSign size={20} /></div>
+            <div>
+              <p className="renewal-stat-value">{formatCurrency(totalLostValue)}</p>
+              <p className="renewal-stat-label">Total Lost Value</p>
+            </div>
+          </div>
         </div>
       </div>
 
       {opportunities.length === 0 ? (
-        <div className="prs-empty">
+        <div className="renewal-empty-state">
           <FileText size={32} />
           <p>No closed lost renewals found in the selected time range.</p>
         </div>
       ) : (
-        <div className="prs-table-container">
-          <table className="prs-table">
+        <div className="renewal-table-container">
+          <table className="renewal-table">
             <thead>
               <tr>
                 <SortHeader field="companyName" label="Account" sortConfig={sortConfig} onSort={handleSort} />
@@ -140,15 +148,15 @@ export const ClosedLostView: React.FC = () => {
             <tbody>
               {sorted.map(opp => (
                 <tr key={opp.id}>
-                  <td className="prs-cell-account">{opp.companyName}</td>
+                  <td className="renewal-cell-account">{opp.companyName}</td>
                   <td>{opp.ownerName || '-'}</td>
-                  <td className="prs-cell-opp-name">{opp.opportunityName}</td>
+                  <td className="renewal-cell-opp-name">{opp.opportunityName}</td>
                   <td>{opp.productName}</td>
                   <td>{opp.csmName || '-'}</td>
                   <td>{opp.prsName || '-'}</td>
                   <td><Badge variant="danger">{opp.stage}</Badge></td>
-                  <td className="prs-cell-amount">{formatCurrency(opp.amount)}</td>
-                  <td className="prs-cell-date">{new Date(opp.renewalDate).toLocaleDateString()}</td>
+                  <td className="renewal-cell-amount">{formatCurrency(opp.amount)}</td>
+                  <td className="renewal-cell-date">{new Date(opp.renewalDate).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>

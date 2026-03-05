@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { SalesforceService } from "../services/salesforce.js";
+import { renewalsCache, salesforceCache } from "../services/cache.js";
 
 export function createSalesforceRoutes(salesforce: SalesforceService): Router {
   const router = Router();
@@ -57,46 +58,70 @@ export function createSalesforceRoutes(salesforce: SalesforceService): Router {
     }
   });
 
-  // Get enterprise subscriptions by account name
+  // Get enterprise subscriptions by account name (cached 10 min)
   router.get("/subscriptions/account/:accountName", async (req: Request, res: Response) => {
     try {
       const accountName = decodeURIComponent(req.params.accountName);
+      const cacheKey = `subs:name:${accountName.toLowerCase()}`;
+      const cached = salesforceCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
+
       const subscriptions = await salesforce.getEnterpriseSubscriptionsByAccountName(accountName);
-      res.json({ subscriptions, count: subscriptions.length });
+      const result = { subscriptions, count: subscriptions.length };
+      salesforceCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error(`Error fetching subscriptions for ${req.params.accountName}:`, error);
       res.status(500).json({ error: "Failed to fetch enterprise subscriptions" });
     }
   });
 
-  // Get enterprise subscriptions by account ID
+  // Get enterprise subscriptions by account ID (cached 10 min)
   router.get("/subscriptions/id/:accountId", async (req: Request, res: Response) => {
     try {
+      const cacheKey = `subs:id:${req.params.accountId}`;
+      const cached = salesforceCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
+
       const subscriptions = await salesforce.getEnterpriseSubscriptionsByAccountId(req.params.accountId);
-      res.json({ subscriptions, count: subscriptions.length });
+      const result = { subscriptions, count: subscriptions.length };
+      salesforceCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error(`Error fetching subscriptions for account ${req.params.accountId}:`, error);
       res.status(500).json({ error: "Failed to fetch enterprise subscriptions" });
     }
   });
 
-  // Get all account names with active subscriptions
+  // Get all account names with active subscriptions (cached 10 min)
   router.get("/accounts-with-subscriptions", async (_req: Request, res: Response) => {
     try {
+      const cacheKey = "accounts-with-subs";
+      const cached = salesforceCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
+
       const accountNames = await salesforce.getAccountsWithActiveSubscriptions();
-      res.json({ accountNames, count: accountNames.length });
+      const result = { accountNames, count: accountNames.length };
+      salesforceCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching accounts with subscriptions:", error);
       res.status(500).json({ error: "Failed to fetch accounts with subscriptions" });
     }
   });
 
-  // Get renewal opportunities for the next N days (default 180)
+  // Get renewal opportunities for the next N days (default 180, cached 5 min)
   router.get("/renewals", async (req: Request, res: Response) => {
     try {
       const daysAhead = parseInt(req.query.days as string) || 180;
+      const cacheKey = `renewals:${daysAhead}`;
+      const cached = renewalsCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
+
       const opportunities = await salesforce.getRenewalOpportunities(daysAhead);
-      res.json({ opportunities, count: opportunities.length });
+      const result = { opportunities, count: opportunities.length };
+      renewalsCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching renewal opportunities:", error);
       res.status(500).json({ error: "Failed to fetch renewal opportunities" });

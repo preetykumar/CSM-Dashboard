@@ -3,6 +3,7 @@ import { ZendeskService } from "./zendesk.js";
 import { SalesforceService, CSMAssignment, PMAssignment, AccountHierarchyEntry } from "./salesforce.js";
 import { GitHubService } from "./github.js";
 import type { Organization, Ticket } from "../types/index.js";
+import { renewalsCache, salesforceCache } from "./cache.js";
 
 // Helper function to normalize text by removing diacritical marks (accents)
 // e.g., "Nestlé" -> "nestle", "Café" -> "cafe"
@@ -63,6 +64,28 @@ export class SyncService {
       const githubCount = this.github ? await this.syncGitHubLinks() : 0;
 
       console.log(`Sync complete: ${orgCount} orgs, ${ticketCount} tickets, ${csmCount} CSM assignments, ${pmCount} PM assignments, ${githubCount} GitHub links`);
+
+      // Pre-warm caches: invalidate stale data, then pre-fetch renewals
+      renewalsCache.clear();
+      salesforceCache.clear();
+      if (this.salesforce) {
+        try {
+          console.log("Pre-warming renewals cache...");
+          const renewalData = await this.salesforce.getRenewalOpportunities(365);
+          renewalsCache.set("renewals:365", { opportunities: renewalData, count: renewalData.length });
+          console.log(`Renewals cache pre-warmed with ${renewalData.length} opportunities`);
+        } catch (err) {
+          console.error("Failed to pre-warm renewals cache:", err);
+        }
+        try {
+          console.log("Pre-warming subscriptions cache...");
+          const accountNames = await this.salesforce.getAccountsWithActiveSubscriptions();
+          salesforceCache.set("accounts-with-subs", { accountNames, count: accountNames.length });
+          console.log(`Subscriptions cache pre-warmed with ${accountNames.length} accounts`);
+        } catch (err) {
+          console.error("Failed to pre-warm subscriptions cache:", err);
+        }
+      }
 
       return { organizations: orgCount, tickets: ticketCount, csmAssignments: csmCount, pmAssignments: pmCount, githubLinks: githubCount };
     } finally {

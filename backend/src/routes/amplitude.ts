@@ -1,5 +1,27 @@
 import { Router, Request, Response } from "express";
 import { AmplitudeService } from "../services/amplitude.js";
+import { amplitudeCache } from "../services/cache.js";
+
+// Helper: wrap an async handler with caching (15 min TTL)
+function cachedHandler(keyFn: (req: Request) => string, handler: (req: Request) => Promise<any>) {
+  return async (req: Request, res: Response) => {
+    try {
+      const cacheKey = keyFn(req);
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
+
+      const result = await handler(req);
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
+    } catch (error) {
+      console.error("Amplitude API error:", error);
+      res.status(500).json({
+        error: "Failed to fetch data",
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  };
+}
 
 // Product configurations with their Amplitude project IDs
 interface ProductConfig {
@@ -26,14 +48,20 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     services.set(slug, { service, config });
   }
 
-  // GET /api/amplitude/products - List available products
+  // GET /api/amplitude/products - List available products (cached)
   router.get("/products", (_req: Request, res: Response) => {
+    const cacheKey = "amp:products";
+    const cached = amplitudeCache.get<any>(cacheKey);
+    if (cached) return res.json(cached);
+
     const productList = products.map((p) => ({
       name: p.name,
       slug: p.name.toLowerCase().replace(/\s+/g, "-"),
       projectId: p.projectId,
     }));
-    res.json({ products: productList });
+    const result = { products: productList };
+    amplitudeCache.set(cacheKey, result, 3600); // 1 hour - product list doesn't change
+    res.json(result);
   });
 
   // GET /api/amplitude/events/:product/list - List available events for a product
@@ -88,11 +116,14 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/usage/:product - Get usage data for a product
+  // GET /api/amplitude/usage/:product - Get usage data for a product (cached 15 min)
   router.get("/usage/:product", async (req: Request, res: Response) => {
     try {
       const { product } = req.params;
       const days = parseInt(req.query.days as string) || 30;
+      const cacheKey = `amp:usage:${product}:${days}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -103,6 +134,7 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       }
 
       const usage = await entry.service.getProductUsage(entry.config.name, days);
+      amplitudeCache.set(cacheKey, usage);
       res.json(usage);
     } catch (error) {
       console.error("Error fetching usage data:", error);
@@ -113,10 +145,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/summary/:product - Get usage summary for a product
+  // GET /api/amplitude/summary/:product - Get usage summary for a product (cached 15 min)
   router.get("/summary/:product", async (req: Request, res: Response) => {
     try {
       const { product } = req.params;
+      const cacheKey = `amp:summary:${product}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -127,6 +162,7 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       }
 
       const summary = await entry.service.getUsageSummary(entry.config.name);
+      amplitudeCache.set(cacheKey, summary);
       res.json(summary);
     } catch (error) {
       console.error("Error fetching usage summary:", error);
@@ -137,9 +173,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/summary - Get usage summary for all products
+  // GET /api/amplitude/summary - Get usage summary for all products (cached 15 min)
   router.get("/summary", async (_req: Request, res: Response) => {
     try {
+      const cacheKey = "amp:summary:all";
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
+
       const summaries = await Promise.all(
         Array.from(services.entries()).map(async ([slug, entry]) => {
           try {
@@ -155,7 +195,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
           }
         })
       );
-      res.json({ summaries });
+      const result = { summaries };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching all summaries:", error);
       res.status(500).json({
@@ -165,10 +207,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/org/:organization - Get usage summary for all products for a specific organization
+  // GET /api/amplitude/org/:organization - Get usage summary for all products for a specific organization (cached 15 min)
   router.get("/org/:organization", async (req: Request, res: Response) => {
     try {
       const { organization } = req.params;
+      const cacheKey = `amp:org:${organization.toLowerCase()}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const summaries = await Promise.all(
         Array.from(services.entries()).map(async ([slug, entry]) => {
@@ -189,7 +234,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
           }
         })
       );
-      res.json({ organization, summaries });
+      const result = { organization, summaries };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching org summaries:", error);
       res.status(500).json({
@@ -199,11 +246,14 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/usage/:product/org/:organization - Get usage data for a product filtered by organization
+  // GET /api/amplitude/usage/:product/org/:organization - Get usage data for a product filtered by organization (cached 15 min)
   router.get("/usage/:product/org/:organization", async (req: Request, res: Response) => {
     try {
       const { product, organization } = req.params;
       const days = parseInt(req.query.days as string) || 30;
+      const cacheKey = `amp:usage:${product}:org:${organization.toLowerCase()}:${days}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -218,7 +268,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
         organization,
         days
       );
-      res.json({ ...usage, organization });
+      const result = { ...usage, organization };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching org usage data:", error);
       res.status(500).json({
@@ -271,14 +323,16 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/events/:product/quarterly - Get event usage by domain for current and previous quarter
+  // GET /api/amplitude/events/:product/quarterly - Get event usage by domain for current and previous quarter (cached 15 min)
   router.get("/events/:product/quarterly", async (req: Request, res: Response) => {
     try {
       const { product } = req.params;
       const eventType = (req.query.event as string) || "analysis:complete";
-      // Use gp:organization for products with human-readable names, otherwise use gp:initial_referring_domain
       const defaultGroupBy = PRODUCTS_WITH_ORG_NAMES.has(product) ? "gp:organization" : "gp:initial_referring_domain";
       const groupBy = (req.query.groupBy as string) || defaultGroupBy;
+      const cacheKey = `amp:events:quarterly:${product}:${eventType}:${groupBy}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -290,14 +344,16 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
 
       const usage = await entry.service.getEventUsageByDomainQuarterly(eventType, groupBy);
 
-      res.json({
+      const result = {
         product: entry.config.name,
         eventType,
         groupBy,
         currentQuarter: usage.currentQuarter,
         previousQuarter: usage.previousQuarter,
         twoQuartersAgo: usage.twoQuartersAgo,
-      });
+      };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching quarterly event usage:", error);
       res.status(500).json({
@@ -307,13 +363,16 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/devtools/:product/metrics - Get DevTools-specific metrics by organization
+  // GET /api/amplitude/devtools/:product/metrics - Get DevTools-specific metrics by organization (cached 15 min)
   router.get("/devtools/:product/metrics", async (req: Request, res: Response) => {
     try {
       const { product } = req.params;
       const days = parseInt(req.query.days as string) || 30;
       const defaultGroupBy = PRODUCTS_WITH_ORG_NAMES.has(product) ? "gp:organization" : "gp:initial_referring_domain";
       const groupBy = (req.query.groupBy as string) || defaultGroupBy;
+      const cacheKey = `amp:devtools:${product}:${groupBy}:${days}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -325,10 +384,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
 
       const metrics = await entry.service.getDevToolsMetricsByDomain(groupBy, days);
 
-      res.json({
-        product: entry.config.name,
-        ...metrics,
-      });
+      const result = { product: entry.config.name, ...metrics };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching DevTools metrics:", error);
       res.status(500).json({
@@ -345,10 +403,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     "axe-devtools-(browser-extension)": "analysis:complete",
   };
 
-  // GET /api/amplitude/quarterly/:product - Get quarterly product metrics (page views, time spent)
+  // GET /api/amplitude/quarterly/:product - Get quarterly product metrics (cached 15 min)
   router.get("/quarterly/:product", async (req: Request, res: Response) => {
     try {
       const { product } = req.params;
+      const cacheKey = `amp:quarterly:${product}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -361,10 +422,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       const pageViewEvent = PAGE_VIEW_EVENTS[product] || "page_view";
       const metrics = await entry.service.getQuarterlyProductMetrics(pageViewEvent);
 
-      res.json({
-        product: entry.config.name,
-        ...metrics,
-      });
+      const result = { product: entry.config.name, ...metrics };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching quarterly product metrics:", error);
       res.status(500).json({
@@ -374,10 +434,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/quarterly/:product/org/:organization - Get quarterly metrics for specific org
+  // GET /api/amplitude/quarterly/:product/org/:organization - Get quarterly metrics for specific org (cached 15 min)
   router.get("/quarterly/:product/org/:organization", async (req: Request, res: Response) => {
     try {
       const { product, organization } = req.params;
+      const cacheKey = `amp:quarterly:${product}:org:${organization.toLowerCase()}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -390,11 +453,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       const pageViewEvent = PAGE_VIEW_EVENTS[product] || "page_view";
       const metrics = await entry.service.getQuarterlyMetricsByOrg(organization, pageViewEvent);
 
-      res.json({
-        product: entry.config.name,
-        organization,
-        ...metrics,
-      });
+      const result = { product: entry.config.name, organization, ...metrics };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching quarterly org metrics:", error);
       res.status(500).json({
@@ -411,10 +472,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     "axe-account-portal": "login",
   };
 
-  // GET /api/amplitude/quarterly/:product/logins/:organization - Get quarterly unique logins for specific org
+  // GET /api/amplitude/quarterly/:product/logins/:organization - Get quarterly unique logins for specific org (cached 15 min)
   router.get("/quarterly/:product/logins/:organization", async (req: Request, res: Response) => {
     try {
       const { product, organization } = req.params;
+      const cacheKey = `amp:quarterly:${product}:logins:${organization.toLowerCase()}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -427,11 +491,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       const loginEvent = LOGIN_EVENTS[product] || "user:login";
       const metrics = await entry.service.getQuarterlyLoginsByOrg(organization, loginEvent);
 
-      res.json({
-        product: entry.config.name,
-        organization,
-        ...metrics,
-      });
+      const result = { product: entry.config.name, organization, ...metrics };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching quarterly login metrics:", error);
       res.status(500).json({
@@ -441,10 +503,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/quarterly/:product/account-portal/:organization - Get Account Portal quarterly metrics for specific org
+  // GET /api/amplitude/quarterly/:product/account-portal/:organization (cached 15 min)
   router.get("/quarterly/:product/account-portal/:organization", async (req: Request, res: Response) => {
     try {
       const { product, organization } = req.params;
+      const cacheKey = `amp:quarterly:${product}:account-portal:${organization.toLowerCase()}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -455,12 +520,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       }
 
       const metrics = await entry.service.getQuarterlyAccountPortalMetricsByOrg(organization);
-
-      res.json({
-        product: entry.config.name,
-        organization,
-        ...metrics,
-      });
+      const result = { product: entry.config.name, organization, ...metrics };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching quarterly account portal metrics:", error);
       res.status(500).json({
@@ -470,10 +532,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/quarterly/:product/axe-monitor/:organization - Get Axe Monitor quarterly metrics for specific org
+  // GET /api/amplitude/quarterly/:product/axe-monitor/:organization (cached 15 min)
   router.get("/quarterly/:product/axe-monitor/:organization", async (req: Request, res: Response) => {
     try {
       const { product, organization } = req.params;
+      const cacheKey = `amp:quarterly:${product}:axe-monitor:${organization.toLowerCase()}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -484,12 +549,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       }
 
       const metrics = await entry.service.getQuarterlyAxeMonitorMetricsByOrg(organization);
-
-      res.json({
-        product: entry.config.name,
-        organization,
-        ...metrics,
-      });
+      const result = { product: entry.config.name, organization, ...metrics };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching quarterly axe monitor metrics:", error);
       res.status(500).json({
@@ -499,10 +561,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/quarterly/:product/axe-devtools-mobile/:organization - Get Axe DevTools Mobile quarterly metrics for specific org
+  // GET /api/amplitude/quarterly/:product/axe-devtools-mobile/:organization (cached 15 min)
   router.get("/quarterly/:product/axe-devtools-mobile/:organization", async (req: Request, res: Response) => {
     try {
       const { product, organization } = req.params;
+      const cacheKey = `amp:quarterly:${product}:axe-devtools-mobile:${organization.toLowerCase()}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -513,12 +578,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       }
 
       const metrics = await entry.service.getQuarterlyAxeDevToolsMobileMetricsByOrg(organization);
-
-      res.json({
-        product: entry.config.name,
-        organization,
-        ...metrics,
-      });
+      const result = { product: entry.config.name, organization, ...metrics };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching quarterly axe devtools mobile metrics:", error);
       res.status(500).json({
@@ -528,10 +590,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/quarterly/:product/axe-assistant/:organization - Get Axe Assistant quarterly metrics for specific org
+  // GET /api/amplitude/quarterly/:product/axe-assistant/:organization (cached 15 min)
   router.get("/quarterly/:product/axe-assistant/:organization", async (req: Request, res: Response) => {
     try {
       const { product, organization } = req.params;
+      const cacheKey = `amp:quarterly:${product}:axe-assistant:${organization.toLowerCase()}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -542,12 +607,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       }
 
       const metrics = await entry.service.getQuarterlyAxeAssistantMetricsByOrg(organization);
-
-      res.json({
-        product: entry.config.name,
-        organization,
-        ...metrics,
-      });
+      const result = { product: entry.config.name, organization, ...metrics };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching quarterly axe assistant metrics:", error);
       res.status(500).json({
@@ -557,10 +619,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/quarterly/:product/developer-hub/:organization - Get Developer Hub quarterly metrics for specific org
+  // GET /api/amplitude/quarterly/:product/developer-hub/:organization (cached 15 min)
   router.get("/quarterly/:product/developer-hub/:organization", async (req: Request, res: Response) => {
     try {
       const { product, organization } = req.params;
+      const cacheKey = `amp:quarterly:${product}:developer-hub:${organization.toLowerCase()}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -571,12 +636,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       }
 
       const metrics = await entry.service.getQuarterlyDeveloperHubMetricsByOrg(organization);
-
-      res.json({
-        product: entry.config.name,
-        organization,
-        ...metrics,
-      });
+      const result = { product: entry.config.name, organization, ...metrics };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching quarterly developer hub metrics:", error);
       res.status(500).json({
@@ -586,10 +648,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/quarterly/:product/axe-reports/:organization - Get axe Reports quarterly metrics for specific org
+  // GET /api/amplitude/quarterly/:product/axe-reports/:organization (cached 15 min)
   router.get("/quarterly/:product/axe-reports/:organization", async (req: Request, res: Response) => {
     try {
       const { product, organization } = req.params;
+      const cacheKey = `amp:quarterly:${product}:axe-reports:${organization.toLowerCase()}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -600,12 +665,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       }
 
       const metrics = await entry.service.getQuarterlyAxeReportsMetricsByOrg(organization);
-
-      res.json({
-        product: entry.config.name,
-        organization,
-        ...metrics,
-      });
+      const result = { product: entry.config.name, organization, ...metrics };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching quarterly axe reports metrics:", error);
       res.status(500).json({
@@ -615,10 +677,13 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/quarterly/:product/deque-university/:organization - Get Deque University quarterly metrics for specific org
+  // GET /api/amplitude/quarterly/:product/deque-university/:organization (cached 15 min)
   router.get("/quarterly/:product/deque-university/:organization", async (req: Request, res: Response) => {
     try {
       const { product, organization } = req.params;
+      const cacheKey = `amp:quarterly:${product}:deque-university:${organization.toLowerCase()}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -629,12 +694,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       }
 
       const metrics = await entry.service.getQuarterlyDequeUniversityMetricsByOrg(organization);
-
-      res.json({
-        product: entry.config.name,
-        organization,
-        ...metrics,
-      });
+      const result = { product: entry.config.name, organization, ...metrics };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching quarterly deque university metrics:", error);
       res.status(500).json({
@@ -644,12 +706,15 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
-  // GET /api/amplitude/quarterly/:product/generic/:organization - Get generic quarterly metrics for specific org
+  // GET /api/amplitude/quarterly/:product/generic/:organization (cached 15 min)
   router.get("/quarterly/:product/generic/:organization", async (req: Request, res: Response) => {
     try {
       const { product, organization } = req.params;
       const eventType = (req.query.event as string) || "page_view";
       const orgProperty = (req.query.orgProperty as string) || "gp:organization";
+      const cacheKey = `amp:quarterly:${product}:generic:${organization.toLowerCase()}:${eventType}:${orgProperty}`;
+      const cached = amplitudeCache.get<any>(cacheKey);
+      if (cached) return res.json(cached);
 
       const entry = services.get(product);
       if (!entry) {
@@ -661,12 +726,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
 
       const metrics = await entry.service.getGenericQuarterlyMetricsByOrg(organization, eventType, orgProperty);
 
-      res.json({
-        product: entry.config.name,
-        organization,
-        eventType,
-        ...metrics,
-      });
+      const result = { product: entry.config.name, organization, eventType, ...metrics };
+      amplitudeCache.set(cacheKey, result);
+      res.json(result);
     } catch (error) {
       console.error("Error fetching quarterly generic metrics:", error);
       res.status(500).json({

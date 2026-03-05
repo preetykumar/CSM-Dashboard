@@ -1,7 +1,7 @@
-# CSM Dashboard - Development Guide
+# Post-sales Customer Team Portal - Development Guide
 
 ## Project Overview
-This is a Customer Success Management dashboard with:
+This is a post-sales customer team portal (formerly CSM Dashboard) with:
 - **Frontend**: React 18 + TypeScript + Vite (in `/frontend`)
 - **Backend**: Node.js 20 + Express + TypeScript (in `/backend`)
 - **Database**: SQLite (default, local) or PostgreSQL (persistent, for production)
@@ -333,6 +333,23 @@ gcloud run services describe csm-dashboard --region=us-central1 --project=csm-da
 ### 11. Release Notes
 **Always update `/RELEASE_NOTES.md` when deploying new features or significant changes to production.** This file is linked from the dashboard footer and serves as the user-facing changelog. Add a new version section at the top with the date and a summary of changes.
 
+### 12. CSS Class Naming Convention
+**All renewal view components must use `renewal-*` CSS classes**, NOT `prs-*` classes. The CSS is defined in `frontend/src/index.css`:
+- `renewal-filter-bar`, `renewal-search-wrapper`, `renewal-search-icon`, `renewal-search-input` — for filter/search controls
+- `renewal-stats-grid`, `renewal-stat-card`, `renewal-stat-content`, `renewal-stat-icon`, `renewal-stat-value`, `renewal-stat-label` — for stat cards
+- `renewal-table-container`, `renewal-table` — for data tables
+- `renewal-loading`, `renewal-empty-state` — for loading/empty states
+
+When creating new views (like ClosedWonView, ClosedLostView), always verify the CSS classes exist in `index.css` before using them. The `prs-*` prefix is only for PRS card components in `cached.ts` route views, not for renewal tab views.
+
+### 13. Server-Side API Response Caching
+External API calls (Salesforce, Amplitude) are cached in memory with TTL to eliminate redundant requests:
+- **Cache utility**: `backend/src/services/cache.ts` — `MemoryCache` class with configurable TTL
+- **Three cache instances**: `renewalsCache` (5 min TTL), `amplitudeCache` (15 min TTL), `salesforceCache` (10 min TTL)
+- **Pre-warming**: After each sync (`syncAll()`), renewals and subscriptions caches are pre-populated
+- **Cache invalidation**: Caches are cleared at the start of sync pre-warming, so fresh data replaces stale entries
+- When adding new external API routes, always wrap them with caching to prevent slow page loads
+
 ---
 
 ## Key Files
@@ -346,6 +363,7 @@ gcloud run services describe csm-dashboard --region=us-central1 --project=csm-da
 | `/backend/src/services/salesforce.ts` | Salesforce JWT auth and API integration |
 | `/backend/src/services/sync.ts` | Sync service (Zendesk, Salesforce, GitHub) |
 | `/backend/src/services/agent.ts` | AI chat agent with tool definitions |
+| `/backend/src/services/cache.ts` | In-memory TTL cache for Salesforce/Amplitude API responses |
 | `/frontend/src/App.tsx` | Main React app with routing and layout |
 | `/RELEASE_NOTES.md` | User-facing changelog (linked from dashboard footer) |
 | `/Dockerfile` | Multi-stage Docker build for Cloud Run |

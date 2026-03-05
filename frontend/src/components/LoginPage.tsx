@@ -17,8 +17,8 @@ export function LoginPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <h1>Zendesk Dashboard</h1>
-          <p>Customer Success Portal</p>
+          <h1>Support, Product Usage, and Renewals Dashboard</h1>
+          <p>Post-sales customer team portal</p>
         </div>
 
         <div className="login-body">

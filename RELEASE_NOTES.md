@@ -1,4 +1,29 @@
-# CSM Dashboard - Release Notes
+# Post-sales Customer Team Portal - Release Notes
+
+## Version 1.5.0
+
+**Release Date:** March 5, 2026
+
+### Performance, UI Polish, and New Renewal Columns
+
+**Performance:**
+- **Renewals tab loads instantly on repeat visits**: Server-side in-memory caching (5 min TTL) for Salesforce renewal queries. First load hits Salesforce API; subsequent loads within 5 minutes are served from cache.
+- **Usage tab loads instantly on repeat visits**: Server-side caching (15 min TTL) for all Amplitude API endpoints. Per-org and per-product metrics are cached after first fetch.
+- **Subscription data cached**: Account subscription lookups cached for 10 minutes, eliminating redundant Salesforce calls on the Usage tab.
+- **Cache pre-warming on sync**: Renewals and subscription caches are pre-populated after each data sync, so the first page load after sync is also fast.
+
+**Renewals:**
+- **Renewal at Risk column**: Displays the "Renewal at Risk" checkbox value from Salesforce across all renewal views.
+- **Leadership Risk Status column**: Displays the "Leadership Risk Status" picklist value with color-coded badges (green=resolved, yellow=monitor, red=other).
+- **Closed Won view**: New dedicated tab showing closed-won renewals with total count and value, matching the existing Closed Lost view pattern.
+- **Draft Email removed from CSM view**: Email generation actions are now only available in the PRS view, reducing clutter for CSMs.
+
+**UI:**
+- Dashboard header renamed from "Customer Success Manager Dashboard" to "Post-sales Customer Team Portal"
+- Login screen updated: title is now "Support, Product Usage, and Renewals Dashboard"
+- Fixed CSS styling for search input and stats cards in Closed Won and Closed Lost views (were using non-existent CSS classes)
+
+---
 
 ## Version 1.4.0
 
