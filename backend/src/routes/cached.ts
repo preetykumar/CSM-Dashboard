@@ -19,8 +19,11 @@ function isAdmin(email: string | undefined): boolean {
   return ADMIN_EMAILS.some((admin) => admin.toLowerCase() === email.toLowerCase());
 }
 
-// Helper: Expand org IDs to include all sibling orgs sharing the same sf_ultimate_parent_name
-// This ensures CSM/PM portfolio views show the same consolidated ticket counts as the By Customer view
+// Helper: Expand org IDs to include all orgs sharing the same salesforce_account_name
+// or the same sf_ultimate_parent_name. This handles:
+// 1. One SF account → multiple Zendesk orgs (e.g., "AXA Assistance France" matches both
+//    "axa.fr" and "AXA Assistance France" in Zendesk)
+// 2. Parent company grouping (e.g., "Purina" and "Blue Bottle Coffee" both under "Nestle")
 async function expandOrgIdsByParentName(
   db: IDatabaseService,
   orgIds: number[],
@@ -28,26 +31,42 @@ async function expandOrgIdsByParentName(
 ): Promise<number[]> {
   const orgs = allOrgs || (await db.getOrganizations());
 
-  // Build parent name -> org IDs map
-  const parentToOrgIds = new Map<string, number[]>();
+  // Build lookup maps
+  const sfNameToOrgIds = new Map<string, number[]>();
+  const parentNameToOrgIds = new Map<string, number[]>();
   const orgLookup = new Map(orgs.map((o) => [o.id, o]));
   for (const org of orgs) {
-    if (org.sf_ultimate_parent_name) {
-      const existing = parentToOrgIds.get(org.sf_ultimate_parent_name) || [];
+    if (org.salesforce_account_name) {
+      const key = org.salesforce_account_name.toLowerCase();
+      const existing = sfNameToOrgIds.get(key) || [];
       existing.push(org.id);
-      parentToOrgIds.set(org.sf_ultimate_parent_name, existing);
+      sfNameToOrgIds.set(key, existing);
+    }
+    if (org.sf_ultimate_parent_name) {
+      const key = org.sf_ultimate_parent_name.toLowerCase();
+      const existing = parentNameToOrgIds.get(key) || [];
+      existing.push(org.id);
+      parentNameToOrgIds.set(key, existing);
     }
   }
 
-  // Expand: for each original org, add all siblings with the same parent name
   const expandedSet = new Set(orgIds);
+
+  // 1. Expand by salesforce_account_name (same SF account → multiple ZD orgs)
+  for (const orgId of orgIds) {
+    const org = orgLookup.get(orgId);
+    if (org?.salesforce_account_name) {
+      const siblings = sfNameToOrgIds.get(org.salesforce_account_name.toLowerCase()) || [];
+      for (const id of siblings) expandedSet.add(id);
+    }
+  }
+
+  // 2. Expand by sf_ultimate_parent_name (parent hierarchy grouping)
   for (const orgId of orgIds) {
     const org = orgLookup.get(orgId);
     if (org?.sf_ultimate_parent_name) {
-      const siblings = parentToOrgIds.get(org.sf_ultimate_parent_name) || [];
-      for (const siblingId of siblings) {
-        expandedSet.add(siblingId);
-      }
+      const children = parentNameToOrgIds.get(org.sf_ultimate_parent_name.toLowerCase()) || [];
+      for (const id of children) expandedSet.add(id);
     }
   }
 
@@ -77,6 +96,98 @@ export function createCachedRoutes(db: IDatabaseService): Router {
     } catch (error) {
       console.error("Error fetching cached organizations:", error);
       res.status(500).json({ error: "Failed to fetch organizations" });
+    }
+  });
+
+  // Bulk: Get all organization summaries in a single call
+  // Replaces the N+1 pattern of fetching /organizations then /:id/summary for each org
+  router.get("/summaries/all", async (_req: Request, res: Response) => {
+    try {
+      const orgs = await db.getOrganizations();
+      const allTickets = await db.getAllTickets();
+
+      // Group tickets by organization_id
+      const ticketsByOrg = new Map<number, CachedTicket[]>();
+      for (const ticket of allTickets) {
+        if (!ticket.organization_id) continue;
+        const existing = ticketsByOrg.get(ticket.organization_id) || [];
+        existing.push(ticket);
+        ticketsByOrg.set(ticket.organization_id, existing);
+      }
+
+      const summaries: CustomerSummary[] = orgs.map((org) => {
+        const tickets = ticketsByOrg.get(org.id) || [];
+
+        // Compute ticket stats
+        const ticketStats = { total: 0, new: 0, open: 0, pending: 0, hold: 0, solved: 0, closed: 0 };
+        const priorityBreakdown = { low: 0, normal: 0, high: 0, urgent: 0 };
+        const escalatedTickets: CachedTicket[] = [];
+        const criticalTickets: CachedTicket[] = [];
+
+        for (const t of tickets) {
+          ticketStats.total++;
+          if (t.status === "new") ticketStats.new++;
+          else if (t.status === "open") ticketStats.open++;
+          else if (t.status === "pending") ticketStats.pending++;
+          else if (t.status === "hold") ticketStats.hold++;
+          else if (t.status === "solved") ticketStats.solved++;
+          else if (t.status === "closed") ticketStats.closed++;
+
+          const isActive = !["solved", "closed"].includes(t.status);
+          if (isActive) {
+            if (t.priority === "low") priorityBreakdown.low++;
+            else if (t.priority === "high") priorityBreakdown.high++;
+            else if (t.priority === "urgent") priorityBreakdown.urgent++;
+            else priorityBreakdown.normal++; // null or "normal"
+
+            if (t.is_escalated) escalatedTickets.push(t);
+            if (t.priority === "urgent" || t.priority === "high") criticalTickets.push(t);
+          }
+        }
+
+        const recentTickets = tickets.slice(0, 10); // already sorted by updated_at DESC from DB
+
+        const mapTicket = (t: CachedTicket) => ({
+          id: t.id,
+          url: "",
+          subject: t.subject,
+          status: t.status,
+          priority: t.priority,
+          requester_id: t.requester_id,
+          submitter_id: t.requester_id,
+          assignee_id: t.assignee_id || undefined,
+          organization_id: t.organization_id,
+          tags: JSON.parse(t.tags || "[]"),
+          created_at: t.created_at,
+          updated_at: t.updated_at,
+          is_escalated: Boolean(t.is_escalated),
+        });
+
+        return {
+          organization: {
+            id: org.id,
+            url: "",
+            name: org.name,
+            domain_names: JSON.parse(org.domain_names || "[]"),
+            salesforce_account_name: org.salesforce_account_name || undefined,
+            sf_ultimate_parent_name: org.sf_ultimate_parent_name || undefined,
+            created_at: org.created_at,
+            updated_at: org.updated_at,
+          },
+          ticketStats,
+          priorityBreakdown,
+          escalations: escalatedTickets.length,
+          escalatedTickets: escalatedTickets.map(mapTicket),
+          criticalDefects: criticalTickets.length,
+          criticalTickets: criticalTickets.map(mapTicket),
+          recentTickets: recentTickets.map(mapTicket),
+        };
+      });
+
+      res.json({ summaries, count: summaries.length, cached: true });
+    } catch (error) {
+      console.error("Error fetching bulk summaries:", error);
+      res.status(500).json({ error: "Failed to fetch summaries" });
     }
   });
 

@@ -46,6 +46,18 @@ interface SFAccount {
     Name: string;
     Email: string;
   };
+  Engagement_Manager__c?: string;
+  Engagement_Manager__r?: {
+    Id: string;
+    Name: string;
+    Email: string;
+  };
+  Engagement_Manager2__c?: string;
+  Engagement_Manager2__r?: {
+    Id: string;
+    Name: string;
+    Email: string;
+  };
   OwnerId?: string;
   Owner?: {
     Id: string;
@@ -128,6 +140,9 @@ export interface RenewalOpportunity {
   productName?: string;
   contactName?: string;
   contactEmail?: string;
+  // CSM from Account's Customer Success Manager field
+  csmName?: string;
+  csmEmail?: string;
   // PRS from Account's Product Retention Specialist field
   prsId?: string;
   prsName?: string;
@@ -138,6 +153,9 @@ export interface RenewalOpportunity {
   poRequired?: boolean;
   poReceivedDate?: string;
   atRisk?: boolean;
+  r6Notes?: string;
+  r3Notes?: string;
+  accountingNotes?: string;
 }
 
 // Product Success object from Salesforce
@@ -172,6 +190,11 @@ interface SFOpportunity {
   Account: {
     Id: string;
     Name: string;
+    // CSM field on Account
+    Customer_Success_Manager_csm__r?: {
+      Name: string;
+      Email: string;
+    };
     // PRS field on Account (labeled "Product Retention Specialist" but API name is Customer_Success_Specialist__c)
     Customer_Success_Specialist__c?: string;
     Customer_Success_Specialist__r?: {
@@ -204,6 +227,18 @@ interface SFOpportunity {
   PO_Required__c?: boolean;
   PO_Received_Date__c?: string;
   Renewal_at_Risk__c?: boolean;  // labeled "Renewal at Risk"
+  Renewal_Status_1__c?: string;  // labeled "R6 Notes"
+  Customer_Success_Next_Steps__c?: string;  // labeled "R3 Notes"
+  Accounting_Notes_for_Renewal__c?: string;  // labeled "Accounting Notes for Renewal"
+  // Child relationship: OpportunityContactRoles
+  OpportunityContactRoles?: {
+    records: Array<{
+      ContactId: string;
+      Contact: { Name: string; Email: string };
+      Role: string;
+      IsPrimary: boolean;
+    }>;
+  };
 }
 
 interface SFEnterpriseSubscription {
@@ -415,13 +450,69 @@ export class SalesforceService {
 
       console.log(`Found ${accounts.length} accounts with CSM assignments`);
 
-      return accounts.map((account) => ({
+      const assignments: CSMAssignment[] = accounts.map((account) => ({
         accountId: account.Id,
         accountName: account.Name,
         csmId: account.Customer_Success_Manager_csm__r?.Id || account.Customer_Success_Manager_csm__c || "",
         csmName: account.Customer_Success_Manager_csm__r?.Name || "",
         csmEmail: account.Customer_Success_Manager_csm__r?.Email || "",
       }));
+
+      // Collect known CSM emails for EM fallback matching
+      const knownCSMEmails = new Set(assignments.map(a => a.csmEmail.toLowerCase()).filter(Boolean));
+      const assignedAccountIds = new Set(assignments.map(a => a.accountId));
+
+      // EM fallback: find accounts with no CSM but an Engagement Manager who is a known CSM
+      try {
+        const emAccounts = await this.query<SFAccount>(`
+          SELECT Id, Name,
+                 Engagement_Manager__c, Engagement_Manager__r.Id,
+                 Engagement_Manager__r.Name, Engagement_Manager__r.Email,
+                 Engagement_Manager2__c, Engagement_Manager2__r.Id,
+                 Engagement_Manager2__r.Name, Engagement_Manager2__r.Email
+          FROM Account
+          WHERE Customer_Success_Manager_csm__c = null
+            AND (Engagement_Manager__c != null OR Engagement_Manager2__c != null)
+        `);
+
+        let emFallbackCount = 0;
+        for (const account of emAccounts) {
+          if (assignedAccountIds.has(account.Id)) continue;
+
+          // Check EM1, then EM2 for a known CSM
+          const em1Email = account.Engagement_Manager__r?.Email?.toLowerCase();
+          const em2Email = account.Engagement_Manager2__r?.Email?.toLowerCase();
+
+          if (em1Email && knownCSMEmails.has(em1Email)) {
+            assignments.push({
+              accountId: account.Id,
+              accountName: account.Name,
+              csmId: account.Engagement_Manager__r?.Id || account.Engagement_Manager__c || "",
+              csmName: account.Engagement_Manager__r?.Name || "",
+              csmEmail: account.Engagement_Manager__r?.Email || "",
+            });
+            assignedAccountIds.add(account.Id);
+            emFallbackCount++;
+          } else if (em2Email && knownCSMEmails.has(em2Email)) {
+            assignments.push({
+              accountId: account.Id,
+              accountName: account.Name,
+              csmId: account.Engagement_Manager2__r?.Id || account.Engagement_Manager2__c || "",
+              csmName: account.Engagement_Manager2__r?.Name || "",
+              csmEmail: account.Engagement_Manager2__r?.Email || "",
+            });
+            assignedAccountIds.add(account.Id);
+            emFallbackCount++;
+          }
+        }
+        if (emFallbackCount > 0) {
+          console.log(`Added ${emFallbackCount} accounts via EM field fallback`);
+        }
+      } catch (emError) {
+        console.warn("EM fallback query failed (fields may not exist):", emError);
+      }
+
+      return assignments;
     } catch (error) {
       console.error("Error fetching CSM assignments, trying alternative field names...", error);
 
@@ -748,19 +839,25 @@ export class SalesforceService {
       // Opportunity uses Product_Retention_Specialist__c (string field)
       const opportunities = await this.query<SFOpportunity>(`
         SELECT Id, Name, AccountId, Account.Id, Account.Name,
+               Account.Customer_Success_Manager_csm__r.Name,
+               Account.Customer_Success_Manager_csm__r.Email,
                Account.Customer_Success_Specialist__c,
                Account.Customer_Success_Specialist__r.Id,
                Account.Customer_Success_Specialist__r.Name,
                Account.Customer_Success_Specialist__r.Email,
                Product_Retention_Specialist__c,
+               (SELECT ContactId, Contact.Name, Contact.Email, Role, IsPrimary
+                FROM OpportunityContactRoles
+                ORDER BY IsPrimary DESC LIMIT 1),
                Amount, StageName,
                CloseDate, Type, OwnerId, Owner.Id, Owner.Name, Owner.Email,
                CreatedDate, LastModifiedDate,
                Customer_Success_Renewal_Status__c, Renewal_Status__c,
-               PO_Required__c, PO_Received_Date__c, Renewal_at_Risk__c
+               PO_Required__c, PO_Received_Date__c, Renewal_at_Risk__c,
+               Renewal_Status_1__c, Customer_Success_Next_Steps__c, Accounting_Notes_for_Renewal__c
         FROM Opportunity
         WHERE Type = 'Renewal'
-        AND CloseDate >= TODAY
+        AND CloseDate >= 2026-01-01
         AND CloseDate <= ${futureDateStr}
         ORDER BY CloseDate ASC
       `);
@@ -768,6 +865,8 @@ export class SalesforceService {
       console.log(`Found ${opportunities.length} renewal opportunities`);
 
       return opportunities.map((opp) => {
+        // Extract champion/primary contact from OpportunityContactRoles, fall back to custom fields
+        const champion = opp.OpportunityContactRoles?.records?.[0];
         return {
           id: opp.Id,
           name: opp.Name,
@@ -783,8 +882,11 @@ export class SalesforceService {
           createdDate: opp.CreatedDate,
           lastModifiedDate: opp.LastModifiedDate,
           productName: opp.Product_Name__c,
-          contactName: opp.Contact_Name__c,
-          contactEmail: opp.Contact_Email__c,
+          contactName: champion?.Contact?.Name || opp.Contact_Name__c,
+          contactEmail: champion?.Contact?.Email || opp.Contact_Email__c,
+          // CSM from Account
+          csmName: opp.Account?.Customer_Success_Manager_csm__r?.Name,
+          csmEmail: opp.Account?.Customer_Success_Manager_csm__r?.Email,
           // PRS - check Opportunity first (string field), then fall back to Account (reference field)
           prsId: opp.Account?.Customer_Success_Specialist__r?.Id || opp.Account?.Customer_Success_Specialist__c,
           prsName: opp.Product_Retention_Specialist__c || opp.Account?.Customer_Success_Specialist__r?.Name,
@@ -795,6 +897,9 @@ export class SalesforceService {
           poRequired: opp.PO_Required__c,
           poReceivedDate: opp.PO_Received_Date__c,
           atRisk: opp.Renewal_at_Risk__c,  // "Renewal at Risk"
+          r6Notes: opp.Renewal_Status_1__c,
+          r3Notes: opp.Customer_Success_Next_Steps__c,
+          accountingNotes: opp.Accounting_Notes_for_Renewal__c,
         };
       });
     } catch (error) {

@@ -10,6 +10,18 @@ function normalizeAccents(text: string): string {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
+// Helper: Check if parenthesized acronyms in one name match the initials of another.
+// e.g., "British American Shared Services (GSD) Limited (BAT)" contains "(BAT)"
+// and "British American Tobacco" has initials B-A-T → match.
+function matchesParenthesizedAcronym(nameWithAcronyms: string, candidateName: string): boolean {
+  const acronyms = [...nameWithAcronyms.matchAll(/\(([a-zA-Z]{3,})\)/g)].map(m => m[1].toLowerCase());
+  if (acronyms.length === 0) return false;
+  const words = candidateName.split(/\s+/).filter(w => w.length > 0);
+  if (words.length < 2) return false;
+  const initials = words.map(w => w[0].toLowerCase()).join('');
+  return acronyms.some(acr => initials === acr);
+}
+
 export class SyncService {
   private db: IDatabaseService;
   private zendesk: ZendeskService;
@@ -498,14 +510,23 @@ export class SyncService {
           // Match criteria:
           // 1. Exact match (normalized, including accent normalization)
           // 2. Org name starts with SF account name (e.g., "ADP -Corp" starts with "ADP")
-          // 3. Org name contains SF account name as a word boundary (for longer names)
-          // Escape special regex characters in account name for word boundary matching
+          // 3. SF account name starts with org name (e.g., "KPMG UK" starts with "KPMG",
+          //    "British Telecommunications PLC" starts with "British Telecom")
+          // 4. Org name contains SF account name as a word boundary (for longer names)
+          // 5. SF account name contains org name as a word boundary (e.g., "Nestle Purina" contains "Purina")
+          // 6. Parenthesized acronym in SF name matches org name initials
+          //    (e.g., "...Limited (BAT)" matches "British American Tobacco" → B.A.T.)
+          // Escape special regex characters for word boundary matching
           const escapedAccountName = accountNameNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const escapedOrgName = orgNameNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const isMatch =
             orgNameNormalized === accountNameNormalized ||
             orgNameLower === accountNameLower ||
             (accountNameNormalized.length >= 3 && orgNameNormalized.startsWith(accountNameNormalized)) ||
-            (accountNameNormalized.length >= 4 && new RegExp(`\\b${escapedAccountName}\\b`, 'i').test(orgNameLower));
+            (orgNameNormalized.length >= 4 && accountNameNormalized.startsWith(orgNameNormalized)) ||
+            (accountNameNormalized.length >= 4 && new RegExp(`\\b${escapedAccountName}\\b`, 'i').test(orgNameLower)) ||
+            (orgNameNormalized.length >= 5 && new RegExp(`\\b${escapedOrgName}\\b`, 'i').test(accountNameLower)) ||
+            matchesParenthesizedAcronym(accountNameLower, orgNameLower);
 
           if (isMatch) {
             // Update this org's salesforce_account_name

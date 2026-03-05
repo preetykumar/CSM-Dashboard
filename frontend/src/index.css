@@ -3072,6 +3072,55 @@ header .hint {
   background: #c2410c;
 }
 
+/* Coming Soon Placeholder */
+.coming-soon-placeholder {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+  padding: 2rem;
+}
+
+.coming-soon-content {
+  text-align: center;
+  max-width: 480px;
+}
+
+.coming-soon-icon {
+  color: #94a3b8;
+  margin-bottom: 1.5rem;
+}
+
+.coming-soon-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 0.75rem;
+}
+
+.coming-soon-description {
+  font-size: 1rem;
+  color: #64748b;
+  line-height: 1.6;
+}
+
+/* Coming Soon tab badge */
+.tab-badge-soon {
+  font-size: 0.65rem;
+  background: #f1f5f9;
+  color: #94a3b8;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  margin-left: 0.35rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.coming-soon-tab {
+  opacity: 0.7;
+}
+
 .escalation-indicator {
   display: inline-block;
   background: #ff6b6b;
@@ -7923,4 +7972,362 @@ header .hint {
 .footer-link:hover {
   color: #764ba2;
   text-decoration: underline;
+}
+
+/* ===== Toast Notifications ===== */
+.toast-container {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.5rem;
+  max-width: 400px;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  animation: toast-slide-in 0.3s ease;
+  color: #fff;
+}
+
+@keyframes toast-slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast-info {
+  background: #3b82f6;
+}
+
+.toast-success {
+  background: #22c55e;
+}
+
+.toast-warning {
+  background: #f59e0b;
+  color: #1a1a2e;
+}
+
+.toast-error {
+  background: #ef4444;
+}
+
+.toast-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.toast-message {
+  flex: 1;
+}
+
+.toast-close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0.7;
+  display: flex;
+  align-items: center;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
+/* ===== Overdue Banner ===== */
+.overdue-banner {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+
+.overdue-banner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.overdue-banner-header:hover {
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.overdue-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #92400e;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.overdue-banner-text {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.overdue-critical-badge {
+  background: #ef4444;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.overdue-urgent-badge {
+  background: #f59e0b;
+  color: #1a1a2e;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.overdue-banner-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #92400e;
+}
+
+.overdue-dismiss-btn {
+  background: none;
+  border: 1px solid #d97706;
+  color: #92400e;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.overdue-dismiss-btn:hover {
+  background: rgba(217, 119, 6, 0.15);
+}
+
+.overdue-banner-details {
+  border-top: 1px solid #f59e0b;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.overdue-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.825rem;
+}
+
+.overdue-table th {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  color: #92400e;
+  font-weight: 600;
+  border-bottom: 1px solid #f59e0b;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.overdue-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #fde68a;
+  color: #78350f;
+}
+
+.overdue-row.critical td {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.overdue-row.urgent td {
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.overdue-milestone {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.overdue-milestone.R {
+  background: #fecaca;
+  color: #991b1b;
+}
+
+.overdue-milestone.R-1 {
+  background: #fed7aa;
+  color: #9a3412;
+}
+
+.overdue-milestone.R-2 {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.overdue-days {
+  font-weight: 600;
+  color: #d97706;
+}
+
+.overdue-days.severe {
+  color: #dc2626;
+}
+
+.overdue-due-date {
+  white-space: nowrap;
+  font-size: 0.8rem;
+  color: #92400e;
+}
+
+.overdue-prs-group {
+  margin-bottom: 0.75rem;
+}
+
+.overdue-prs-group:last-child {
+  margin-bottom: 0;
+}
+
+.overdue-prs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.5rem 0.25rem;
+  border-bottom: 2px solid #d97706;
+  margin-bottom: 0;
+}
+
+.overdue-prs-name {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #78350f;
+}
+
+.overdue-prs-count {
+  font-size: 0.75rem;
+  color: #92400e;
+  background: rgba(217, 119, 6, 0.15);
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.overdue-show-all-btn {
+  display: block;
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.25rem;
+  background: none;
+  border: 1px dashed #d97706;
+  border-radius: 4px;
+  color: #92400e;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+}
+
+/* Overdue section categories */
+.overdue-section {
+  margin-bottom: 1rem;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.overdue-section:last-child {
+  margin-bottom: 0;
+}
+
+.overdue-section-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  border-radius: 6px 6px 0 0;
+}
+
+.overdue-section-label {
+  flex: 1;
+}
+
+.overdue-section-count {
+  font-size: 0.75rem;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.overdue-section-critical .overdue-section-header {
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
+  border-bottom: 2px solid #ef4444;
+}
+
+.overdue-section-critical .overdue-section-count {
+  background: #ef4444;
+  color: #fff;
+}
+
+.overdue-section-on-hold-critical .overdue-section-header {
+  background: rgba(234, 88, 12, 0.12);
+  color: #9a3412;
+  border-bottom: 2px solid #ea580c;
+}
+
+.overdue-section-on-hold-critical .overdue-section-count {
+  background: #ea580c;
+  color: #fff;
+}
+
+.overdue-section-on-hold-sync .overdue-section-header {
+  background: rgba(245, 158, 11, 0.12);
+  color: #92400e;
+  border-bottom: 2px solid #f59e0b;
+}
+
+.overdue-section-on-hold-sync .overdue-section-count {
+  background: #f59e0b;
+  color: #1a1a2e;
+}
+
+.overdue-on-hold-badge {
+  background: #f59e0b;
+  color: #1a1a2e;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.overdue-show-all-btn:hover {
+  background: rgba(217, 119, 6, 0.1);
 }

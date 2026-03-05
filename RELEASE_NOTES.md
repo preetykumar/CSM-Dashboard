@@ -1,5 +1,31 @@
 # CSM Dashboard - Release Notes
 
+## Version 1.4.0
+
+**Release Date:** March 4, 2026
+
+### Performance, Renewal Labels, and CSM Portfolio Matching
+
+**Performance:**
+- **By Customer view loads 50-100x faster**: Replaced sequential per-org API calls (N+1 pattern) with a single bulk endpoint. Page loads in under 1 second instead of 30+ seconds.
+
+**Renewal Views:**
+- Overdue banner now reads "X missed milestones across all renewals" (was "X renewal actions are overdue")
+- Stat card renamed from "Urgent Actions" to "Needs Action" for clarity
+- Filter button renamed from "Urgent" to "Needs Action"
+- Closed Lost renewals excluded from all stat cards and toast counts
+- Toast notifications now show separate counts for critical (past renewal date), urgent (R-2/R-3 overdue), and high (R-6 overdue)
+
+**CSM Portfolio Matching:**
+- Improved account name matching between Salesforce and Zendesk:
+  - Reverse word-boundary matching (e.g., "Purina" now matches "Nestle Purina")
+  - Parenthesized acronym matching (e.g., "British American Tobacco" matches "...Limited (BAT)")
+  - Reverse startsWith matching (e.g., "KPMG" matches "KPMG UK", "British Telecom" matches "British Telecommunications PLC")
+- Engagement Manager fallback: accounts with no CSM but with an EM who is a known CSM are added to that CSM's portfolio
+- Re-introduced parent hierarchy expansion for grouping related subsidiaries
+
+---
+
 ## Version 1.3.0
 
 **Release Date:** February 27, 2026

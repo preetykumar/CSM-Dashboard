@@ -837,6 +837,9 @@ export interface RenewalOpportunity {
   productName?: string;
   contactName?: string;
   contactEmail?: string;
+  // CSM from Account
+  csmName?: string;
+  csmEmail?: string;
   // PRS from Product Success object
   prsId?: string;
   prsName?: string;
@@ -847,6 +850,9 @@ export interface RenewalOpportunity {
   poRequired?: boolean;
   poReceivedDate?: string;
   atRisk?: boolean;
+  r6Notes?: string;
+  r3Notes?: string;
+  accountingNotes?: string;
 }
 
 export interface RenewalOpportunitiesResponse {

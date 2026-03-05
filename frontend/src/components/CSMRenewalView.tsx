@@ -1,69 +1,55 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AlertTriangle, CheckCircle, FileText, User as UserIcon, DollarSign, X, Search, ChevronRight } from 'lucide-react';
 import { fetchRenewalOpportunities } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import type { Opportunity, RequiredAction, SortConfig, SortField } from '../types/renewal';
+import type { Opportunity, SortConfig, SortField } from '../types/renewal';
 import { transformApiOpportunity } from '../types/renewal';
 import { WorkflowEngine, getStageBadgeVariant, isClosedLost } from '../services/workflow-engine';
-import { RENEWAL_EMAIL_TEMPLATES, getTemplateForAction } from '../services/email-templates';
 import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
 import { SortHeader } from './renewal/SortHeader';
-import { EmailComposer } from './renewal/EmailComposer';
 import { OverdueBanner } from './renewal/OverdueBanner';
 import { useOverdueAlerts } from '../hooks/useOverdueAlerts';
 
-interface PRSPortfolio {
-  prsName: string;
-  prsEmail: string;
+interface CSMRenewalPortfolio {
+  csmName: string;
+  csmEmail: string;
   opportunities: Opportunity[];
   totalValue: number;
   urgentCount: number;
 }
 
-// PRS users configuration - these users can execute email actions
-const PRS_USER_EMAILS = ['rashi@deque.com', 'brandi@deque.com'];
-
-// Group opportunities by PRS
-function groupByPRS(opportunities: Opportunity[]): PRSPortfolio[] {
-  const prsMap = new Map<string, Opportunity[]>();
-
+function groupByCSM(opportunities: Opportunity[]): CSMRenewalPortfolio[] {
+  const csmMap = new Map<string, Opportunity[]>();
   for (const opp of opportunities) {
-    const key = opp.prsEmail || opp.prsName || 'Unassigned';
-    const existing = prsMap.get(key) || [];
+    const key = opp.csmEmail || opp.csmName || 'Unassigned';
+    const existing = csmMap.get(key) || [];
     existing.push(opp);
-    prsMap.set(key, existing);
+    csmMap.set(key, existing);
   }
-
-  return Array.from(prsMap.entries())
+  return Array.from(csmMap.entries())
     .map(([email, opps]) => {
-      const prsName = opps[0]?.prsName || (email === 'Unassigned' ? 'Unassigned' : email);
+      const csmName = opps[0]?.csmName || (email === 'Unassigned' ? 'Unassigned' : email);
       const totalValue = opps.reduce((sum, o) => sum + (o.amount || 0), 0);
       const urgentCount = opps.filter(o => {
         const actions = WorkflowEngine.getRequiredActions(o);
         return actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
       }).length;
-
-      return { prsName, prsEmail: email, opportunities: opps, totalValue, urgentCount };
+      return { csmName, csmEmail: email, opportunities: opps, totalValue, urgentCount };
     })
-    .sort((a, b) => a.prsName.localeCompare(b.prsName));
+    .sort((a, b) => a.csmName.localeCompare(b.csmName));
 }
 
-// PRS Card component
-interface PRSCardProps {
-  portfolio: PRSPortfolio;
+interface CSMCardProps {
+  portfolio: CSMRenewalPortfolio;
   expanded: boolean;
   onToggle: () => void;
   isCurrentUser: boolean;
-  canExecute: boolean;
-  onExecuteAction: (opp: Opportunity, action: RequiredAction) => void;
   sortConfig: SortConfig;
   onSort: (field: SortField) => void;
 }
 
-const PRSCard: React.FC<PRSCardProps> = ({
-  portfolio, expanded, onToggle, isCurrentUser, canExecute, onExecuteAction, sortConfig, onSort
-}) => {
+const CSMCard: React.FC<CSMCardProps> = ({ portfolio, expanded, onToggle, isCurrentUser, sortConfig, onSort }) => {
   const sortedOpportunities = useMemo(() => {
     if (!sortConfig.direction) return portfolio.opportunities;
     return [...portfolio.opportunities].sort((a, b) => {
@@ -83,9 +69,7 @@ const PRSCard: React.FC<PRSCardProps> = ({
           const actionsA = WorkflowEngine.getRequiredActions(a);
           const actionsB = WorkflowEngine.getRequiredActions(b);
           const priorityOrder = { critical: 0, urgent: 1, high: 2, medium: 3 };
-          const priorityA = actionsA[0] ? priorityOrder[actionsA[0].priority] : 4;
-          const priorityB = actionsB[0] ? priorityOrder[actionsB[0].priority] : 4;
-          comparison = priorityA - priorityB;
+          comparison = (actionsA[0] ? priorityOrder[actionsA[0].priority] : 4) - (actionsB[0] ? priorityOrder[actionsB[0].priority] : 4);
           break;
         }
       }
@@ -101,10 +85,10 @@ const PRSCard: React.FC<PRSCardProps> = ({
           <div className="prs-avatar"><UserIcon size={20} /></div>
           <div className="prs-info">
             <h3 className="prs-name">
-              {portfolio.prsName}
+              {portfolio.csmName}
               {isCurrentUser && <span className="prs-you-badge">You</span>}
             </h3>
-            <p className="prs-email">{portfolio.prsEmail}</p>
+            <p className="prs-email">{portfolio.csmEmail !== 'Unassigned' ? portfolio.csmEmail : ''}</p>
           </div>
         </div>
         <div className="prs-card-stats">
@@ -124,7 +108,6 @@ const PRSCard: React.FC<PRSCardProps> = ({
           )}
         </div>
       </div>
-
       {expanded && (
         <div className="prs-card-content">
           <table className="renewal-table">
@@ -154,61 +137,27 @@ const PRSCard: React.FC<PRSCardProps> = ({
                     <td>{opp.ownerName || '-'}</td>
                     <td>{opp.opportunityName}</td>
                     <td>{opp.productName}</td>
-                    <td>
-                      <Badge variant={getStageBadgeVariant(opp.stage)}>
-                        {opp.stage}
-                      </Badge>
-                    </td>
-                    <td>
-                      {opp.renewalStatus ? (
-                        <Badge variant={opp.renewalStatus.toLowerCase().includes('complete') ? 'success' : opp.renewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>
-                          {opp.renewalStatus}
-                        </Badge>
-                      ) : '-'}
-                    </td>
-                    <td>
-                      {opp.accountingRenewalStatus ? (
-                        <Badge variant={opp.accountingRenewalStatus.toLowerCase().includes('complete') ? 'success' : opp.accountingRenewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>
-                          {opp.accountingRenewalStatus}
-                        </Badge>
-                      ) : '-'}
-                    </td>
+                    <td><Badge variant={getStageBadgeVariant(opp.stage)}>{opp.stage}</Badge></td>
+                    <td>{opp.renewalStatus ? <Badge variant={opp.renewalStatus.toLowerCase().includes('complete') ? 'success' : opp.renewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.renewalStatus}</Badge> : '-'}</td>
+                    <td>{opp.accountingRenewalStatus ? <Badge variant={opp.accountingRenewalStatus.toLowerCase().includes('complete') ? 'success' : opp.accountingRenewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.accountingRenewalStatus}</Badge> : '-'}</td>
                     <td>
                       {opp.poRequired ? (
                         <div className="po-status">
-                          <Badge variant={opp.poReceivedDate ? 'success' : 'warning'}>
-                            {opp.poReceivedDate ? 'Received' : 'Required'}
-                          </Badge>
-                          {opp.poReceivedDate && (
-                            <span className="po-date">
-                              {new Date(opp.poReceivedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                            </span>
-                          )}
+                          <Badge variant={opp.poReceivedDate ? 'success' : 'warning'}>{opp.poReceivedDate ? 'Received' : 'Required'}</Badge>
+                          {opp.poReceivedDate && <span className="po-date">{new Date(opp.poReceivedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
                         </div>
-                      ) : (
-                        <span className="po-not-required">Not Required</span>
-                      )}
+                      ) : <span className="po-not-required">Not Required</span>}
                     </td>
                     <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
-                    <td>
-                      {new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </td>
+                    <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                     <td>
                       {primaryAction ? (
                         <div className="renewal-action-cell">
                           <span className={`renewal-action-text ${primaryAction.priority}`}>
-                            {isUrgent && <AlertTriangle size={14} />}
-                            {primaryAction.description}
+                            {isUrgent && <AlertTriangle size={14} />}{primaryAction.description}
                           </span>
-                          {canExecute && (
-                            <button className="renewal-btn primary sm" onClick={() => onExecuteAction(opp, primaryAction)}>
-                              Execute
-                            </button>
-                          )}
                         </div>
-                      ) : (
-                        <span className="renewal-no-action"><CheckCircle size={14} /> No action needed</span>
-                      )}
+                      ) : <span className="renewal-no-action"><CheckCircle size={14} /> No action needed</span>}
                     </td>
                   </tr>
                 );
@@ -223,26 +172,19 @@ const PRSCard: React.FC<PRSCardProps> = ({
 
 const DAYS_OPTIONS = [30, 60, 90, 120, 180] as const;
 
-export function PRSRenewalView() {
+export function CSMRenewalView() {
   const { user, isAdmin } = useAuth();
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showEmailComposer, setShowEmailComposer] = useState(false);
-  const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
-  const [currentTemplateKey, setCurrentTemplateKey] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'renewalDate', direction: 'asc' });
   const [daysAhead, setDaysAhead] = useState<number>(60);
   const [filter, setFilter] = useState<'all' | 'urgent'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedPRS, setExpandedPRS] = useState<string | null>(null);
+  const [expandedCSM, setExpandedCSM] = useState<string | null>(null);
   const [showAtRiskModal, setShowAtRiskModal] = useState(false);
 
   const currentUserEmail = user?.email?.toLowerCase() || '';
-  const isPRS = PRS_USER_EMAILS.some(email => email.toLowerCase() === currentUserEmail);
-  const canExecute = isPRS || isAdmin;
-  const userName = user?.name || user?.email?.split('@')[0] || 'PRS User';
-
   const { overdueItems } = useOverdueAlerts(opportunities);
 
   useEffect(() => {
@@ -274,12 +216,12 @@ export function PRSRenewalView() {
     });
   };
 
-  const prsPortfolios = useMemo(() => {
+  const csmPortfolios = useMemo(() => {
     let filtered = opportunities.filter(opp => {
       const matchesSearch = opp.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             opp.opportunityName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             opp.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            (opp.prsName || '').toLowerCase().includes(searchQuery.toLowerCase());
+                            (opp.csmName || '').toLowerCase().includes(searchQuery.toLowerCase());
       if (filter === 'all') return matchesSearch;
       if (filter === 'urgent') {
         const actions = WorkflowEngine.getRequiredActions(opp);
@@ -287,26 +229,8 @@ export function PRSRenewalView() {
       }
       return matchesSearch;
     });
-    return groupByPRS(filtered);
+    return groupByCSM(filtered);
   }, [opportunities, searchQuery, filter]);
-
-  const handleExecuteAction = useCallback((opp: Opportunity, action: RequiredAction) => {
-    setSelectedOpportunity(opp);
-    const templateKey = getTemplateForAction(action.type);
-    if (templateKey) {
-      setCurrentTemplateKey(templateKey);
-      setShowEmailComposer(true);
-    } else {
-      console.log('Executing action:', action.type, 'for', opp.opportunityName);
-    }
-  }, []);
-
-  const handleSendEmail = useCallback(({ subject, body }: { subject: string; body: string }) => {
-    console.log('Sending email:', { subject, body, to: selectedOpportunity?.contactEmail });
-    setShowEmailComposer(false);
-    setCurrentTemplateKey(null);
-    setSelectedOpportunity(null);
-  }, [selectedOpportunity]);
 
   const { totalValue, urgentCount, uniqueAccounts, atRiskOpportunities, atRiskCount, atRiskValue } = useMemo(() => {
     const total = opportunities.reduce((sum, opp) => sum + (opp.amount || 0), 0);
@@ -317,26 +241,15 @@ export function PRSRenewalView() {
     const accounts = new Set(opportunities.map(opp => opp.accountId)).size;
     const atRiskOpps = opportunities.filter(opp => opp.atRisk === true);
     return {
-      totalValue: total,
-      urgentCount: urgent,
-      uniqueAccounts: accounts,
-      atRiskOpportunities: atRiskOpps,
-      atRiskCount: atRiskOpps.length,
+      totalValue: total, urgentCount: urgent, uniqueAccounts: accounts,
+      atRiskOpportunities: atRiskOpps, atRiskCount: atRiskOpps.length,
       atRiskValue: atRiskOpps.reduce((sum, opp) => sum + (opp.amount || 0), 0)
     };
   }, [opportunities]);
 
   if (loading) {
-    return (
-      <div className="prs-view">
-        <div className="usage-loading-spinner">
-          <div className="spinner" />
-          <span className="spinner-text">Loading renewal opportunities...</span>
-        </div>
-      </div>
-    );
+    return (<div className="prs-view"><div className="usage-loading-spinner"><div className="spinner" /><span className="spinner-text">Loading renewal opportunities...</span></div></div>);
   }
-
   if (error) {
     return (<div className="prs-view"><div className="error">{error}</div></div>);
   }
@@ -344,64 +257,20 @@ export function PRSRenewalView() {
   return (
     <div className="prs-view">
       <OverdueBanner overdueItems={overdueItems} />
-
       {isAdmin && (
         <div className="admin-banner">
           <span className="admin-badge">Admin View</span>
-          <span className="admin-info">Viewing all {prsPortfolios.length} PRS portfolios</span>
+          <span className="admin-info">Viewing all {csmPortfolios.length} CSM portfolios</span>
         </div>
       )}
 
       <div className="renewal-stats-grid">
-        <div className="renewal-stat-card">
-          <div className="renewal-stat-content">
-            <div className="renewal-stat-icon slate"><FileText size={20} /></div>
-            <div>
-              <p className="renewal-stat-value">{opportunities.length}</p>
-              <p className="renewal-stat-label">Total Renewals</p>
-            </div>
-          </div>
-        </div>
-        <div className="renewal-stat-card">
-          <div className="renewal-stat-content">
-            <div className="renewal-stat-icon blue"><UserIcon size={20} /></div>
-            <div>
-              <p className="renewal-stat-value">{uniqueAccounts}</p>
-              <p className="renewal-stat-label">Accounts</p>
-            </div>
-          </div>
-        </div>
-        <div className="renewal-stat-card">
-          <div className="renewal-stat-content">
-            <div className="renewal-stat-icon green"><DollarSign size={20} /></div>
-            <div>
-              <p className="renewal-stat-value">{formatCurrency(totalValue)}</p>
-              <p className="renewal-stat-label">Total Value</p>
-            </div>
-          </div>
-        </div>
-        <div className="renewal-stat-card">
-          <div className="renewal-stat-content">
-            <div className="renewal-stat-icon red"><AlertTriangle size={20} /></div>
-            <div>
-              <p className="renewal-stat-value">{urgentCount}</p>
-              <p className="renewal-stat-label">Needs Action</p>
-            </div>
-          </div>
-        </div>
-        <div
-          className={`renewal-stat-card clickable ${atRiskCount > 0 ? 'at-risk' : ''}`}
-          onClick={() => atRiskCount > 0 && setShowAtRiskModal(true)}
-          style={{ cursor: atRiskCount > 0 ? 'pointer' : 'default' }}
-        >
-          <div className="renewal-stat-content">
-            <div className="renewal-stat-icon orange"><AlertTriangle size={20} /></div>
-            <div>
-              <p className="renewal-stat-value">{atRiskCount}</p>
-              <p className="renewal-stat-label">At Risk</p>
-              {atRiskCount > 0 && <p className="renewal-stat-subtext">{formatCurrency(atRiskValue)} value</p>}
-            </div>
-          </div>
+        <div className="renewal-stat-card"><div className="renewal-stat-content"><div className="renewal-stat-icon slate"><FileText size={20} /></div><div><p className="renewal-stat-value">{opportunities.length}</p><p className="renewal-stat-label">Total Renewals</p></div></div></div>
+        <div className="renewal-stat-card"><div className="renewal-stat-content"><div className="renewal-stat-icon blue"><UserIcon size={20} /></div><div><p className="renewal-stat-value">{uniqueAccounts}</p><p className="renewal-stat-label">Accounts</p></div></div></div>
+        <div className="renewal-stat-card"><div className="renewal-stat-content"><div className="renewal-stat-icon green"><DollarSign size={20} /></div><div><p className="renewal-stat-value">{formatCurrency(totalValue)}</p><p className="renewal-stat-label">Total Value</p></div></div></div>
+        <div className="renewal-stat-card"><div className="renewal-stat-content"><div className="renewal-stat-icon red"><AlertTriangle size={20} /></div><div><p className="renewal-stat-value">{urgentCount}</p><p className="renewal-stat-label">Needs Action</p></div></div></div>
+        <div className={`renewal-stat-card clickable ${atRiskCount > 0 ? 'at-risk' : ''}`} onClick={() => atRiskCount > 0 && setShowAtRiskModal(true)} style={{ cursor: atRiskCount > 0 ? 'pointer' : 'default' }}>
+          <div className="renewal-stat-content"><div className="renewal-stat-icon orange"><AlertTriangle size={20} /></div><div><p className="renewal-stat-value">{atRiskCount}</p><p className="renewal-stat-label">At Risk</p>{atRiskCount > 0 && <p className="renewal-stat-subtext">{formatCurrency(atRiskValue)} value</p>}</div></div>
         </div>
       </div>
 
@@ -409,115 +278,56 @@ export function PRSRenewalView() {
         <div className="renewal-filter-bar">
           <div className="renewal-search-wrapper">
             <Search size={16} className="renewal-search-icon" />
-            <input type="text" placeholder="Search by account, opportunity, product, or PRS name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="renewal-search-input" />
+            <input type="text" placeholder="Search by account, opportunity, product, or CSM name..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="renewal-search-input" />
           </div>
           <div className="renewal-days-picker">
             <span className="renewal-days-label">Next</span>
-            {DAYS_OPTIONS.map(days => (
-              <button key={days} onClick={() => setDaysAhead(days)} className={`renewal-days-btn ${daysAhead === days ? 'active' : ''}`}>
-                {days} days
-              </button>
-            ))}
+            {DAYS_OPTIONS.map(days => (<button key={days} onClick={() => setDaysAhead(days)} className={`renewal-days-btn ${daysAhead === days ? 'active' : ''}`}>{days} days</button>))}
           </div>
           <div className="renewal-filter-buttons">
-            <button onClick={() => setFilter('all')} className={`renewal-filter-btn ${filter === 'all' ? 'active' : ''}`}>
-              All ({opportunities.length})
-            </button>
-            <button onClick={() => setFilter('urgent')} className={`renewal-filter-btn urgent ${filter === 'urgent' ? 'active' : ''}`}>
-              Needs Action ({urgentCount})
-            </button>
+            <button onClick={() => setFilter('all')} className={`renewal-filter-btn ${filter === 'all' ? 'active' : ''}`}>All ({opportunities.length})</button>
+            <button onClick={() => setFilter('urgent')} className={`renewal-filter-btn urgent ${filter === 'urgent' ? 'active' : ''}`}>Needs Action ({urgentCount})</button>
           </div>
         </div>
       </div>
 
       <div className="prs-list">
-        {prsPortfolios.map(portfolio => {
-          const isCurrentUser = portfolio.prsEmail.toLowerCase() === currentUserEmail;
-          return (
-            <PRSCard
-              key={portfolio.prsEmail}
-              portfolio={portfolio}
-              expanded={expandedPRS === portfolio.prsEmail}
-              onToggle={() => setExpandedPRS(expandedPRS === portfolio.prsEmail ? null : portfolio.prsEmail)}
-              isCurrentUser={isCurrentUser}
-              canExecute={canExecute}
-              onExecuteAction={handleExecuteAction}
-              sortConfig={sortConfig}
-              onSort={handleSort}
-            />
-          );
-        })}
-        {prsPortfolios.length === 0 && (
-          <div className="renewal-empty">
-            <FileText size={48} className="renewal-empty-icon" />
-            <p>No renewal opportunities found</p>
-          </div>
-        )}
+        {csmPortfolios.map(portfolio => (
+          <CSMCard key={portfolio.csmEmail} portfolio={portfolio} expanded={expandedCSM === portfolio.csmEmail} onToggle={() => setExpandedCSM(expandedCSM === portfolio.csmEmail ? null : portfolio.csmEmail)} isCurrentUser={portfolio.csmEmail.toLowerCase() === currentUserEmail} sortConfig={sortConfig} onSort={handleSort} />
+        ))}
+        {csmPortfolios.length === 0 && (<div className="renewal-empty"><FileText size={48} className="renewal-empty-icon" /><p>No renewal opportunities found</p></div>)}
       </div>
-
-      {showEmailComposer && selectedOpportunity && (
-        <EmailComposer
-          template={currentTemplateKey ? RENEWAL_EMAIL_TEMPLATES[currentTemplateKey] : null}
-          opportunity={selectedOpportunity}
-          prsName={userName}
-          onSend={handleSendEmail}
-          onClose={() => { setShowEmailComposer(false); setCurrentTemplateKey(null); setSelectedOpportunity(null); }}
-          canSend={canExecute}
-        />
-      )}
 
       {showAtRiskModal && (
         <div className="renewal-email-modal">
           <div className="renewal-email-content at-risk-modal">
             <div className="renewal-email-header">
-              <h3 className="renewal-email-title">
-                <AlertTriangle size={20} className="at-risk-icon" />
-                Renewals at Risk ({atRiskCount})
-              </h3>
+              <h3 className="renewal-email-title"><AlertTriangle size={20} className="at-risk-icon" />Renewals at Risk ({atRiskCount})</h3>
               <button onClick={() => setShowAtRiskModal(false)} className="renewal-close-btn"><X size={20} /></button>
             </div>
-            <div className="at-risk-summary">
-              <span className="at-risk-total-value">Total Value at Risk: {formatCurrency(atRiskValue)}</span>
-            </div>
+            <div className="at-risk-summary"><span className="at-risk-total-value">Total Value at Risk: {formatCurrency(atRiskValue)}</span></div>
             <div className="at-risk-body">
               <table className="renewal-table at-risk-table">
-                <thead>
-                  <tr>
-                    <th>Account</th><th>Opportunity</th><th>Product</th><th>PRS</th>
-                    <th>Renewal Status</th><th>Accounting Status</th><th>PO Status</th>
-                    <th>Amount</th><th>Renewal Date</th>
-                  </tr>
-                </thead>
+                <thead><tr><th>Account</th><th>Opportunity</th><th>Product</th><th>CSM</th><th>Renewal Status</th><th>Accounting Status</th><th>PO Status</th><th>Amount</th><th>Renewal Date</th></tr></thead>
                 <tbody>
                   {atRiskOpportunities.map(opp => (
                     <tr key={opp.id} className="renewal-opp-row at-risk">
                       <td className="renewal-account-cell">{opp.companyName}</td>
                       <td>{opp.opportunityName}</td>
                       <td>{opp.productName}</td>
-                      <td>{opp.prsName || 'Unassigned'}</td>
+                      <td>{opp.csmName || 'Unassigned'}</td>
                       <td>{opp.renewalStatus ? <Badge variant={opp.renewalStatus.toLowerCase().includes('complete') ? 'success' : opp.renewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.renewalStatus}</Badge> : '-'}</td>
                       <td>{opp.accountingRenewalStatus ? <Badge variant={opp.accountingRenewalStatus.toLowerCase().includes('complete') ? 'success' : opp.accountingRenewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.accountingRenewalStatus}</Badge> : '-'}</td>
-                      <td>
-                        {opp.poRequired ? (
-                          <div className="po-status">
-                            <Badge variant={opp.poReceivedDate ? 'success' : 'warning'}>{opp.poReceivedDate ? 'Received' : 'Required'}</Badge>
-                            {opp.poReceivedDate && <span className="po-date">{new Date(opp.poReceivedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                          </div>
-                        ) : <span className="po-not-required">Not Required</span>}
-                      </td>
+                      <td>{opp.poRequired ? (<div className="po-status"><Badge variant={opp.poReceivedDate ? 'success' : 'warning'}>{opp.poReceivedDate ? 'Received' : 'Required'}</Badge>{opp.poReceivedDate && <span className="po-date">{new Date(opp.poReceivedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}</div>) : <span className="po-not-required">Not Required</span>}</td>
                       <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
                       <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              {atRiskOpportunities.length === 0 && (
-                <div className="renewal-empty"><CheckCircle size={48} className="renewal-empty-icon success" /><p>No renewals currently at risk</p></div>
-              )}
+              {atRiskOpportunities.length === 0 && (<div className="renewal-empty"><CheckCircle size={48} className="renewal-empty-icon success" /><p>No renewals currently at risk</p></div>)}
             </div>
-            <div className="renewal-email-footer">
-              <button className="renewal-btn secondary" onClick={() => setShowAtRiskModal(false)}>Close</button>
-            </div>
+            <div className="renewal-email-footer"><button className="renewal-btn secondary" onClick={() => setShowAtRiskModal(false)}>Close</button></div>
           </div>
         </div>
       )}

@@ -103,6 +103,19 @@ export function createSalesforceRoutes(salesforce: SalesforceService): Router {
     }
   });
 
+  // Temporary: ad-hoc SOQL query for schema investigation
+  router.get("/query", async (req: Request, res: Response) => {
+    try {
+      const soql = req.query.q as string;
+      if (!soql) return res.status(400).json({ error: "Missing q parameter" });
+      const records = await salesforce.query(soql);
+      res.json({ records, count: records.length });
+    } catch (error: any) {
+      console.error("SOQL query error:", error?.message || error);
+      res.status(500).json({ error: error?.message || "Query failed" });
+    }
+  });
+
   // Find PRS-related fields on Account and Opportunity objects
   router.get("/find-prs-fields", async (_req: Request, res: Response) => {
     try {

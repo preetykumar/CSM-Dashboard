@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useReducer, useMemo } from 'react';
-import { Mail, AlertTriangle, CheckCircle, FileText, Phone, RefreshCw, User as UserIcon, DollarSign, Bell, X, Search, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Mail, AlertTriangle, CheckCircle, FileText, Phone, RefreshCw, User as UserIcon, DollarSign, Bell, X, Search } from 'lucide-react';
 import { fetchRenewalOpportunities, RenewalOpportunity as ApiRenewalOpportunity } from '../services/api';
+import { formatCurrency } from '../utils/format';
+import { Badge } from './renewal/Badge';
+import { getStageBadgeVariant, isClosedLost } from '../services/workflow-engine';
+import { SortHeader as SharedSortHeader } from './renewal/SortHeader';
+import { OverdueBanner } from './renewal/OverdueBanner';
+import { useOverdueAlerts } from '../hooks/useOverdueAlerts';
+import type { Opportunity as SharedOpportunity } from '../types/renewal';
 
 // TypeScript interfaces
 
@@ -114,7 +121,7 @@ interface EmailTemplate {
   body: string;
 }
 
-type SortField = 'opportunityName' | 'productName' | 'stage' | 'amount' | 'renewalDate' | 'action' | 'companyName';
+type SortField = 'opportunityName' | 'productName' | 'stage' | 'amount' | 'renewalDate' | 'action' | 'companyName' | 'ownerName';
 type SortDirection = 'asc' | 'desc' | null;
 
 interface SortConfig {
@@ -173,20 +180,38 @@ const WorkflowEngine = {
   getMilestone: (renewalDate: string): string => {
     const today = new Date();
     const renewal = new Date(renewalDate);
-    const weeksUntilRenewal = Math.ceil((renewal.getTime() - today.getTime()) / (7 * 24 * 60 * 60 * 1000));
+    // Use calendar months (matching documented renewal process)
+    const monthsUntilRenewal =
+      (renewal.getFullYear() - today.getFullYear()) * 12 +
+      (renewal.getMonth() - today.getMonth());
 
-    if (weeksUntilRenewal > 6) return 'R-6+';
-    if (weeksUntilRenewal > 4) return 'R-6';
-    if (weeksUntilRenewal > 3) return 'R-4';
-    if (weeksUntilRenewal > 2) return 'R-3';
-    if (weeksUntilRenewal > 1) return 'R-2';
-    if (weeksUntilRenewal > 0) return 'R-1';
-    return 'R';
+    if (monthsUntilRenewal > 6) return 'R-6+';
+    if (monthsUntilRenewal > 4) return 'R-6';   // 5-6 months out
+    if (monthsUntilRenewal > 3) return 'R-4';   // ~4 months out
+    if (monthsUntilRenewal > 2) return 'R-3';   // ~3 months out
+    if (monthsUntilRenewal > 1) return 'R-2';   // ~2 months out
+    if (monthsUntilRenewal > 0) return 'R-1';   // ~1 month out
+    return 'R';                                    // at or past renewal
   },
 
   getRequiredActions: (opportunity: Opportunity): RequiredAction[] => {
     const milestone = WorkflowEngine.getMilestone(opportunity.renewalDate);
     const actions: RequiredAction[] = [];
+
+    // Confirmed/Invoiced/Closed Won/Closed Lost — no action needed
+    const doneStages = ['2 - Confirmed', '3 - Invoiced', '8 - Closed Won', '9 - Closed Lost'];
+    const invoicingInProgress = [...doneStages, '2.5 Contracting'];
+    if (doneStages.includes(opportunity.stage)) return actions;
+
+    // On Hold — AE-managed, not PRS-critical
+    if (opportunity.stage === '1 - On Hold') {
+      if (milestone === 'R-2' || milestone === 'R-1') {
+        actions.push({ type: 'SYNC_WITH_AE', priority: 'medium', description: 'Sync with AE on on-hold renewal status' });
+      } else if (milestone === 'R') {
+        actions.push({ type: 'INFORM_SALES_LEADERSHIP', priority: 'critical', description: 'Inform sales leadership of on-hold status past renewal date' });
+      }
+      return actions;
+    }
 
     switch (milestone) {
       case 'R-6':
@@ -230,19 +255,19 @@ const WorkflowEngine = {
       case 'R-2':
         if (!opportunity.invoiceReady) {
           actions.push({ type: 'ESCALATE_MISSING_INFO', priority: 'urgent', description: 'Missing info for invoice - escalate to EM/Sales leaders' });
-        } else if (opportunity.stage !== 'Ready for Invoicing') {
+        } else if (!invoicingInProgress.includes(opportunity.stage)) {
           actions.push({ type: 'MARK_READY_FOR_INVOICING', priority: 'high', description: 'Mark opportunity as Ready for Invoicing' });
         }
         break;
 
       case 'R-1':
-        if (opportunity.stage !== 'Invoice confirmed') {
+        if (!invoicingInProgress.includes(opportunity.stage)) {
           actions.push({ type: 'SEND_INVOICE_REMINDER', priority: 'urgent', description: 'Send payment reminder with service disruption warning' });
         }
         break;
 
       case 'R':
-        if (opportunity.stage !== 'Invoice confirmed') {
+        if (!invoicingInProgress.includes(opportunity.stage)) {
           actions.push({ type: 'SEND_FINAL_REMINDER', priority: 'critical', description: 'Send final reminder - 30-day grace period starts' });
           actions.push({ type: 'ESCALATE_TO_EM_LEADER', priority: 'critical', description: 'Escalate to EM leader internally' });
         }
@@ -274,61 +299,15 @@ const WorkflowEngine = {
   }
 };
 
-// Format currency with proper comma delimiters
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0
-  }).format(amount);
-}
+// Badge and formatCurrency imported from shared modules
 
-// Badge component
-interface BadgeProps {
-  children: React.ReactNode;
-  variant?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'purple';
-}
-
-const Badge: React.FC<BadgeProps> = ({ children, variant = 'default' }) => {
-  return (
-    <span className={`renewal-badge ${variant}`}>
-      {children}
-    </span>
-  );
-};
-
-// Sort header component
-interface SortHeaderProps {
+// SortHeader imported from shared modules - aliased for local SortField compatibility
+const SortHeader = SharedSortHeader as React.FC<{
   label: string;
   field: SortField;
   sortConfig: SortConfig;
   onSort: (field: SortField) => void;
-}
-
-const SortHeader: React.FC<SortHeaderProps> = ({ label, field, sortConfig, onSort }) => {
-  const isActive = sortConfig.field === field && sortConfig.direction !== null;
-
-  return (
-    <th
-      className="renewal-sortable-header"
-      onClick={() => onSort(field)}
-    >
-      <div className="renewal-header-content">
-        <span>{label}</span>
-        <span className={`renewal-sort-icon ${isActive ? 'active' : ''}`}>
-          {sortConfig.field === field && sortConfig.direction === 'asc' ? (
-            <ChevronUp size={14} />
-          ) : sortConfig.field === field && sortConfig.direction === 'desc' ? (
-            <ChevronDown size={14} />
-          ) : (
-            <ChevronsUpDown size={14} />
-          )}
-        </span>
-      </div>
-    </th>
-  );
-};
+}>;
 
 // Milestone tracker component
 const MilestoneTracker: React.FC<{ currentMilestone: string }> = ({ currentMilestone }) => {
@@ -442,7 +421,8 @@ const EmailComposer: React.FC<EmailComposerProps> = ({ template, opportunity, on
         '{{company_name}}': opportunity.companyName,
         '{{quote_date}}': formattedQuoteDate,
         '{{invoice_number}}': invoiceNumber,
-        '{{due_date}}': formattedDueDate
+        '{{due_date}}': formattedDueDate,
+        '{{ae_name}}': opportunity.ae || 'your Account Executive'
       };
 
       Object.entries(replacements).forEach(([key, value]) => {
@@ -697,7 +677,7 @@ const DashboardStats: React.FC<{ opportunities: Opportunity[] }> = ({ opportunit
     { label: 'Total Renewals', value: opportunities.length, icon: FileText, colorClass: 'slate' },
     { label: 'Accounts', value: uniqueAccounts, icon: UserIcon, colorClass: 'blue' },
     { label: 'Total Value', value: formatCurrency(totalValue), icon: DollarSign, colorClass: 'green' },
-    { label: 'Urgent Actions', value: urgentCount, icon: AlertTriangle, colorClass: 'red' }
+    { label: 'Needs Action', value: urgentCount, icon: AlertTriangle, colorClass: 'red' }
   ];
 
   return (
@@ -756,13 +736,34 @@ export default function RenewalAgent() {
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'renewalDate', direction: 'asc' });
   const [daysAhead, setDaysAhead] = useState<number>(60);
 
+  // Convert local opportunities to shared format for overdue detection
+  const sharedOpportunities = useMemo(() => {
+    return state.opportunities.map((opp): SharedOpportunity => ({
+      id: opp.id,
+      opportunityName: opp.opportunityName,
+      companyName: opp.companyName,
+      accountId: opp.accountId,
+      productName: opp.productName,
+      renewalDate: opp.renewalDate,
+      amount: opp.amount,
+      stage: opp.stage,
+      ownerName: opp.ae || '',
+      ownerEmail: '',
+      contactName: opp.contactName,
+      contactEmail: opp.contactEmail,
+    }));
+  }, [state.opportunities]);
+
+  const { overdueItems } = useOverdueAlerts(sharedOpportunities);
+
   // Fetch renewal opportunities from API
   useEffect(() => {
     async function loadOpportunities() {
       try {
         dispatch({ type: 'SET_LOADING', payload: true });
         const response = await fetchRenewalOpportunities(daysAhead);
-        const opportunities = response.opportunities.map(transformApiOpportunity);
+        const opportunities = response.opportunities.map(transformApiOpportunity)
+          .filter(opp => !isClosedLost(opp.stage));
         dispatch({ type: 'SET_OPPORTUNITIES', payload: opportunities });
       } catch (error) {
         console.error('Failed to fetch renewal opportunities:', error);
@@ -824,6 +825,9 @@ export default function RenewalAgent() {
             break;
           case 'companyName':
             comparison = a.companyName.localeCompare(b.companyName);
+            break;
+          case 'ownerName':
+            comparison = (a.ae || '').localeCompare(b.ae || '');
             break;
           case 'action': {
             const actionsA = WorkflowEngine.getRequiredActions(a);
@@ -900,6 +904,9 @@ export default function RenewalAgent() {
       </header>
 
       <main className="renewal-main">
+        {/* Overdue Banner */}
+        <OverdueBanner overdueItems={overdueItems} />
+
         {/* Stats */}
         <DashboardStats opportunities={state.opportunities} />
 
@@ -939,7 +946,7 @@ export default function RenewalAgent() {
                 onClick={() => setFilter('urgent')}
                 className={`renewal-filter-btn urgent ${filter === 'urgent' ? 'active' : ''}`}
               >
-                Urgent
+                Needs Action
               </button>
             </div>
           </div>
@@ -952,6 +959,7 @@ export default function RenewalAgent() {
               <thead>
                 <tr>
                   <SortHeader label="Account" field="companyName" sortConfig={sortConfig} onSort={handleSort} />
+                  <SortHeader label="AE" field="ownerName" sortConfig={sortConfig} onSort={handleSort} />
                   <SortHeader label="Opportunity Name" field="opportunityName" sortConfig={sortConfig} onSort={handleSort} />
                   <SortHeader label="Product Name" field="productName" sortConfig={sortConfig} onSort={handleSort} />
                   <SortHeader label="Stage" field="stage" sortConfig={sortConfig} onSort={handleSort} />
@@ -972,6 +980,7 @@ export default function RenewalAgent() {
                       className={`renewal-opp-row ${isUrgent ? 'urgent' : ''}`}
                     >
                       <td className="renewal-account-cell">{opp.companyName}</td>
+                      <td>{opp.ae || '-'}</td>
                       <td>
                         <button
                           className="renewal-opp-name-btn"
@@ -982,11 +991,7 @@ export default function RenewalAgent() {
                       </td>
                       <td>{opp.productName}</td>
                       <td>
-                        <Badge variant={
-                          opp.stage === 'Invoice confirmed' ? 'success' :
-                          opp.stage === 'Ready for Invoicing' ? 'info' :
-                          'default'
-                        }>
+                        <Badge variant={getStageBadgeVariant(opp.stage)}>
                           {opp.stage}
                         </Badge>
                       </td>
