@@ -134,15 +134,15 @@ const CSMCard: React.FC<CSMCardProps> = ({ portfolio, expanded, onToggle, isCurr
                 const isUrgent = actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
                 return (
                   <tr key={opp.id} className={`renewal-opp-row ${isUrgent ? 'urgent' : ''} ${opp.atRisk ? 'at-risk' : ''}`}>
-                    <td className="row-number-cell">{idx + 1}</td>
-                    <td className="renewal-account-cell">{opp.companyName}</td>
-                    <td>{opp.ownerName || '-'}</td>
-                    <td>{opp.opportunityName}</td>
-                    <td>{opp.productName}</td>
-                    <td><Badge variant={getStageBadgeVariant(opp.stage)}>{opp.stage}</Badge></td>
-                    <td>{opp.renewalStatus ? <Badge variant={opp.renewalStatus.toLowerCase().includes('complete') ? 'success' : opp.renewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.renewalStatus}</Badge> : '-'}</td>
-                    <td>{opp.accountingRenewalStatus ? <Badge variant={opp.accountingRenewalStatus.toLowerCase().includes('complete') ? 'success' : opp.accountingRenewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.accountingRenewalStatus}</Badge> : '-'}</td>
-                    <td>
+                    <td className="row-number-cell" data-label="#">{idx + 1}</td>
+                    <td className="renewal-account-cell" data-label="Account">{opp.companyName}</td>
+                    <td data-label="AE">{opp.ownerName || '-'}</td>
+                    <td data-label="Opportunity">{opp.opportunityName}</td>
+                    <td data-label="Product">{opp.productName}</td>
+                    <td data-label="Stage"><Badge variant={getStageBadgeVariant(opp.stage)}>{opp.stage}</Badge></td>
+                    <td data-label="Renewal Status">{opp.renewalStatus ? <Badge variant={opp.renewalStatus.toLowerCase().includes('complete') ? 'success' : opp.renewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.renewalStatus}</Badge> : '-'}</td>
+                    <td data-label="Accounting Status">{opp.accountingRenewalStatus ? <Badge variant={opp.accountingRenewalStatus.toLowerCase().includes('complete') ? 'success' : opp.accountingRenewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.accountingRenewalStatus}</Badge> : '-'}</td>
+                    <td data-label="PO Required">
                       {opp.poRequired ? (
                         <div className="po-status">
                           <Badge variant={opp.poReceivedDate ? 'success' : 'warning'}>{opp.poReceivedDate ? 'Received' : 'Required'}</Badge>
@@ -150,9 +150,9 @@ const CSMCard: React.FC<CSMCardProps> = ({ portfolio, expanded, onToggle, isCurr
                         </div>
                       ) : <span className="po-not-required">Not Required</span>}
                     </td>
-                    <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
-                    <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                    <td>
+                    <td className="renewal-amount-cell" data-label="Total Price">{formatCurrency(opp.amount || 0)}</td>
+                    <td data-label="Renewal Date">{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                    <td data-label="Action Needed">
                       {primaryAction ? (
                         <div className="renewal-action-cell">
                           <span className={`renewal-action-text ${primaryAction.priority}`}>
@@ -161,9 +161,9 @@ const CSMCard: React.FC<CSMCardProps> = ({ portfolio, expanded, onToggle, isCurr
                         </div>
                       ) : <span className="renewal-no-action"><CheckCircle size={14} /> No action needed</span>}
                     </td>
-                    <td className="renewal-notes-cell">{opp.leadershipNotes || '-'}</td>
-                    <td>{opp.atRisk ? <Badge variant="danger">Yes</Badge> : '-'}</td>
-                    <td>{opp.leadershipRiskStatus ? <Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>{opp.leadershipRiskStatus}</Badge> : '-'}</td>
+                    <td className="renewal-notes-cell" data-label="Leadership Notes">{opp.leadershipNotes || '-'}</td>
+                    <td data-label="At Risk">{opp.atRisk ? <Badge variant="danger">Yes</Badge> : '-'}</td>
+                    <td data-label="Risk Status">{opp.leadershipRiskStatus ? <Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>{opp.leadershipRiskStatus}</Badge> : '-'}</td>
                   </tr>
                 );
               })}
@@ -315,11 +315,11 @@ export function CSMRenewalView() {
                 <tbody>
                   {atRiskOpportunities.map(opp => (
                     <tr key={opp.id} className="renewal-opp-row at-risk">
-                      <td className="renewal-account-cell">{opp.companyName}</td>
-                      <td>{opp.opportunityName}</td>
-                      <td>{opp.productName}</td>
-                      <td>{opp.csmName || 'Unassigned'}</td>
-                      <td>
+                      <td className="renewal-account-cell" data-label="Account">{opp.companyName}</td>
+                      <td data-label="Opportunity">{opp.opportunityName}</td>
+                      <td data-label="Product">{opp.productName}</td>
+                      <td data-label="CSM">{opp.csmName || 'Unassigned'}</td>
+                      <td data-label="Risk Reason">
                         {opp.atRisk && opp.leadershipRiskStatus ? (
                           <><Badge variant="danger">At Risk</Badge>{' '}<Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>{opp.leadershipRiskStatus}</Badge></>
                         ) : opp.leadershipRiskStatus ? (
@@ -328,9 +328,9 @@ export function CSMRenewalView() {
                           <Badge variant="danger">At Risk</Badge>
                         )}
                       </td>
-                      <td>{opp.leadershipRiskStatus || '-'}</td>
-                      <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
-                      <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                      <td data-label="Leadership Risk Status">{opp.leadershipRiskStatus || '-'}</td>
+                      <td className="renewal-amount-cell" data-label="Amount">{formatCurrency(opp.amount || 0)}</td>
+                      <td data-label="Renewal Date">{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -357,13 +357,13 @@ export function CSMRenewalView() {
                     const actions = WorkflowEngine.getRequiredActions(opp);
                     return (
                       <tr key={opp.id} className="renewal-opp-row urgent">
-                        <td className="renewal-account-cell">{opp.companyName}</td>
-                        <td>{opp.opportunityName}</td>
-                        <td>{opp.productName}</td>
-                        <td>{opp.csmName || 'Unassigned'}</td>
-                        <td>{actions.map((a, i) => (<Badge key={i} variant={a.priority === 'critical' || a.priority === 'urgent' ? 'danger' : a.priority === 'high' ? 'warning' : 'default'}>{a.description}</Badge>))}</td>
-                        <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
-                        <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                        <td className="renewal-account-cell" data-label="Account">{opp.companyName}</td>
+                        <td data-label="Opportunity">{opp.opportunityName}</td>
+                        <td data-label="Product">{opp.productName}</td>
+                        <td data-label="CSM">{opp.csmName || 'Unassigned'}</td>
+                        <td data-label="Required Actions">{actions.map((a, i) => (<Badge key={i} variant={a.priority === 'critical' || a.priority === 'urgent' ? 'danger' : a.priority === 'high' ? 'warning' : 'default'}>{a.description}</Badge>))}</td>
+                        <td className="renewal-amount-cell" data-label="Amount">{formatCurrency(opp.amount || 0)}</td>
+                        <td data-label="Renewal Date">{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                       </tr>
                     );
                   })}

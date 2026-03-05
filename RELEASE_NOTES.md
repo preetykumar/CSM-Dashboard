@@ -1,5 +1,21 @@
 # Post-sales Customer Team Portal - Release Notes
 
+## Version 1.5.1
+
+**Release Date:** March 5, 2026
+
+### Responsive Stacked Cards for Renewals, Needs Action & At Risk Modals
+
+**Renewals:**
+- **Responsive card layout**: Renewal tables now convert to stacked cards on screens under 1800px wide, eliminating horizontal scrolling on laptops. Each renewal row displays as a card with labeled fields.
+- **At-risk cards** get an orange left border accent; **urgent cards** get a red left border accent.
+- **Needs Action modal**: Clicking the "Needs Action" stat card opens a modal listing all renewals that require action, with required actions shown as priority-colored badges.
+- **At Risk definition updated**: Renewals are now flagged "At Risk" if the Leadership Risk Status dropdown has any value OR the Renewal at Risk checkbox is checked. The At Risk modal shows both the risk reason and leadership risk status.
+- **Stats grid**: Now properly displays all 5 stat cards (Total, Accounts, Value, Needs Action, At Risk) in a single row on desktop.
+- **Filter bar stacking**: Search, days picker, and filter buttons stack vertically on narrower screens.
+
+---
+
 ## Version 1.5.0
 
 **Release Date:** March 5, 2026
