@@ -236,6 +236,7 @@ export function PRSRenewalView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedPRS, setExpandedPRS] = useState<string | null>(null);
   const [showAtRiskModal, setShowAtRiskModal] = useState(false);
+  const [showNeedsActionModal, setShowNeedsActionModal] = useState(false);
 
   const currentUserEmail = user?.email?.toLowerCase() || '';
   const userName = user?.name || user?.email?.split('@')[0] || 'PRS User';
@@ -293,18 +294,19 @@ export function PRSRenewalView() {
     setShowEmailComposer(true);
   }, []);
 
-  const { totalValue, urgentCount, uniqueAccounts, atRiskOpportunities, atRiskCount, atRiskValue } = useMemo(() => {
+  const { totalValue, urgentCount, uniqueAccounts, atRiskOpportunities, atRiskCount, atRiskValue, needsActionOpportunities } = useMemo(() => {
     const total = opportunities.reduce((sum, opp) => sum + (opp.amount || 0), 0);
-    const urgent = opportunities.filter(opp => WorkflowEngine.getRequiredActions(opp).length > 0).length;
+    const needsAction = opportunities.filter(opp => WorkflowEngine.getRequiredActions(opp).length > 0);
     const accounts = new Set(opportunities.map(opp => opp.accountId)).size;
     const atRiskOpps = opportunities.filter(opp => opp.atRisk === true);
     return {
       totalValue: total,
-      urgentCount: urgent,
+      urgentCount: needsAction.length,
       uniqueAccounts: accounts,
       atRiskOpportunities: atRiskOpps,
       atRiskCount: atRiskOpps.length,
-      atRiskValue: atRiskOpps.reduce((sum, opp) => sum + (opp.amount || 0), 0)
+      atRiskValue: atRiskOpps.reduce((sum, opp) => sum + (opp.amount || 0), 0),
+      needsActionOpportunities: needsAction,
     };
   }, [opportunities]);
 
@@ -362,7 +364,11 @@ export function PRSRenewalView() {
             </div>
           </div>
         </div>
-        <div className={`renewal-stat-card clickable ${filter === 'urgent' ? 'active-filter' : ''}`} onClick={() => setFilter('urgent')} style={{ cursor: 'pointer' }}>
+        <div
+          className={`renewal-stat-card clickable ${urgentCount > 0 ? 'at-risk' : ''}`}
+          onClick={() => urgentCount > 0 && setShowNeedsActionModal(true)}
+          style={{ cursor: urgentCount > 0 ? 'pointer' : 'default' }}
+        >
           <div className="renewal-stat-content">
             <div className="renewal-stat-icon red"><AlertTriangle size={20} /></div>
             <div>
@@ -463,7 +469,7 @@ export function PRSRenewalView() {
                 <thead>
                   <tr>
                     <th>Account</th><th>Opportunity</th><th>Product</th><th>PRS</th>
-                    <th>Renewal Status</th><th>Accounting Status</th><th>PO Status</th>
+                    <th>Risk Reason</th><th>Leadership Risk Status</th>
                     <th>Amount</th><th>Renewal Date</th>
                   </tr>
                 </thead>
@@ -474,16 +480,16 @@ export function PRSRenewalView() {
                       <td>{opp.opportunityName}</td>
                       <td>{opp.productName}</td>
                       <td>{opp.prsName || 'Unassigned'}</td>
-                      <td>{opp.renewalStatus ? <Badge variant={opp.renewalStatus.toLowerCase().includes('complete') ? 'success' : opp.renewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.renewalStatus}</Badge> : '-'}</td>
-                      <td>{opp.accountingRenewalStatus ? <Badge variant={opp.accountingRenewalStatus.toLowerCase().includes('complete') ? 'success' : opp.accountingRenewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.accountingRenewalStatus}</Badge> : '-'}</td>
                       <td>
-                        {opp.poRequired ? (
-                          <div className="po-status">
-                            <Badge variant={opp.poReceivedDate ? 'success' : 'warning'}>{opp.poReceivedDate ? 'Received' : 'Required'}</Badge>
-                            {opp.poReceivedDate && <span className="po-date">{new Date(opp.poReceivedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                          </div>
-                        ) : <span className="po-not-required">Not Required</span>}
+                        {opp.atRisk && opp.leadershipRiskStatus ? (
+                          <><Badge variant="danger">At Risk</Badge>{' '}<Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>{opp.leadershipRiskStatus}</Badge></>
+                        ) : opp.leadershipRiskStatus ? (
+                          <Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>{opp.leadershipRiskStatus}</Badge>
+                        ) : (
+                          <Badge variant="danger">At Risk</Badge>
+                        )}
                       </td>
+                      <td>{opp.leadershipRiskStatus || '-'}</td>
                       <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
                       <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                     </tr>
@@ -496,6 +502,57 @@ export function PRSRenewalView() {
             </div>
             <div className="renewal-email-footer">
               <button className="renewal-btn secondary" onClick={() => setShowAtRiskModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNeedsActionModal && (
+        <div className="renewal-email-modal">
+          <div className="renewal-email-content at-risk-modal">
+            <div className="renewal-email-header">
+              <h3 className="renewal-email-title">
+                <AlertTriangle size={20} className="at-risk-icon" />
+                Renewals Needing Action ({urgentCount})
+              </h3>
+              <button onClick={() => setShowNeedsActionModal(false)} className="renewal-close-btn"><X size={20} /></button>
+            </div>
+            <div className="at-risk-body">
+              <table className="renewal-table at-risk-table">
+                <thead>
+                  <tr>
+                    <th>Account</th><th>Opportunity</th><th>Product</th><th>PRS</th>
+                    <th>Required Actions</th>
+                    <th>Amount</th><th>Renewal Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {needsActionOpportunities.map(opp => {
+                    const actions = WorkflowEngine.getRequiredActions(opp);
+                    return (
+                      <tr key={opp.id} className="renewal-opp-row urgent">
+                        <td className="renewal-account-cell">{opp.companyName}</td>
+                        <td>{opp.opportunityName}</td>
+                        <td>{opp.productName}</td>
+                        <td>{opp.prsName || 'Unassigned'}</td>
+                        <td>
+                          {actions.map((a, i) => (
+                            <Badge key={i} variant={a.priority === 'critical' || a.priority === 'urgent' ? 'danger' : a.priority === 'high' ? 'warning' : 'default'}>{a.description}</Badge>
+                          ))}
+                        </td>
+                        <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
+                        <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {needsActionOpportunities.length === 0 && (
+                <div className="renewal-empty"><CheckCircle size={48} className="renewal-empty-icon success" /><p>No renewals currently need action</p></div>
+              )}
+            </div>
+            <div className="renewal-email-footer">
+              <button className="renewal-btn secondary" onClick={() => setShowNeedsActionModal(false)}>Close</button>
             </div>
           </div>
         </div>

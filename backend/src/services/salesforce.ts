@@ -901,7 +901,7 @@ export class SalesforceService {
           accountingRenewalStatus: opp.Renewal_Status__c,  // "Accounting Renewal Status"
           poRequired: opp.PO_Required__c,
           poReceivedDate: opp.PO_Received_Date__c,
-          atRisk: opp.Renewal_at_Risk__c,  // "Renewal at Risk"
+          atRisk: opp.Renewal_at_Risk__c || !!opp.Leadership_Risk_Status__c,  // "Renewal at Risk" checkbox OR Leadership Risk Status is set
           r6Notes: opp.Renewal_Status_1__c,
           r3Notes: opp.Customer_Success_Next_Steps__c,
           accountingNotes: opp.Accounting_Notes_for_Renewal__c,

@@ -188,6 +188,7 @@ export function CSMRenewalView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedCSM, setExpandedCSM] = useState<string | null>(null);
   const [showAtRiskModal, setShowAtRiskModal] = useState(false);
+  const [showNeedsActionModal, setShowNeedsActionModal] = useState(false);
 
   const currentUserEmail = user?.email?.toLowerCase() || '';
   const { overdueItems } = useOverdueAlerts(opportunities);
@@ -236,15 +237,16 @@ export function CSMRenewalView() {
     return groupByCSM(filtered);
   }, [opportunities, searchQuery, filter]);
 
-  const { totalValue, urgentCount, uniqueAccounts, atRiskOpportunities, atRiskCount, atRiskValue } = useMemo(() => {
+  const { totalValue, urgentCount, uniqueAccounts, atRiskOpportunities, atRiskCount, atRiskValue, needsActionOpportunities } = useMemo(() => {
     const total = opportunities.reduce((sum, opp) => sum + (opp.amount || 0), 0);
-    const urgent = opportunities.filter(opp => WorkflowEngine.getRequiredActions(opp).length > 0).length;
+    const needsAction = opportunities.filter(opp => WorkflowEngine.getRequiredActions(opp).length > 0);
     const accounts = new Set(opportunities.map(opp => opp.accountId)).size;
     const atRiskOpps = opportunities.filter(opp => opp.atRisk === true);
     return {
-      totalValue: total, urgentCount: urgent, uniqueAccounts: accounts,
+      totalValue: total, urgentCount: needsAction.length, uniqueAccounts: accounts,
       atRiskOpportunities: atRiskOpps, atRiskCount: atRiskOpps.length,
-      atRiskValue: atRiskOpps.reduce((sum, opp) => sum + (opp.amount || 0), 0)
+      atRiskValue: atRiskOpps.reduce((sum, opp) => sum + (opp.amount || 0), 0),
+      needsActionOpportunities: needsAction,
     };
   }, [opportunities]);
 
@@ -269,7 +271,7 @@ export function CSMRenewalView() {
         <div className={`renewal-stat-card clickable ${filter === 'all' ? 'active-filter' : ''}`} onClick={() => setFilter('all')} style={{ cursor: 'pointer' }}><div className="renewal-stat-content"><div className="renewal-stat-icon slate"><FileText size={20} /></div><div><p className="renewal-stat-value">{opportunities.length}</p><p className="renewal-stat-label">Total Renewals</p></div></div></div>
         <div className="renewal-stat-card"><div className="renewal-stat-content"><div className="renewal-stat-icon blue"><UserIcon size={20} /></div><div><p className="renewal-stat-value">{uniqueAccounts}</p><p className="renewal-stat-label">Accounts</p></div></div></div>
         <div className="renewal-stat-card"><div className="renewal-stat-content"><div className="renewal-stat-icon green"><DollarSign size={20} /></div><div><p className="renewal-stat-value">{formatCurrency(totalValue)}</p><p className="renewal-stat-label">Total Value</p></div></div></div>
-        <div className={`renewal-stat-card clickable ${filter === 'urgent' ? 'active-filter' : ''}`} onClick={() => setFilter('urgent')} style={{ cursor: 'pointer' }}><div className="renewal-stat-content"><div className="renewal-stat-icon red"><AlertTriangle size={20} /></div><div><p className="renewal-stat-value">{urgentCount}</p><p className="renewal-stat-label">Needs Action</p></div></div></div>
+        <div className={`renewal-stat-card clickable ${urgentCount > 0 ? 'at-risk' : ''}`} onClick={() => urgentCount > 0 && setShowNeedsActionModal(true)} style={{ cursor: urgentCount > 0 ? 'pointer' : 'default' }}><div className="renewal-stat-content"><div className="renewal-stat-icon red"><AlertTriangle size={20} /></div><div><p className="renewal-stat-value">{urgentCount}</p><p className="renewal-stat-label">Needs Action</p></div></div></div>
         <div className={`renewal-stat-card clickable ${atRiskCount > 0 ? 'at-risk' : ''}`} onClick={() => atRiskCount > 0 && setShowAtRiskModal(true)} style={{ cursor: atRiskCount > 0 ? 'pointer' : 'default' }}>
           <div className="renewal-stat-content"><div className="renewal-stat-icon orange"><AlertTriangle size={20} /></div><div><p className="renewal-stat-value">{atRiskCount}</p><p className="renewal-stat-label">At Risk</p>{atRiskCount > 0 && <p className="renewal-stat-subtext">{formatCurrency(atRiskValue)} value</p>}</div></div>
         </div>
@@ -309,7 +311,7 @@ export function CSMRenewalView() {
             <div className="at-risk-summary"><span className="at-risk-total-value">Total Value at Risk: {formatCurrency(atRiskValue)}</span></div>
             <div className="at-risk-body">
               <table className="renewal-table at-risk-table">
-                <thead><tr><th>Account</th><th>Opportunity</th><th>Product</th><th>CSM</th><th>Renewal Status</th><th>Accounting Status</th><th>PO Status</th><th>Amount</th><th>Renewal Date</th></tr></thead>
+                <thead><tr><th>Account</th><th>Opportunity</th><th>Product</th><th>CSM</th><th>Risk Reason</th><th>Leadership Risk Status</th><th>Amount</th><th>Renewal Date</th></tr></thead>
                 <tbody>
                   {atRiskOpportunities.map(opp => (
                     <tr key={opp.id} className="renewal-opp-row at-risk">
@@ -317,9 +319,16 @@ export function CSMRenewalView() {
                       <td>{opp.opportunityName}</td>
                       <td>{opp.productName}</td>
                       <td>{opp.csmName || 'Unassigned'}</td>
-                      <td>{opp.renewalStatus ? <Badge variant={opp.renewalStatus.toLowerCase().includes('complete') ? 'success' : opp.renewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.renewalStatus}</Badge> : '-'}</td>
-                      <td>{opp.accountingRenewalStatus ? <Badge variant={opp.accountingRenewalStatus.toLowerCase().includes('complete') ? 'success' : opp.accountingRenewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.accountingRenewalStatus}</Badge> : '-'}</td>
-                      <td>{opp.poRequired ? (<div className="po-status"><Badge variant={opp.poReceivedDate ? 'success' : 'warning'}>{opp.poReceivedDate ? 'Received' : 'Required'}</Badge>{opp.poReceivedDate && <span className="po-date">{new Date(opp.poReceivedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}</div>) : <span className="po-not-required">Not Required</span>}</td>
+                      <td>
+                        {opp.atRisk && opp.leadershipRiskStatus ? (
+                          <><Badge variant="danger">At Risk</Badge>{' '}<Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>{opp.leadershipRiskStatus}</Badge></>
+                        ) : opp.leadershipRiskStatus ? (
+                          <Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>{opp.leadershipRiskStatus}</Badge>
+                        ) : (
+                          <Badge variant="danger">At Risk</Badge>
+                        )}
+                      </td>
+                      <td>{opp.leadershipRiskStatus || '-'}</td>
                       <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
                       <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
                     </tr>
@@ -329,6 +338,40 @@ export function CSMRenewalView() {
               {atRiskOpportunities.length === 0 && (<div className="renewal-empty"><CheckCircle size={48} className="renewal-empty-icon success" /><p>No renewals currently at risk</p></div>)}
             </div>
             <div className="renewal-email-footer"><button className="renewal-btn secondary" onClick={() => setShowAtRiskModal(false)}>Close</button></div>
+          </div>
+        </div>
+      )}
+
+      {showNeedsActionModal && (
+        <div className="renewal-email-modal">
+          <div className="renewal-email-content at-risk-modal">
+            <div className="renewal-email-header">
+              <h3 className="renewal-email-title"><AlertTriangle size={20} className="at-risk-icon" />Renewals Needing Action ({urgentCount})</h3>
+              <button onClick={() => setShowNeedsActionModal(false)} className="renewal-close-btn"><X size={20} /></button>
+            </div>
+            <div className="at-risk-body">
+              <table className="renewal-table at-risk-table">
+                <thead><tr><th>Account</th><th>Opportunity</th><th>Product</th><th>CSM</th><th>Required Actions</th><th>Amount</th><th>Renewal Date</th></tr></thead>
+                <tbody>
+                  {needsActionOpportunities.map(opp => {
+                    const actions = WorkflowEngine.getRequiredActions(opp);
+                    return (
+                      <tr key={opp.id} className="renewal-opp-row urgent">
+                        <td className="renewal-account-cell">{opp.companyName}</td>
+                        <td>{opp.opportunityName}</td>
+                        <td>{opp.productName}</td>
+                        <td>{opp.csmName || 'Unassigned'}</td>
+                        <td>{actions.map((a, i) => (<Badge key={i} variant={a.priority === 'critical' || a.priority === 'urgent' ? 'danger' : a.priority === 'high' ? 'warning' : 'default'}>{a.description}</Badge>))}</td>
+                        <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
+                        <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {needsActionOpportunities.length === 0 && (<div className="renewal-empty"><CheckCircle size={48} className="renewal-empty-icon success" /><p>No renewals currently need action</p></div>)}
+            </div>
+            <div className="renewal-email-footer"><button className="renewal-btn secondary" onClick={() => setShowNeedsActionModal(false)}>Close</button></div>
           </div>
         </div>
       )}
