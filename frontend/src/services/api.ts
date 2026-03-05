@@ -854,6 +854,7 @@ export interface RenewalOpportunity {
   r3Notes?: string;
   accountingNotes?: string;
   leadershipNotes?: string;
+  leadershipRiskStatus?: string;
 }
 
 export interface RenewalOpportunitiesResponse {

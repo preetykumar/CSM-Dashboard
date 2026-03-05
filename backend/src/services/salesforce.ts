@@ -157,6 +157,7 @@ export interface RenewalOpportunity {
   r3Notes?: string;
   accountingNotes?: string;
   leadershipNotes?: string;
+  leadershipRiskStatus?: string;
 }
 
 // Product Success object from Salesforce
@@ -232,6 +233,7 @@ interface SFOpportunity {
   Customer_Success_Next_Steps__c?: string;  // labeled "R3 Notes"
   Accounting_Notes_for_Renewal__c?: string;  // labeled "Accounting Notes for Renewal"
   Leadership_Notes__c?: string;  // labeled "Leadership Notes"
+  Leadership_Risk_Status__c?: string;  // labeled "Leadership Risk Status" (picklist)
   // Child relationship: OpportunityContactRoles
   OpportunityContactRoles?: {
     records: Array<{
@@ -857,7 +859,7 @@ export class SalesforceService {
                Customer_Success_Renewal_Status__c, Renewal_Status__c,
                PO_Required__c, PO_Received_Date__c, Renewal_at_Risk__c,
                Renewal_Status_1__c, Customer_Success_Next_Steps__c, Accounting_Notes_for_Renewal__c,
-               Leadership_Notes__c
+               Leadership_Notes__c, Leadership_Risk_Status__c
         FROM Opportunity
         WHERE Type = 'Renewal'
         AND CloseDate >= 2026-01-01
@@ -904,6 +906,7 @@ export class SalesforceService {
           r3Notes: opp.Customer_Success_Next_Steps__c,
           accountingNotes: opp.Accounting_Notes_for_Renewal__c,
           leadershipNotes: opp.Leadership_Notes__c,
+          leadershipRiskStatus: opp.Leadership_Risk_Status__c,
         };
       });
     } catch (error) {
