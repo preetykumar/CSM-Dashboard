@@ -17,10 +17,33 @@ function normalizeAccents(text: string): string {
 function matchesParenthesizedAcronym(nameWithAcronyms: string, candidateName: string): boolean {
   const acronyms = [...nameWithAcronyms.matchAll(/\(([a-zA-Z]{3,})\)/g)].map(m => m[1].toLowerCase());
   if (acronyms.length === 0) return false;
-  const words = candidateName.split(/\s+/).filter(w => w.length > 0);
+  const words = candidateName.split(/[\s-]+/).filter(w => w.length > 0);
   if (words.length < 2) return false;
   const initials = words.map(w => w[0].toLowerCase()).join('');
   return acronyms.some(acr => initials === acr);
+}
+
+// Helper: Strip domain suffixes from org names (e.g., "BMS.com" → "BMS")
+function stripDomainSuffix(name: string): string {
+  return name.replace(/\.(com|org|net|io|co|edu|gov|us|uk|de|fr|ca|au|jp|in)$/i, '').trim();
+}
+
+// Helper: Get initials from a company name, splitting on spaces and hyphens.
+// e.g., "Bristol-Myers Squibb" → "bms", "General Electric" → "ge"
+function getCompanyInitials(name: string): string {
+  const words = name.split(/[\s-]+/).filter(w => w.length > 0 && /^[a-zA-Z]/.test(w));
+  if (words.length < 2) return '';
+  return words.map(w => w[0].toLowerCase()).join('');
+}
+
+// Helper: Check if a short name is an acronym/initials of a longer company name.
+// e.g., "BMS" matches "Bristol-Myers Squibb", "GE" matches "General Electric"
+function matchesAcronymToInitials(shortName: string, fullName: string): boolean {
+  const short = shortName.toLowerCase();
+  if (short.length < 2 || short.length > 6) return false;
+  if (!/^[a-z]+$/.test(short)) return false;
+  const initials = getCompanyInitials(fullName);
+  return initials.length >= 2 && initials === short;
 }
 
 export class SyncService {
@@ -525,10 +548,10 @@ export class SyncService {
           if (primaryZendeskOrg && org.id === primaryZendeskOrg.id) continue;
 
           const orgNameLower = normalizeAccents(org.name.toLowerCase().trim());
-          const orgNameNormalized = orgNameLower
+          const orgNameNormalized = stripDomainSuffix(orgNameLower
             .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
             .replace(/\s*-\s*(corp|enterprise|wfn|llc|inc)$/i, "")
-            .trim();
+            .trim());
 
           // Match criteria:
           // 1. Exact match (normalized, including accent normalization)
@@ -539,6 +562,9 @@ export class SyncService {
           // 5. SF account name contains org name as a word boundary (e.g., "Nestle Purina" contains "Purina")
           // 6. Parenthesized acronym in SF name matches org name initials
           //    (e.g., "...Limited (BAT)" matches "British American Tobacco" → B.A.T.)
+          // 7. Org name is an acronym of the SF account name
+          //    (e.g., "BMS" matches "Bristol-Myers Squibb", "GE" matches "General Electric")
+          // 8. SF account name is an acronym of the org name
           // Escape special regex characters for word boundary matching
           const escapedAccountName = accountNameNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const escapedOrgName = orgNameNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -549,7 +575,9 @@ export class SyncService {
             (orgNameNormalized.length >= 4 && accountNameNormalized.startsWith(orgNameNormalized)) ||
             (accountNameNormalized.length >= 4 && new RegExp(`\\b${escapedAccountName}\\b`, 'i').test(orgNameLower)) ||
             (orgNameNormalized.length >= 5 && new RegExp(`\\b${escapedOrgName}\\b`, 'i').test(accountNameLower)) ||
-            matchesParenthesizedAcronym(accountNameLower, orgNameLower);
+            matchesParenthesizedAcronym(accountNameLower, orgNameLower) ||
+            matchesAcronymToInitials(orgNameNormalized, accountNameNormalized) ||
+            matchesAcronymToInitials(accountNameNormalized, orgNameNormalized);
 
           if (isMatch) {
             // Update this org's salesforce_account_name
@@ -647,17 +675,19 @@ export class SyncService {
             if (org.salesforce_id === a.accountId) continue;
 
             const orgNameLower = normalizeAccents(org.name.toLowerCase().trim());
-            const orgNameNormalized = orgNameLower
+            const orgNameNormalized = stripDomainSuffix(orgNameLower
               .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
               .replace(/\s*-\s*(corp|enterprise|wfn|llc|inc)$/i, "")
-              .trim();
+              .trim());
 
             const escapedAccountName = accountNameNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const isMatch =
               orgNameNormalized === accountNameNormalized ||
               orgNameLower === accountNameLower ||
               (accountNameNormalized.length >= 3 && orgNameNormalized.startsWith(accountNameNormalized)) ||
-              (accountNameNormalized.length >= 4 && new RegExp(`\\b${escapedAccountName}\\b`, 'i').test(orgNameLower));
+              (accountNameNormalized.length >= 4 && new RegExp(`\\b${escapedAccountName}\\b`, 'i').test(orgNameLower)) ||
+              matchesAcronymToInitials(orgNameNormalized, accountNameNormalized) ||
+              matchesAcronymToInitials(accountNameNormalized, orgNameNormalized);
 
             if (isMatch && !primaryZendeskOrg) {
               primaryZendeskOrg = org;
