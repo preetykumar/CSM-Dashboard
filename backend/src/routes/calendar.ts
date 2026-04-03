@@ -11,6 +11,7 @@ export function createCalendarRoutes(): Router {
     }
 
     const accessToken = user.googleAccessToken;
+    console.log(`Calendar request from ${user.email}: accessToken=${accessToken ? "present" : "missing"}, refreshToken=${user.googleRefreshToken ? "present" : "missing"}`);
     if (!accessToken) {
       return res.status(403).json({
         error: "Calendar access not granted. Please log out and log back in to grant calendar permissions.",

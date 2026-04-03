@@ -39,8 +39,9 @@ export function configureAuth() {
         clientID,
         clientSecret,
         callbackURL,
-      },
-      (accessToken, refreshToken, profile, done) => {
+        accessType: "offline",
+      } as any,
+      (accessToken: string, refreshToken: string, profile: Profile, done: (err: any, user?: AuthUser | false) => void) => {
         // Extract email and verify domain
         const email = profile.emails?.[0]?.value;
         if (!email) {

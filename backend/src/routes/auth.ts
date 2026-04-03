@@ -28,7 +28,6 @@ export function createAuthRoutes(): Router {
     passport.authenticate("google", {
       scope: ["profile", "email", "https://www.googleapis.com/auth/calendar.readonly"],
       prompt: "consent",
-      accessType: "offline",
     } as any)
   );
 
