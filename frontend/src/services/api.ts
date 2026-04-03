@@ -867,3 +867,80 @@ export async function fetchRenewalOpportunities(daysAhead: number = 180): Promis
   if (!res.ok) throw new Error("Failed to fetch renewal opportunities");
   return res.json();
 }
+
+// ── User Preferences ─────────────────────────────────────────────────────────
+
+export interface UserPreferences {
+  email: string;
+  role: string | null;
+  calendly_url: string | null;
+  calendly_token: string | null;
+}
+
+export async function fetchUserPreferences(): Promise<UserPreferences> {
+  const res = await fetch(`${API_BASE}/user/preferences`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch user preferences");
+  return res.json();
+}
+
+export async function saveUserPreferences(prefs: Partial<Omit<UserPreferences, "email">>): Promise<void> {
+  const res = await fetch(`${API_BASE}/user/preferences`, {
+    ...fetchOptions,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(prefs),
+  });
+  if (!res.ok) throw new Error("Failed to save user preferences");
+}
+
+// ── Google Calendar ───────────────────────────────────────────────────────────
+
+export interface GoogleCalendarEvent {
+  id: string;
+  summary?: string;
+  description?: string;
+  location?: string;
+  start: { dateTime?: string; date?: string; timeZone?: string };
+  end: { dateTime?: string; date?: string; timeZone?: string };
+  htmlLink?: string;
+  hangoutLink?: string;
+  conferenceData?: { entryPoints?: { uri: string; entryPointType: string }[] };
+  attendees?: { email: string; displayName?: string; responseStatus: string }[];
+  status?: string;
+}
+
+export async function fetchCalendarEvents(date?: string): Promise<{ events: GoogleCalendarEvent[]; requiresReauth?: boolean; notAuthenticated?: boolean; error?: string }> {
+  const params = date ? `?date=${date}` : "";
+  const res = await fetch(`${API_BASE}/calendar/events${params}`, fetchOptions);
+  if (res.status === 401) {
+    // Not logged in — hide the widget silently
+    return { events: [], notAuthenticated: true };
+  }
+  if (res.status === 403) {
+    // Logged in but calendar scope not granted — prompt re-auth
+    const data = await res.json();
+    return { events: [], requiresReauth: true, error: data.error };
+  }
+  if (!res.ok) return { events: [], error: "Failed to fetch calendar events" };
+  return res.json();
+}
+
+// ── Calendly ─────────────────────────────────────────────────────────────────
+
+export interface CalendlyEvent {
+  uri: string;
+  name: string;
+  status: string;
+  start_time: string;
+  end_time: string;
+  event_type: string;
+  location?: { type: string; location?: string; join_url?: string };
+  invitees_counter: { total: number; active: number };
+}
+
+export async function fetchCalendlyEvents(): Promise<{ events: CalendlyEvent[]; requiresToken?: boolean; error?: string }> {
+  const res = await fetch(`${API_BASE}/user/calendly/events`, fetchOptions);
+  if (!res.ok) return { events: [], error: "Failed to fetch Calendly events" };
+  return res.json();
+}
+

@@ -8,6 +8,8 @@ export interface AuthUser {
   name: string;
   picture?: string;
   domain: string;
+  googleAccessToken?: string;
+  googleRefreshToken?: string;
 }
 
 // Extend Express Request to include user
@@ -56,6 +58,8 @@ export function configureAuth() {
           name: profile.displayName,
           picture: profile.photos?.[0]?.value,
           domain,
+          googleAccessToken: accessToken,
+          googleRefreshToken: refreshToken,
         };
 
         return done(null, user);

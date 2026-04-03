@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchTicketsByStatus, fetchTicketsByPriority } from "../services/api";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import type { Ticket } from "../types";
 
 type FilterType = "status" | "priority";
@@ -64,15 +65,17 @@ export function TicketListModal({ orgId, orgName, filterType, filterValue, onClo
     ? `status-${filterValue}`
     : `priority-${filterValue}`;
 
+  const focusTrapRef = useFocusTrap(onClose);
+
   return (
-    <div className="drilldown-overlay" onClick={handleOverlayClick}>
+    <div className="drilldown-overlay" onClick={handleOverlayClick} role="dialog" aria-modal="true" aria-label={`${orgName} — ${filterLabel} Tickets`} ref={focusTrapRef}>
       <div className="ticket-modal">
         <div className={`ticket-modal-header ${headerClass}`}>
           <div>
             <h2>{orgName}</h2>
             <p className="status-filter">{filterLabel} Tickets ({tickets.length})</p>
           </div>
-          <button className="close-btn" onClick={onClose}>
+          <button className="close-btn" onClick={onClose} aria-label="Close">
             &times;
           </button>
         </div>

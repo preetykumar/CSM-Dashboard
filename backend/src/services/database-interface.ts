@@ -206,6 +206,18 @@ export interface IDatabaseService {
   getMessages(conversationId: string): Promise<ConversationMessage[]>;
   getRecentMessages(conversationId: string, limit?: number): Promise<ConversationMessage[]>;
 
+  // User Preferences
+  getUserPreferences(email: string): Promise<UserPreferences | null>;
+  upsertUserPreferences(prefs: Omit<UserPreferences, "updated_at">): Promise<void>;
+
   // Lifecycle
   close(): Promise<void> | void;
+}
+
+export interface UserPreferences {
+  email: string;
+  role: string | null;
+  calendly_url: string | null;
+  calendly_token: string | null;
+  updated_at?: string;
 }

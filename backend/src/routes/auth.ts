@@ -26,9 +26,10 @@ export function createAuthRoutes(): Router {
   router.get(
     "/google",
     passport.authenticate("google", {
-      scope: ["profile", "email"],
-      prompt: "select_account",
-    })
+      scope: ["profile", "email", "https://www.googleapis.com/auth/calendar.readonly"],
+      prompt: "consent",
+      accessType: "offline",
+    } as any)
   );
 
   // Google OAuth callback

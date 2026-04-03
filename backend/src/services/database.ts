@@ -16,6 +16,7 @@ import type {
   PriorityBreakdown,
   CSMPortfolio,
   PMPortfolio,
+  UserPreferences,
 } from "./database-interface.js";
 
 // Re-export all interfaces so existing imports from "./database.js" still work
@@ -177,6 +178,15 @@ export class DatabaseService implements IDatabaseService {
       CREATE INDEX IF NOT EXISTS idx_messages_conversation ON conversation_messages(conversation_id);
       CREATE INDEX IF NOT EXISTS idx_messages_created ON conversation_messages(created_at);
       CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_email);
+
+      -- User preferences (role, Calendly settings)
+      CREATE TABLE IF NOT EXISTS user_preferences (
+        email TEXT PRIMARY KEY,
+        role TEXT,
+        calendly_url TEXT,
+        calendly_token TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
 
       -- Sync metadata for delta sync timestamps
       CREATE TABLE IF NOT EXISTS sync_metadata (
@@ -832,6 +842,25 @@ export class DatabaseService implements IDatabaseService {
       )
       .all(conversationId, limit) as ConversationMessage[];
     return messages.reverse();
+  }
+
+  getUserPreferences(email: string): Promise<UserPreferences | null> {
+    const stmt = this.db.prepare("SELECT * FROM user_preferences WHERE email = ?");
+    return Promise.resolve((stmt.get(email) as UserPreferences) || null);
+  }
+
+  upsertUserPreferences(prefs: Omit<UserPreferences, "updated_at">): Promise<void> {
+    const stmt = this.db.prepare(`
+      INSERT INTO user_preferences (email, role, calendly_url, calendly_token, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(email) DO UPDATE SET
+        role = excluded.role,
+        calendly_url = excluded.calendly_url,
+        calendly_token = excluded.calendly_token,
+        updated_at = excluded.updated_at
+    `);
+    stmt.run(prefs.email, prefs.role || null, prefs.calendly_url || null, prefs.calendly_token || null, new Date().toISOString());
+    return Promise.resolve();
   }
 
   close(): void {

@@ -14,6 +14,7 @@ import type {
   PriorityBreakdown,
   CSMPortfolio,
   PMPortfolio,
+  UserPreferences,
 } from "./database-interface.js";
 
 // PostgreSQL connection configuration
@@ -194,6 +195,14 @@ export class DatabaseServicePg implements IDatabaseService {
       CREATE TABLE IF NOT EXISTS sync_metadata (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS user_preferences (
+        email TEXT PRIMARY KEY,
+        role TEXT,
+        calendly_url TEXT,
+        calendly_token TEXT,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -1027,6 +1036,24 @@ export class DatabaseServicePg implements IDatabaseService {
       [conversationId, limit]
     );
     return result.rows.reverse() as ConversationMessage[];
+  }
+
+  async getUserPreferences(email: string): Promise<UserPreferences | null> {
+    const result = await this.pool.query("SELECT * FROM user_preferences WHERE email = $1", [email]);
+    return result.rows[0] || null;
+  }
+
+  async upsertUserPreferences(prefs: Omit<UserPreferences, "updated_at">): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO user_preferences (email, role, calendly_url, calendly_token, updated_at)
+       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+       ON CONFLICT(email) DO UPDATE SET
+         role = EXCLUDED.role,
+         calendly_url = EXCLUDED.calendly_url,
+         calendly_token = EXCLUDED.calendly_token,
+         updated_at = CURRENT_TIMESTAMP`,
+      [prefs.email, prefs.role || null, prefs.calendly_url || null, prefs.calendly_token || null]
+    );
   }
 
   async close(): Promise<void> {

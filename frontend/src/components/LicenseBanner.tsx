@@ -140,7 +140,7 @@ export function LicenseBanner({ subscriptions, loading, accountName, compact }: 
   if (!subscriptions || subscriptions.length === 0) {
     if (accountName) {
       return (
-        <div className="usage-hint" style={{ color: '#666', fontSize: '0.85rem', marginBottom: '1rem' }}>
+        <div className="usage-hint" style={{ color: '#595959', fontSize: '0.85rem', marginBottom: '1rem' }}>
           No active paid subscriptions found for "{accountName}" in Salesforce.
         </div>
       );
@@ -164,21 +164,21 @@ export function LicenseBanner({ subscriptions, loading, accountName, compact }: 
                 <table className="license-table">
                   <thead>
                     <tr>
-                      <th>Product</th>
+                      <th scope="col">Product</th>
                       {!isSimplified && (
                         <>
-                          <th>Licenses</th>
-                          <th>Assigned</th>
-                          <th>% Assigned</th>
+                          <th scope="col">Licenses</th>
+                          <th scope="col">Assigned</th>
+                          <th scope="col">% Assigned</th>
                         </>
                       )}
-                      <th>Environment</th>
-                      <th>Start Date</th>
-                      <th>End Date</th>
+                      <th scope="col">Environment</th>
+                      <th scope="col">Start Date</th>
+                      <th scope="col">End Date</th>
                       {group.groupName === "Axe Monitor" && (
                         <>
-                          <th>Pages</th>
-                          <th>Projects</th>
+                          <th scope="col">Pages</th>
+                          <th scope="col">Projects</th>
                         </>
                       )}
                     </tr>

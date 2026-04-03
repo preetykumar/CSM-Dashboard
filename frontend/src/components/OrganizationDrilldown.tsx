@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchDetailedCustomerSummary, fetchEnterpriseSubscriptionsByName, fetchGitHubStatusForTickets, EnterpriseSubscription } from "../services/api";
 import { LicenseBanner } from "./LicenseBanner";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import type { DetailedCustomerSummary, ProductStats, Ticket, GitHubDevelopmentStatus } from "../types";
 
 interface Props {
@@ -108,12 +109,14 @@ export function OrganizationDrilldown({ orgId, orgName, onClose }: Props) {
     });
   };
 
+  const focusTrapRef = useFocusTrap(onClose);
+
   return (
-    <div className="drilldown-overlay" onClick={onClose}>
+    <div className="drilldown-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label={orgName} ref={focusTrapRef}>
       <div className="drilldown-modal" onClick={(e) => e.stopPropagation()}>
         <div className="drilldown-header">
           <h2>{orgName}</h2>
-          <button className="close-btn" onClick={onClose}>
+          <button className="close-btn" onClick={onClose} aria-label="Close">
             &times;
           </button>
         </div>
@@ -137,6 +140,10 @@ export function OrganizationDrilldown({ orgId, orgName, onClose }: Props) {
                 <div
                   className={`request-stat feature ${ticketFilter === "feature" ? "active" : ""}`}
                   onClick={() => setTicketFilter(ticketFilter === "feature" ? "all" : "feature")}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTicketFilter(ticketFilter === "feature" ? "all" : "feature"); } }}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={ticketFilter === "feature"}
                 >
                   <div className="stat-value">{summary.requestTypeBreakdown.featureRequests}</div>
                   <div className="stat-label">Feature Requests</div>
@@ -144,6 +151,10 @@ export function OrganizationDrilldown({ orgId, orgName, onClose }: Props) {
                 <div
                   className={`request-stat problem ${ticketFilter === "problem" ? "active" : ""}`}
                   onClick={() => setTicketFilter(ticketFilter === "problem" ? "all" : "problem")}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setTicketFilter(ticketFilter === "problem" ? "all" : "problem"); } }}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={ticketFilter === "problem"}
                 >
                   <div className="stat-value">{summary.requestTypeBreakdown.problemReports}</div>
                   <div className="stat-label">Problem Reports</div>
@@ -201,7 +212,7 @@ function ProductCard({ product, expanded, onToggle, ticketFilter, filterTickets,
 
   return (
     <div className={`product-card ${expanded ? "expanded" : ""}`}>
-      <div className="product-header" onClick={onToggle}>
+      <div className="product-header" onClick={onToggle} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }} role="button" tabIndex={0} aria-expanded={expanded}>
         <div className="product-info">
           <h4>{product.product}</h4>
           <span className="ticket-count">{product.total} tickets</span>

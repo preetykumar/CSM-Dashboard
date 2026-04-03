@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tar:*)",
+      "Bash(nvm list:*)",
+      "Bash(gcloud run:*)",
+      "mcp__axe-mcp__remediate"
+    ]
+  }
+}

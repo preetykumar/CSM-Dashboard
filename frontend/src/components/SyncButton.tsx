@@ -94,8 +94,12 @@ export function SyncButton({ className }: SyncButtonProps) {
         className={`sync-button ${isInProgress ? "syncing" : ""}`}
         onClick={handleSync}
         disabled={isInProgress}
-        aria-label={isInProgress ? "Sync in progress" : "Refresh data"}
-        title={isInProgress ? "Sync in progress..." : "Refresh data (delta sync)"}
+        aria-label={isInProgress ? "Sync in progress" : "Sync (refresh data)"}
+        title={isInProgress ? "Sync in progress..." : "Sync (delta refresh)"}
+        onFocus={() => setShowTooltip(true)}
+        onBlur={() => setShowTooltip(false)}
+        onKeyDown={(e) => { if (e.key === "Escape") setShowTooltip(false); }}
+        aria-describedby={showTooltip && syncStatus?.status ? "sync-tooltip" : undefined}
       >
         <span className={`sync-icon ${isInProgress ? "spinning" : ""}`}>
           {/* Refresh/sync icon */}
@@ -120,7 +124,7 @@ export function SyncButton({ className }: SyncButtonProps) {
       </button>
 
       {showTooltip && syncStatus?.status && (
-        <div className="sync-tooltip">
+        <div className="sync-tooltip" id="sync-tooltip" role="status">
           <div className="sync-tooltip-content">
             {lastSync && <div><strong>Last sync:</strong> {lastSync}</div>}
             {isTicketSyncing && <div className="sync-progress-text">Sync in progress...</div>}
@@ -165,6 +169,12 @@ export function SyncButton({ className }: SyncButtonProps) {
           background: var(--button-hover-bg, #1d4ed8);
         }
 
+        .sync-button:focus-visible {
+          outline: 2px solid #fff;
+          outline-offset: 2px;
+          box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.5);
+        }
+
         .sync-button:disabled {
           opacity: 0.7;
           cursor: not-allowed;
@@ -190,6 +200,15 @@ export function SyncButton({ className }: SyncButtonProps) {
           }
           to {
             transform: rotate(360deg);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .sync-icon.spinning {
+            animation: none;
+          }
+          .status-dot.in_progress {
+            animation: none;
           }
         }
 

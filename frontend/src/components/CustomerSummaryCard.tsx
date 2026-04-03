@@ -16,7 +16,7 @@ type PriorityKey = "low" | "normal" | "high" | "urgent";
 export function CustomerSummaryCard({ summary, subtitle, onClick, onStatusClick, onPriorityClick, isEscalatedView, isCriticalView }: Props) {
   const { organization, ticketStats, priorityBreakdown, recentTickets, escalatedTickets, criticalTickets } = summary;
 
-  const handleStatusClick = (e: React.MouseEvent, status: StatusKey) => {
+  const handleStatusClick = (e: React.MouseEvent | React.KeyboardEvent, status: StatusKey) => {
     e.stopPropagation();
     const count = ticketStats[status];
     if (count > 0 && onStatusClick) {
@@ -24,11 +24,19 @@ export function CustomerSummaryCard({ summary, subtitle, onClick, onStatusClick,
     }
   };
 
-  const handlePriorityClick = (e: React.MouseEvent, priority: PriorityKey) => {
+  const handlePriorityClick = (e: React.MouseEvent | React.KeyboardEvent, priority: PriorityKey) => {
     e.stopPropagation();
     const count = priorityBreakdown[priority];
     if (count > 0 && onPriorityClick) {
       onPriorityClick(priority);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent, callback?: () => void) => {
+    if ((e.key === "Enter" || e.key === " ") && callback) {
+      e.preventDefault();
+      e.stopPropagation();
+      callback();
     }
   };
 
@@ -127,7 +135,13 @@ export function CustomerSummaryCard({ summary, subtitle, onClick, onStatusClick,
 
   // Normal view with full breakdown
   return (
-    <div className={`summary-card ${onClick ? "clickable" : ""}`} onClick={onClick}>
+    <div
+      className={`summary-card ${onClick ? "clickable" : ""}`}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => handleKeyDown(e, onClick) : undefined}
+    >
       <div className="summary-card-header">
         <h2>{organization.name}{subtitle && <span className="account-subtitle"> ({subtitle})</span>}</h2>
         <div className="total-tickets">{ticketStats.total} total tickets</div>
@@ -143,6 +157,9 @@ export function CustomerSummaryCard({ summary, subtitle, onClick, onStatusClick,
                 key={key}
                 className={`stat ${key} ${isClickable ? "clickable-stat" : ""}`}
                 onClick={(e) => handleStatusClick(e, key)}
+                onKeyDown={isClickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleStatusClick(e, key); } } : undefined}
+                role={isClickable ? "button" : undefined}
+                tabIndex={isClickable ? 0 : undefined}
                 title={isClickable ? `View ${count} ${label.toLowerCase()} tickets` : undefined}
               >
                 <div className="stat-value">{count}</div>
@@ -163,6 +180,9 @@ export function CustomerSummaryCard({ summary, subtitle, onClick, onStatusClick,
                   key={key}
                   className={`priority-bar ${key} ${isClickable ? "clickable-priority" : ""}`}
                   onClick={(e) => handlePriorityClick(e, key)}
+                  onKeyDown={isClickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handlePriorityClick(e, key); } } : undefined}
+                  role={isClickable ? "button" : undefined}
+                  tabIndex={isClickable ? 0 : undefined}
                   title={isClickable ? `View ${count} ${label.toLowerCase()} priority tickets` : undefined}
                 >
                   <div className="bar" style={{ opacity: count > 0 ? 1 : 0.3 }}></div>

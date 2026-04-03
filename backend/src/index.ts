@@ -28,6 +28,8 @@ import { createAuthRoutes } from "./routes/auth.js";
 import { createGitHubRoutes } from "./routes/github.js";
 import { AgentService } from "./services/agent.js";
 import { createAgentRoutes } from "./routes/agent.js";
+import { createUserRoutes } from "./routes/user.js";
+import { createCalendarRoutes } from "./routes/calendar.js";
 import { createAmplitudeRoutes } from "./routes/amplitude.js";
 
 dotenv.config();
@@ -488,6 +490,8 @@ async function startServer() {
     app.use("/api/csm", optionalAuth, createCachedRoutes(db));
     app.use("/api/sync", optionalAuth, createSyncRoutes(sync));
     app.use("/api/github", optionalAuth, createGitHubRoutes(db));
+    app.use("/api/user", optionalAuth, createUserRoutes(db));
+    app.use("/api/calendar", optionalAuth, createCalendarRoutes());
     if (agent) {
       app.use("/api/agent", optionalAuth, createAgentRoutes(agent));
     }

@@ -47,6 +47,7 @@ export function SupportCustomersView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedSearchAccount, setSelectedSearchAccount] = useState<string | null>(null);
+  const [activeDescendant, setActiveDescendant] = useState(-1);
   const searchRef = useRef<HTMLDivElement>(null);
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
@@ -266,12 +267,35 @@ export function SupportCustomersView() {
             onChange={(e) => {
               setSearchQuery(e.target.value);
               setShowSuggestions(true);
+              setActiveDescendant(-1);
               if (!e.target.value) {
                 setSelectedSearchAccount(null);
               }
             }}
             onFocus={() => setShowSuggestions(true)}
+            onKeyDown={(e) => {
+              const suggestionsVisible = showSuggestions && searchSuggestions.length > 0;
+              if (e.key === "ArrowDown" && suggestionsVisible) {
+                e.preventDefault();
+                setActiveDescendant((prev) => Math.min(prev + 1, searchSuggestions.length - 1));
+              } else if (e.key === "ArrowUp" && suggestionsVisible) {
+                e.preventDefault();
+                setActiveDescendant((prev) => Math.max(prev - 1, 0));
+              } else if (e.key === "Enter" && activeDescendant >= 0 && suggestionsVisible) {
+                e.preventDefault();
+                handleSearchSelect(searchSuggestions[activeDescendant]);
+                setActiveDescendant(-1);
+              } else if (e.key === "Escape" && suggestionsVisible) {
+                setShowSuggestions(false);
+                setActiveDescendant(-1);
+              }
+            }}
+            role="combobox"
             aria-label="Search accounts"
+            aria-expanded={showSuggestions && searchSuggestions.length > 0}
+            aria-controls="search-suggestions-listbox"
+            aria-activedescendant={activeDescendant >= 0 ? `search-option-${activeDescendant}` : undefined}
+            aria-autocomplete="list"
           />
           {(searchQuery || selectedSearchAccount) && (
             <button className="search-clear" onClick={clearSearch} aria-label="Clear search">
@@ -280,20 +304,22 @@ export function SupportCustomersView() {
           )}
         </div>
         {showSuggestions && searchSuggestions.length > 0 && (
-          <ul className="search-suggestions" role="listbox" aria-label="Search suggestions">
-            {searchSuggestions.map((account) => {
+          <ul className="search-suggestions" role="listbox" id="search-suggestions-listbox" aria-label="Search suggestions">
+            {searchSuggestions.map((account, index) => {
               const summary = consolidatedSummaries.get(account.displayName);
               return (
                 <li
                   key={account.displayName}
+                  id={`search-option-${index}`}
                   onClick={() => handleSearchSelect(account)}
-                  className="search-suggestion-item"
+                  className={`search-suggestion-item ${index === activeDescendant ? "active" : ""}`}
                   role="option"
+                  aria-selected={index === activeDescendant}
                 >
                   <span className="suggestion-name">
                     {account.displayName}
                     {account.organizations.length > 1 && (
-                      <span style={{ color: "#666", fontSize: "0.85em", marginLeft: 4 }}>
+                      <span style={{ color: "#595959", fontSize: "0.85em", marginLeft: 4 }}>
                         ({account.organizations.length} accounts)
                       </span>
                     )}
