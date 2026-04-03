@@ -129,14 +129,14 @@ export function TodoList({ role, userEmail }: TodoListProps) {
             let ghCount = 0;
             ghLinks.forEach((statuses, ticketId) => {
               statuses.forEach((s) => {
-                if (ghCount < 10 && (s.project_status === "In Progress" || s.project_status === "Todo")) {
+                if (ghCount < 10 && (s.projectStatus === "In Progress" || s.projectStatus === "Todo")) {
                   items.push({
-                    id: `gh-${ticketId}-${s.github_issue_number}`,
+                    id: `gh-${ticketId}-${s.issueNumber}`,
                     category: "github",
                     priority: "medium",
-                    title: `${s.github_repo} #${s.github_issue_number}`,
-                    subtitle: s.github_project_title || s.project_status || "",
-                    link: s.github_url || undefined,
+                    title: `${s.repoName} #${s.issueNumber}`,
+                    subtitle: s.projectTitle || s.projectStatus || "",
+                    link: s.githubUrl || undefined,
                   });
                   ghCount++;
                 }
@@ -157,11 +157,12 @@ export function TodoList({ role, userEmail }: TodoListProps) {
             return matchesPortfolio && hasLowUsage;
           });
           for (const s of lowUsage.slice(0, 5)) {
+            const orgLabel = (s as any).organization || s.product || "Unknown";
             items.push({
-              id: `usage-${s.organization}`,
+              id: `usage-${orgLabel}`,
               category: "usage",
               priority: "low",
-              title: s.organization,
+              title: orgLabel,
               subtitle: "No active usage in last 30 days",
               link: "/csm/usage",
             });

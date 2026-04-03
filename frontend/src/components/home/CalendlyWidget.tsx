@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchCalendlyEvents, fetchUserPreferences, saveUserPreferences, type CalendlyEvent } from "../../services/api";
+import { fetchCalendlyEvents, saveUserPreferences, type CalendlyEvent } from "../../services/api";
 
 function formatEventTime(isoString: string): string {
   const d = new Date(isoString);

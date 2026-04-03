@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { fetchUserPreferences, saveUserPreferences } from "../services/api";
+import { fetchUserPreferences } from "../services/api";
 import { RoleSelectionModal, type UserRole } from "./home/RoleSelectionModal";
 import { TodoList } from "./home/TodoList";
 import { CalendarWidget } from "./home/CalendarWidget";
