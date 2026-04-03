@@ -82,6 +82,20 @@ cd frontend && npm run build
 
 ---
 
+## Git Remotes
+
+The repository is pushed to two GitHub remotes:
+- **origin** → `https://github.com/preetykumar/CSM-Dashboard.git` (personal repo)
+- **dequelabs** → `https://github.com/dequelabs/CustomerTeamPortal.git` (org repo)
+
+The default upstream tracking branch is `dequelabs/main`. To push to both:
+```bash
+git push dequelabs main   # org repo (default)
+git push origin main      # personal repo
+```
+
+---
+
 ## Production Deployment (Google Cloud Run)
 
 ### Project Details
@@ -92,7 +106,7 @@ cd frontend && npm run build
 - **Production URL**: `https://csm-dashboard-iow4tellka-uc.a.run.app`
 
 ### CI/CD Pipeline
-- **Cloud Build Trigger**: Automatically deploys on push to `main` branch
+- **Cloud Build Trigger**: Automatically deploys on push to `main` branch (on `preetykumar/CSM-Dashboard`)
 - Builds Docker image and deploys to Cloud Run
 - Build takes ~5-7 minutes
 - **IMPORTANT**: New builds create new revisions but may NOT automatically route traffic
