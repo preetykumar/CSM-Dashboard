@@ -1,69 +1,22 @@
-import { useEffect, useRef, useState } from "react";
-import { fetchCalendlyEvents, saveUserPreferences, type CalendlyEvent } from "../../services/api";
-
-function formatEventTime(isoString: string): string {
-  const d = new Date(isoString);
-  return d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) +
-    " · " + d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-}
-
-// Inline Calendly booking embed
-function CalendlyEmbed({ url }: { url: string }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // Load Calendly widget script once
-    if (!document.getElementById("calendly-widget-script")) {
-      const script = document.createElement("script");
-      script.id = "calendly-widget-script";
-      script.src = "https://assets.calendly.com/assets/external/widget.js";
-      script.async = true;
-      document.head.appendChild(script);
-    }
-  }, []);
-
-  return (
-    <div
-      ref={containerRef}
-      className="calendly-inline-widget"
-      data-url={`${url}?hide_event_type_details=1&hide_gdpr_banner=1`}
-      style={{ minWidth: "280px", height: "420px" }}
-    />
-  );
-}
+import { useState } from "react";
+import { saveUserPreferences } from "../../services/api";
 
 interface CalendlyWidgetProps {
   calendlyUrl: string | null;
-  calendlyToken: string | null;
-  onSettingsChange: (url: string, token: string) => void;
+  onSettingsChange: (url: string) => void;
 }
 
-export function CalendlyWidget({ calendlyUrl, calendlyToken, onSettingsChange }: CalendlyWidgetProps) {
-  const [upcomingEvents, setUpcomingEvents] = useState<CalendlyEvent[]>([]);
-  const [loadingEvents, setLoadingEvents] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+export function CalendlyWidget({ calendlyUrl, onSettingsChange }: CalendlyWidgetProps) {
+  const [editing, setEditing] = useState(false);
   const [urlInput, setUrlInput] = useState(calendlyUrl || "");
-  const [tokenInput, setTokenInput] = useState(calendlyToken || "");
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<"book" | "upcoming">("book");
 
-  useEffect(() => {
-    if (calendlyToken) {
-      setLoadingEvents(true);
-      fetchCalendlyEvents()
-        .then((data) => {
-          if (!data.requiresToken) setUpcomingEvents(data.events);
-        })
-        .finally(() => setLoadingEvents(false));
-    }
-  }, [calendlyToken]);
-
-  const handleSaveSettings = async () => {
+  const handleSave = async () => {
     setSaving(true);
     try {
-      await saveUserPreferences({ calendly_url: urlInput || null, calendly_token: tokenInput || null });
-      onSettingsChange(urlInput, tokenInput);
-      setShowSettings(false);
+      await saveUserPreferences({ calendly_url: urlInput || null, calendly_token: null });
+      onSettingsChange(urlInput);
+      setEditing(false);
     } finally {
       setSaving(false);
     }
@@ -72,17 +25,17 @@ export function CalendlyWidget({ calendlyUrl, calendlyToken, onSettingsChange }:
   return (
     <section className="home-widget calendly-widget-section" aria-labelledby="calendly-widget-title">
       <div className="widget-header">
-        <h3 id="calendly-widget-title">🗓 Calendly</h3>
+        <h3 id="calendly-widget-title">Calendly</h3>
         <button
           className="widget-settings-btn"
-          onClick={() => setShowSettings(!showSettings)}
-          aria-label="Calendly settings"
+          onClick={() => { setEditing(!editing); setUrlInput(calendlyUrl || ""); }}
+          aria-label={editing ? "Cancel editing Calendly link" : "Edit Calendly link"}
         >
-          ⚙
+          {editing ? "✕" : "✎"}
         </button>
       </div>
 
-      {showSettings && (
+      {editing ? (
         <div className="widget-settings-form">
           <label htmlFor="calendly-url">Your Calendly URL</label>
           <input
@@ -92,90 +45,27 @@ export function CalendlyWidget({ calendlyUrl, calendlyToken, onSettingsChange }:
             onChange={(e) => setUrlInput(e.target.value)}
             placeholder="https://calendly.com/yourname"
           />
-          <label htmlFor="calendly-token">
-            Personal Access Token <span className="optional-label">(optional — for upcoming meetings)</span>
-          </label>
-          <input
-            id="calendly-token"
-            type="password"
-            value={tokenInput}
-            onChange={(e) => setTokenInput(e.target.value)}
-            placeholder="Paste token from Calendly → Integrations → API &amp; Webhooks"
-          />
           <div className="settings-actions">
-            <button className="btn-primary" onClick={handleSaveSettings} disabled={saving}>
+            <button className="btn-primary" onClick={handleSave} disabled={saving}>
               {saving ? "Saving…" : "Save"}
             </button>
-            <button className="btn-secondary" onClick={() => setShowSettings(false)}>Cancel</button>
+            <button className="btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
           </div>
         </div>
-      )}
-
-      {!showSettings && !calendlyUrl && (
+      ) : calendlyUrl ? (
+        <div className="calendly-link-display">
+          <a href={calendlyUrl} target="_blank" rel="noopener noreferrer" className="calendly-link">
+            {calendlyUrl}
+          </a>
+          <button className="btn-secondary btn-sm" onClick={() => navigator.clipboard.writeText(calendlyUrl)}>
+            Copy link
+          </button>
+        </div>
+      ) : (
         <div className="widget-empty-state">
-          <p>Add your Calendly URL to show your booking page and upcoming meetings.</p>
-          <button className="btn-secondary" onClick={() => setShowSettings(true)}>Set up Calendly</button>
+          <p>Add your Calendly link for easy access.</p>
+          <button className="btn-secondary" onClick={() => setEditing(true)}>Add Calendly link</button>
         </div>
-      )}
-
-      {!showSettings && calendlyUrl && (
-        <>
-          <div className="widget-tabs" role="tablist">
-            <button
-              role="tab"
-              aria-selected={activeTab === "book"}
-              className={activeTab === "book" ? "active" : ""}
-              onClick={() => setActiveTab("book")}
-            >
-              Booking page
-            </button>
-            <button
-              role="tab"
-              aria-selected={activeTab === "upcoming"}
-              className={activeTab === "upcoming" ? "active" : ""}
-              onClick={() => setActiveTab("upcoming")}
-            >
-              Upcoming ({upcomingEvents.length})
-            </button>
-          </div>
-
-          {activeTab === "book" && <CalendlyEmbed url={calendlyUrl} />}
-
-          {activeTab === "upcoming" && (
-            <div className="calendly-upcoming">
-              {loadingEvents && <p className="widget-loading">Loading meetings…</p>}
-              {!loadingEvents && !calendlyToken && (
-                <div className="widget-empty-state">
-                  <p>Add a Personal Access Token in settings to see upcoming meetings.</p>
-                  <button className="btn-secondary btn-sm" onClick={() => setShowSettings(true)}>Add token</button>
-                </div>
-              )}
-              {!loadingEvents && calendlyToken && upcomingEvents.length === 0 && (
-                <p className="widget-empty">No upcoming meetings in the next 30 days.</p>
-              )}
-              {!loadingEvents && upcomingEvents.length > 0 && (
-                <ul className="calendly-event-list" role="list">
-                  {upcomingEvents.map((event) => (
-                    <li key={event.uri} className="calendly-event">
-                      <span className="event-time">{formatEventTime(event.start_time)}</span>
-                      <div className="event-details">
-                        <span className="event-title">{event.name}</span>
-                        {event.invitees_counter.total > 0 && (
-                          <span className="event-attendees">{event.invitees_counter.total} invitee{event.invitees_counter.total !== 1 ? "s" : ""}</span>
-                        )}
-                        {event.location?.join_url && (
-                          <a href={event.location.join_url} target="_blank" rel="noopener noreferrer" className="event-join-link">
-                            Join
-                          </a>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </>
       )}
     </section>
   );

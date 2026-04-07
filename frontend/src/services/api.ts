@@ -927,20 +927,4 @@ export async function fetchCalendarEvents(date?: string): Promise<{ events: Goog
 
 // ── Calendly ─────────────────────────────────────────────────────────────────
 
-export interface CalendlyEvent {
-  uri: string;
-  name: string;
-  status: string;
-  start_time: string;
-  end_time: string;
-  event_type: string;
-  location?: { type: string; location?: string; join_url?: string };
-  invitees_counter: { total: number; active: number };
-}
-
-export async function fetchCalendlyEvents(): Promise<{ events: CalendlyEvent[]; requiresToken?: boolean; error?: string }> {
-  const res = await fetch(`${API_BASE}/user/calendly/events`, fetchOptions);
-  if (!res.ok) return { events: [], error: "Failed to fetch Calendly events" };
-  return res.json();
-}
 

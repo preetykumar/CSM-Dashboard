@@ -17,7 +17,6 @@ export function HomePage() {
   const { user, authenticated, authEnabled } = useAuth();
   const [role, setRole] = useState<UserRole | null>(null);
   const [calendlyUrl, setCalendlyUrl] = useState<string | null>(null);
-  const [calendlyToken, setCalendlyToken] = useState<string | null>(null);
   const [loadingPrefs, setLoadingPrefs] = useState(true);
   const [showRoleSelection, setShowRoleSelection] = useState(false);
 
@@ -39,7 +38,6 @@ export function HomePage() {
           setShowRoleSelection(true);
         }
         setCalendlyUrl(prefs.calendly_url);
-        setCalendlyToken(prefs.calendly_token);
       })
       .catch(() => {
         // API unavailable (no auth, local dev) — show role selection from localStorage
@@ -47,7 +45,6 @@ export function HomePage() {
         if (saved) {
           setRole(saved);
           setCalendlyUrl(localStorage.getItem("home_calendly_url"));
-          setCalendlyToken(localStorage.getItem("home_calendly_token"));
         } else {
           setShowRoleSelection(true);
         }
@@ -62,11 +59,9 @@ export function HomePage() {
     localStorage.setItem("home_role", selectedRole);
   };
 
-  const handleCalendlyChange = (url: string, token: string) => {
+  const handleCalendlyChange = (url: string) => {
     setCalendlyUrl(url || null);
-    setCalendlyToken(token || null);
     localStorage.setItem("home_calendly_url", url);
-    localStorage.setItem("home_calendly_token", token);
   };
 
   const handleChangeRole = async () => {
@@ -118,7 +113,6 @@ export function HomePage() {
           <CalendarWidget />
           <CalendlyWidget
             calendlyUrl={calendlyUrl}
-            calendlyToken={calendlyToken}
             onSettingsChange={handleCalendlyChange}
           />
         </div>
