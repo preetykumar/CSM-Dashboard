@@ -377,6 +377,15 @@ function Dashboard() {
             Release Notes
           </a>
           <span className="footer-separator">|</span>
+          <a
+            href="https://dequesrc.atlassian.net/jira/software/projects/CPI/boards/601"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="footer-link"
+          >
+            Submit Bug / Feature Request
+          </a>
+          <span className="footer-separator">|</span>
           <span>&copy; {new Date().getFullYear()} Deque Systems</span>
         </div>
       </footer>

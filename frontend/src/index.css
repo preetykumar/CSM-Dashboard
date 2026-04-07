@@ -1042,6 +1042,44 @@ header .hint {
 
 .role-change-btn:hover { color: #4f5bd5; }
 
+.view-as-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.view-as-selector label {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.view-as-selector select {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  background: white;
+  max-width: 320px;
+}
+
+.view-as-selector select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}
+
+.view-as-badge {
+  background: #eff6ff;
+  color: #1e40af;
+  padding: 0.2rem 0.6rem;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
 .home-layout {
   display: grid;
   grid-template-columns: 1fr 380px;

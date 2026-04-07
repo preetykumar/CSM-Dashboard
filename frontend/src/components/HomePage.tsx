@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { fetchUserPreferences } from "../services/api";
+import { fetchUserPreferences, fetchCSMPortfolios, fetchPMPortfolios, fetchRenewalOpportunities } from "../services/api";
 import { RoleSelectionModal, type UserRole } from "./home/RoleSelectionModal";
 import { TodoList } from "./home/TodoList";
 import { CalendarWidget } from "./home/CalendarWidget";
@@ -13,16 +13,30 @@ const ROLE_DISPLAY: Record<UserRole, string> = {
   "field-engineers": "Field Engineer",
 };
 
+interface ViewAsUser {
+  email: string;
+  name: string;
+}
+
 export function HomePage() {
-  const { user, authenticated, authEnabled } = useAuth();
+  const { user, authenticated, authEnabled, isAdmin } = useAuth();
   const [role, setRole] = useState<UserRole | null>(null);
   const [calendlyUrl, setCalendlyUrl] = useState<string | null>(null);
   const [loadingPrefs, setLoadingPrefs] = useState(true);
   const [showRoleSelection, setShowRoleSelection] = useState(false);
 
-  // Determine the user's display email — fallback to "you" for unauthenticated
+  // Admin "View as" state
+  const [viewAsEmail, setViewAsEmail] = useState<string | null>(null);
+  const [viewAsName, setViewAsName] = useState<string | null>(null);
+  const [availableUsers, setAvailableUsers] = useState<ViewAsUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
   const userEmail = user?.email || "";
   const userName = user?.name?.split(" ")[0] || "there";
+
+  // The email used for TodoList — either the real user or the "view as" target
+  const effectiveEmail = viewAsEmail || userEmail;
+  const effectiveDisplayName = viewAsName || userName;
 
   useEffect(() => {
     if (!authenticated && authEnabled) {
@@ -40,7 +54,6 @@ export function HomePage() {
         setCalendlyUrl(prefs.calendly_url);
       })
       .catch(() => {
-        // API unavailable (no auth, local dev) — show role selection from localStorage
         const saved = localStorage.getItem("home_role") as UserRole | null;
         if (saved) {
           setRole(saved);
@@ -52,10 +65,19 @@ export function HomePage() {
       .finally(() => setLoadingPrefs(false));
   }, [authenticated, authEnabled]);
 
+  // Load available users for "View as" when admin selects a role
+  useEffect(() => {
+    if (!isAdmin || !role) return;
+
+    setLoadingUsers(true);
+    loadAvailableUsers(role).then(setAvailableUsers).finally(() => setLoadingUsers(false));
+  }, [isAdmin, role]);
+
   const handleRoleSelected = (selectedRole: UserRole) => {
     setRole(selectedRole);
     setShowRoleSelection(false);
-    // Also cache in localStorage as fallback
+    setViewAsEmail(null);
+    setViewAsName(null);
     localStorage.setItem("home_role", selectedRole);
   };
 
@@ -66,6 +88,17 @@ export function HomePage() {
 
   const handleChangeRole = async () => {
     setShowRoleSelection(true);
+  };
+
+  const handleViewAsChange = (email: string) => {
+    if (!email) {
+      setViewAsEmail(null);
+      setViewAsName(null);
+    } else {
+      setViewAsEmail(email);
+      const found = availableUsers.find((u) => u.email === email);
+      setViewAsName(found?.name || email);
+    }
   };
 
   if (loadingPrefs) {
@@ -93,6 +126,27 @@ export function HomePage() {
               </button>
             </p>
           )}
+          {isAdmin && role && role !== "field-engineers" && (
+            <div className="view-as-selector">
+              <label htmlFor="view-as-select">View as: </label>
+              <select
+                id="view-as-select"
+                value={viewAsEmail || ""}
+                onChange={(e) => handleViewAsChange(e.target.value)}
+                disabled={loadingUsers}
+              >
+                <option value="">Myself ({userEmail})</option>
+                {availableUsers.map((u) => (
+                  <option key={u.email} value={u.email}>
+                    {u.name} ({u.email})
+                  </option>
+                ))}
+              </select>
+              {viewAsEmail && (
+                <span className="view-as-badge">Viewing as {effectiveDisplayName}</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -100,10 +154,10 @@ export function HomePage() {
         {/* Left column: todo list */}
         <div className="home-col-main">
           {role && role !== "field-engineers" ? (
-            <TodoList role={role} userEmail={userEmail} />
+            <TodoList role={role} userEmail={effectiveEmail} />
           ) : role === "field-engineers" ? (
             <div className="coming-soon-panel">
-              <p>🔧 Field Engineer task dashboard coming soon.</p>
+              <p>Field Engineer task dashboard coming soon.</p>
             </div>
           ) : null}
         </div>
@@ -119,6 +173,39 @@ export function HomePage() {
       </div>
     </div>
   );
+}
+
+async function loadAvailableUsers(role: UserRole): Promise<ViewAsUser[]> {
+  const users = new Map<string, string>();
+
+  try {
+    if (role === "csm") {
+      const data = await fetchCSMPortfolios();
+      for (const p of data.portfolios || []) {
+        if (p.csm?.email) users.set(p.csm.email, p.csm.name || p.csm.email);
+      }
+    } else if (role === "pm") {
+      const data = await fetchPMPortfolios();
+      for (const p of (data as any).portfolios || []) {
+        if (p.pm?.email) users.set(p.pm.email, p.pm.name || p.pm.email);
+      }
+    } else if (role === "renewal-specialist") {
+      const data = await fetchRenewalOpportunities(365);
+      const seen = new Set<string>();
+      for (const o of data.opportunities || []) {
+        if (o.prsEmail && !seen.has(o.prsEmail)) {
+          seen.add(o.prsEmail);
+          users.set(o.prsEmail, o.prsName || o.prsEmail);
+        }
+      }
+    }
+  } catch {
+    // If API fails, return empty list
+  }
+
+  return Array.from(users.entries())
+    .map(([email, name]) => ({ email, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function getGreeting(): string {
