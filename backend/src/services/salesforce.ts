@@ -228,7 +228,6 @@ interface SFOpportunity {
   Renewal_Status__c?: string;  // labeled "Accounting Renewal Status"
   PO_Required__c?: boolean;
   PO_Received_Date__c?: string;
-  Renewal_at_Risk__c?: boolean;  // labeled "Renewal at Risk"
   Renewal_Status_1__c?: string;  // labeled "R6 Notes"
   Customer_Success_Next_Steps__c?: string;  // labeled "R3 Notes"
   Accounting_Notes_for_Renewal__c?: string;  // labeled "Accounting Notes for Renewal"
@@ -857,7 +856,7 @@ export class SalesforceService {
                CloseDate, Type, OwnerId, Owner.Id, Owner.Name, Owner.Email,
                CreatedDate, LastModifiedDate,
                Customer_Success_Renewal_Status__c, Renewal_Status__c,
-               PO_Required__c, PO_Received_Date__c, Renewal_at_Risk__c,
+               PO_Required__c, PO_Received_Date__c,
                Renewal_Status_1__c, Customer_Success_Next_Steps__c, Accounting_Notes_for_Renewal__c,
                Leadership_Notes__c, Leadership_Risk_Status__c
         FROM Opportunity
@@ -901,7 +900,7 @@ export class SalesforceService {
           accountingRenewalStatus: opp.Renewal_Status__c,  // "Accounting Renewal Status"
           poRequired: opp.PO_Required__c,
           poReceivedDate: opp.PO_Received_Date__c,
-          atRisk: opp.Renewal_at_Risk__c || !!opp.Leadership_Risk_Status__c,  // "Renewal at Risk" checkbox OR Leadership Risk Status is set
+          atRisk: !!opp.Leadership_Risk_Status__c,  // Based on Leadership Risk Status picklist
           r6Notes: opp.Renewal_Status_1__c,
           r3Notes: opp.Customer_Success_Next_Steps__c,
           accountingNotes: opp.Accounting_Notes_for_Renewal__c,

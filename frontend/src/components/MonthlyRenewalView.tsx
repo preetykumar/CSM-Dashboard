@@ -109,7 +109,7 @@ const MonthCard: React.FC<MonthCardProps> = ({ group, expanded, onToggle, sortCo
                 <SortHeader label="Renewal Date" field="renewalDate" sortConfig={sortConfig} onSort={onSort} />
                 <SortHeader label="Action Needed" field="action" sortConfig={sortConfig} onSort={onSort} />
                 <th>Leadership Notes</th>
-                <th>At Risk</th>
+
                 <th>Risk Status</th>
               </tr>
             </thead>
@@ -147,7 +147,7 @@ const MonthCard: React.FC<MonthCardProps> = ({ group, expanded, onToggle, sortCo
                       ) : <span className="renewal-no-action"><CheckCircle size={14} /> No action needed</span>}
                     </td>
                     <td className="renewal-notes-cell">{opp.leadershipNotes || '-'}</td>
-                    <td>{opp.atRisk ? <Badge variant="danger">Yes</Badge> : '-'}</td>
+
                     <td>{opp.leadershipRiskStatus ? <Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>{opp.leadershipRiskStatus}</Badge> : '-'}</td>
                   </tr>
                 );
