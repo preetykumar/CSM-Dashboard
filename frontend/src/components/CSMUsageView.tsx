@@ -27,6 +27,7 @@ import {
 } from "../services/api";
 import { Pagination, usePagination } from "./Pagination";
 import { LicenseBanner } from "./LicenseBanner";
+import { UnifiedUsageSection } from "./UnifiedUsageSection";
 import type { CSMPortfolio, Organization } from "../types";
 
 // Amplitude product slugs
@@ -1061,25 +1062,36 @@ export function CSMUsageView() {
                                       accountName={customer.accountName}
                                       compact
                                     />
-                                    {subscriptions.length > 0 && (
-                                      <div className="products-list">
-                                        {productDefinitions.map((product) => (
-                                          <ProductSection
-                                            key={product.id}
-                                            product={product}
-                                            subscriptions={subscriptions}
+                                    {subscriptions.length > 0 && (() => {
+                                      const euuid = subscriptions.find(s => s.enterpriseUuid)?.enterpriseUuid;
+                                      if (euuid) {
+                                        return (
+                                          <UnifiedUsageSection
+                                            enterpriseUuid={euuid}
                                             accountName={customer.accountName}
-                                            productData={productData}
-                                            onLoadProductData={loadProductData}
-                                            expandedProducts={expandedProducts}
-                                            onToggleProduct={toggleProduct}
-                                            expandedSubProducts={expandedSubProducts}
-                                            onToggleSubProduct={toggleSubProduct}
-                                            onLoadSubProductData={loadSubProductData}
                                           />
-                                        ))}
-                                      </div>
-                                    )}
+                                        );
+                                      }
+                                      return (
+                                        <div className="products-list">
+                                          {productDefinitions.map((product) => (
+                                            <ProductSection
+                                              key={product.id}
+                                              product={product}
+                                              subscriptions={subscriptions}
+                                              accountName={customer.accountName}
+                                              productData={productData}
+                                              onLoadProductData={loadProductData}
+                                              expandedProducts={expandedProducts}
+                                              onToggleProduct={toggleProduct}
+                                              expandedSubProducts={expandedSubProducts}
+                                              onToggleSubProduct={toggleSubProduct}
+                                              onLoadSubProductData={loadSubProductData}
+                                            />
+                                          ))}
+                                        </div>
+                                      );
+                                    })()}
                                   </>
                                 )}
                               </div>

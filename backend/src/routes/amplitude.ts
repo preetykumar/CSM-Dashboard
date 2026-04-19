@@ -809,5 +809,141 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   });
 
+  // ============================================================
+  // Unified usage endpoint — fetches all product metrics in one call
+  // ============================================================
+
+  // Product → event definitions with user-friendly display names
+  const PRODUCT_EVENTS: Record<string, { events: Array<{ event: string; label: string; metric: "uniques" | "totals" }>; orgProperty?: string }> = {
+    "axe-account-portal": {
+      events: [
+        { event: "login", label: "User Logins", metric: "uniques" },
+        { event: "integration:issue:send:success", label: "Jira Issues Sent", metric: "totals" },
+      ],
+    },
+    "axe-devtools-(browser-extension)": {
+      events: [
+        { event: "analysis:analyze", label: "Scans Started", metric: "totals" },
+        { event: "analysis:complete", label: "Scans Completed", metric: "totals" },
+        { event: "analysis:save", label: "Scans Saved", metric: "totals" },
+        { event: "analysis:startGuide", label: "Guided Tests Started", metric: "totals" },
+        { event: "analysis:igtElementScope", label: "IGT Elements Scoped", metric: "totals" },
+        { event: "issue:share", label: "Issues Shared", metric: "totals" },
+        { event: "issue:viewSharedIssue", label: "Shared Issues Viewed", metric: "totals" },
+        { event: "issues:export", label: "Issues Exported", metric: "totals" },
+        { event: "ml:suggestedInteractiveElement", label: "ML Suggestions", metric: "totals" },
+        { event: "record:save", label: "Recordings Saved", metric: "totals" },
+        { event: "performance:scanDuration", label: "Scan Duration", metric: "totals" },
+        { event: "performance:loadSavedTest", label: "Saved Test Loaded", metric: "totals" },
+        { event: "performance:loadSavedTests", label: "Saved Tests Listed", metric: "totals" },
+        { event: "performance:interactiveElementsAnalysis", label: "Interactive Elements Analyzed", metric: "totals" },
+        { event: "performance:interactiveElementsML", label: "Interactive Elements ML", metric: "totals" },
+        { event: "performance:formsML", label: "Forms ML", metric: "totals" },
+        { event: "performance:formsTimeoutML", label: "Forms Timeout ML", metric: "totals" },
+        { event: "performance:tableML", label: "Tables ML", metric: "totals" },
+        { event: "performance:keyboardAutoTabDuration", label: "Keyboard Auto-Tab", metric: "totals" },
+        { event: "performance:keyboardFocusedScreenshotting", label: "Keyboard Focused Screenshots", metric: "totals" },
+        { event: "performance:keyboardUnfocusedScreenshotting", label: "Keyboard Unfocused Screenshots", metric: "totals" },
+        { event: "performance:saveIGT", label: "IGT Saved", metric: "totals" },
+      ],
+    },
+    "developer-hub": {
+      events: [
+        { event: "project:create", label: "Projects Created", metric: "totals" },
+        { event: "share", label: "Shares", metric: "totals" },
+      ],
+    },
+    "axe-devtools-mobile": {
+      events: [
+        { event: "scan:create", label: "Scans Created", metric: "totals" },
+        { event: "scan:save", label: "Scans Saved", metric: "totals" },
+        { event: "scan:send", label: "Scans Sent", metric: "totals" },
+        { event: "dashboard_view", label: "Dashboard Views", metric: "totals" },
+      ],
+    },
+    "axe-assistant": {
+      events: [
+        { event: "user:message_sent", label: "Messages Sent", metric: "totals" },
+        { event: "user:response_received", label: "Responses Received", metric: "totals" },
+      ],
+    },
+    "deque-university": {
+      events: [
+        { event: "session_start", label: "Sessions Started", metric: "uniques" },
+        { event: "[Amplitude] File Downloaded", label: "Files Downloaded", metric: "totals" },
+      ],
+    },
+    "axe-monitor": {
+      events: [
+        { event: "Scan started", label: "Scans Started", metric: "totals" },
+        { event: "Schedule Spiderjob", label: "Spiderjobs Scheduled", metric: "totals" },
+      ],
+    },
+  };
+
+  const PRODUCT_DISPLAY_NAMES: Record<string, string> = {
+    "axe-account-portal": "Axe Accounts",
+    "axe-devtools-(browser-extension)": "Axe DevTools (Browser Extension)",
+    "developer-hub": "Developer Hub",
+    "axe-devtools-mobile": "Axe DevTools Mobile",
+    "axe-assistant": "Axe Assistant",
+    "deque-university": "Deque University",
+    "axe-monitor": "Axe Monitor",
+  };
+
+  // GET /api/amplitude/unified/:orgIdentifier — all product metrics in one call
+  router.get("/unified/:orgIdentifier", cachedHandler(
+    (req) => `amp:unified:${req.params.orgIdentifier.toLowerCase()}`,
+    async (req) => {
+      const { orgIdentifier } = req.params;
+
+      // Fetch all products in parallel
+      const productResults = await Promise.allSettled(
+        Object.entries(PRODUCT_EVENTS).map(async ([slug, config]) => {
+          const entry = services.get(slug);
+          if (!entry) return { slug, error: "Product not configured" };
+
+          // Fetch all events for this product in parallel
+          const eventResults = await Promise.allSettled(
+            config.events.map(async ({ event, label, metric }) => {
+              const data = await entry.service.getQuarterlyEventMetric(
+                orgIdentifier,
+                event,
+                metric,
+                config.orgProperty || "gp:organization"
+              );
+              return { event, label, metric, ...data };
+            })
+          );
+
+          return {
+            slug,
+            displayName: PRODUCT_DISPLAY_NAMES[slug] || slug,
+            events: eventResults.map((r, i) => {
+              if (r.status === "fulfilled") return r.value;
+              return {
+                event: config.events[i].event,
+                label: config.events[i].label,
+                metric: config.events[i].metric,
+                current: 0, previous: 0, twoAgo: 0,
+                labels: ["", "", ""],
+                error: r.reason?.message || "Failed",
+              };
+            }),
+          };
+        })
+      );
+
+      const results: Record<string, any> = {};
+      for (const r of productResults) {
+        if (r.status === "fulfilled" && r.value && "slug" in r.value) {
+          results[r.value.slug] = r.value;
+        }
+      }
+
+      return { orgIdentifier, products: results };
+    }
+  ));
+
   return router;
 }

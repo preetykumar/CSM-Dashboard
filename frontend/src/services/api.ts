@@ -427,6 +427,7 @@ export interface EnterpriseSubscription {
   endDate: string;
   monitorPageCount?: number;
   monitorProjectCount?: number;
+  enterpriseUuid?: string;
 }
 
 export interface SubscriptionsResponse {
@@ -922,6 +923,36 @@ export async function fetchCalendarEvents(date?: string): Promise<{ events: Goog
     return { events: [], requiresReauth: true, error: data.error };
   }
   if (!res.ok) return { events: [], error: "Failed to fetch calendar events" };
+  return res.json();
+}
+
+// ── Unified Amplitude Usage ──────────────────────────────────────────────────
+
+export interface UnifiedEventMetric {
+  event: string;
+  label: string;
+  metric: "uniques" | "totals";
+  current: number;
+  previous: number;
+  twoAgo: number;
+  labels: [string, string, string];
+  error?: string;
+}
+
+export interface UnifiedProductMetrics {
+  slug: string;
+  displayName: string;
+  events: UnifiedEventMetric[];
+}
+
+export interface UnifiedUsageResponse {
+  orgIdentifier: string;
+  products: Record<string, UnifiedProductMetrics>;
+}
+
+export async function fetchUnifiedUsageMetrics(orgIdentifier: string): Promise<UnifiedUsageResponse> {
+  const res = await fetch(`${API_BASE}/amplitude/unified/${encodeURIComponent(orgIdentifier)}`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch unified usage metrics");
   return res.json();
 }
 

@@ -4916,6 +4916,108 @@ header .hint {
 /* Usage Views (By Customer & By CSM) */
 /* ==================== */
 
+/* Unified Usage Section */
+.unified-usage-section {
+  margin-top: 1rem;
+}
+
+.unified-usage-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  color: #64748b;
+}
+
+.unified-product-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+}
+
+.unified-product-card.expanded {
+  border-color: #cbd5e1;
+}
+
+.unified-product-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  background: #f8fafc;
+  border: none;
+  width: 100%;
+}
+
+.unified-product-header:hover {
+  background: #f1f5f9;
+}
+
+.unified-product-header:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: -2px;
+}
+
+.unified-product-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.unified-product-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.unified-product-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+.unified-product-badge.active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.unified-product-badge.inactive {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.unified-product-body {
+  padding: 0.5rem 1rem 1rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.usage-no-data {
+  color: #64748b;
+  font-style: italic;
+  padding: 0.5rem 0;
+}
+
+.usage-error {
+  color: #dc2626;
+  padding: 0.5rem 0;
+}
+
+.trend-indicator {
+  display: inline-block;
+  margin-left: 0.3rem;
+  font-size: 0.7rem;
+}
+
+.trend-indicator.up {
+  color: #16a34a;
+}
+
+.trend-indicator.down {
+  color: #dc2626;
+}
+
 .usage-view {
   padding: 1rem 0;
 }

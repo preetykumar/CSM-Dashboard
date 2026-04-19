@@ -2311,4 +2311,67 @@ export class AmplitudeService {
   getProjectId(): string {
     return this.projectId;
   }
+
+  /**
+   * Generic: fetch event count for a specific org across 3 quarters.
+   * Uses exact match ("is") on the specified org property.
+   * @param orgValue The org identifier (UUID or name depending on product)
+   * @param eventType The Amplitude event name
+   * @param metric "uniques" for unique users, "totals" for event count
+   * @param orgProperty The property to filter on (default: "gp:organization")
+   */
+  async getQuarterlyEventMetric(
+    orgValue: string,
+    eventType: string,
+    metric: "uniques" | "totals" = "totals",
+    orgProperty: string = "gp:organization"
+  ): Promise<{ current: number; previous: number; twoAgo: number; labels: [string, string, string] }> {
+    const cacheKey = `qem:${this.projectId}:${orgValue}:${eventType}:${metric}`;
+    const cached = amplitudeCache.get<{ current: number; previous: number; twoAgo: number; labels: [string, string, string] }>(cacheKey);
+    if (cached) return cached;
+
+    const quarters = [
+      this.getQuarterDateRange(0),
+      this.getQuarterDateRange(-1),
+      this.getQuarterDateRange(-2),
+    ];
+
+    const fetchOne = async (start: Date, end: Date): Promise<number> => {
+      try {
+        const e = JSON.stringify({
+          event_type: eventType,
+          filters: [{
+            subprop_type: "user",
+            subprop_key: orgProperty,
+            subprop_op: "is",
+            subprop_value: [orgValue],
+          }],
+        });
+        const response = await this.request<EventSegmentationResponse>("/events/segmentation", {
+          e,
+          start: this.formatDate(start),
+          end: this.formatDate(end),
+          m: metric,
+        });
+        const series = response.data?.series?.[0] || [];
+        return series.reduce((sum, val) => sum + (val || 0), 0);
+      } catch {
+        return 0;
+      }
+    };
+
+    // Fetch all 3 quarters in parallel
+    const [current, previous, twoAgo] = await Promise.all(
+      quarters.map((q) => fetchOne(q.start, q.end))
+    );
+
+    const result = {
+      current,
+      previous,
+      twoAgo,
+      labels: [quarters[0].label, quarters[1].label, quarters[2].label] as [string, string, string],
+    };
+    amplitudeCache.set(cacheKey, result);
+    return result;
+  }
 }
