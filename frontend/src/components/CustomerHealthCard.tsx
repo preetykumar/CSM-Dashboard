@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:3001/api";
+const API_BASE = import.meta.env.VITE_API_URL || "/api";
 const fetchOptions: RequestInit = { credentials: "include" as const };
 
 type Signal = "green" | "yellow" | "red";
