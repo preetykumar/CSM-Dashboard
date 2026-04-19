@@ -28,6 +28,7 @@ import {
 import { Pagination, usePagination } from "./Pagination";
 import { LicenseBanner } from "./LicenseBanner";
 import { UnifiedUsageSection } from "./UnifiedUsageSection";
+import { CustomerHealthCard } from "./CustomerHealthCard";
 import type { CSMPortfolio, Organization } from "../types";
 
 // Amplitude product slugs
@@ -1056,6 +1057,7 @@ export function CSMUsageView() {
                                   <div className="error">{usageData.error}</div>
                                 ) : (
                                   <>
+                                    <CustomerHealthCard accountName={customer.accountName} />
                                     <LicenseBanner
                                       subscriptions={subscriptions}
                                       loading={false}

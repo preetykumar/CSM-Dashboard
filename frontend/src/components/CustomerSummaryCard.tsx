@@ -1,3 +1,4 @@
+import { CustomerHealthCard } from "./CustomerHealthCard";
 import type { CustomerSummary } from "../types";
 
 interface Props {
@@ -144,7 +145,10 @@ export function CustomerSummaryCard({ summary, subtitle, onClick, onStatusClick,
     >
       <div className="summary-card-header">
         <h2>{organization.name}{subtitle && <span className="account-subtitle"> ({subtitle})</span>}</h2>
-        <div className="total-tickets">{ticketStats.total} total tickets</div>
+        <div className="summary-card-header-right">
+          <CustomerHealthCard accountName={organization.salesforce_account_name || organization.name} compact />
+          <div className="total-tickets">{ticketStats.total} total tickets</div>
+        </div>
       </div>
 
       <div className="summary-card-body">

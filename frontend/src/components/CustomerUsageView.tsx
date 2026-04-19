@@ -28,6 +28,7 @@ import {
 import { Pagination, usePagination } from "./Pagination";
 import { LicenseBanner } from "./LicenseBanner";
 import { UnifiedUsageSection } from "./UnifiedUsageSection";
+import { CustomerHealthCard } from "./CustomerHealthCard";
 import type { Organization } from "../types";
 
 // Amplitude product slugs
@@ -1048,6 +1049,7 @@ export function CustomerUsageView() {
                       <div className="usage-error">{usageData.error}</div>
                     ) : (
                       <>
+                        <CustomerHealthCard accountName={account.accountName} />
                         <LicenseBanner
                           subscriptions={subscriptions}
                           loading={false}

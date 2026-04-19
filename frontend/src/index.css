@@ -183,9 +183,31 @@ header p {
   margin-bottom: 0.25rem;
 }
 
+.summary-card-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .summary-card-header .total-tickets {
   font-size: 0.9rem;
   opacity: 0.9;
+}
+
+.summary-card-header .health-card-compact {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: white;
+}
+
+.summary-card-header .health-compact-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.summary-card-header .health-manual-badge {
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
 }
 
 .summary-card-body {
@@ -5016,6 +5038,201 @@ header .hint {
 
 .trend-indicator.down {
   color: #dc2626;
+}
+
+/* Customer Health Card */
+.health-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  background: #fafbfc;
+}
+
+.health-card-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #64748b;
+  padding: 0.75rem;
+}
+
+.health-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.health-card-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.health-summary-dots {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.health-dot-group {
+  display: flex;
+  gap: 4px;
+}
+
+.health-dot {
+  display: inline-block;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.health-interpretation {
+  font-size: 0.85rem;
+  color: #475569;
+  font-style: italic;
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #f1f5f9;
+  border-radius: 6px;
+  border-left: 3px solid #667eea;
+}
+
+.health-dimension {
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.health-dimension:last-of-type {
+  border-bottom: none;
+}
+
+.health-dimension-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.25rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.health-dimension-header:hover {
+  background: #f8fafc;
+}
+
+.health-dimension-header:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+.health-dimension-title {
+  font-weight: 600;
+  flex: 1;
+}
+
+.health-dimension-label {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.health-signals-list {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0 0 0 1.75rem;
+}
+
+.health-signal-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  font-size: 0.82rem;
+}
+
+.health-signal-label {
+  font-weight: 500;
+  color: #334155;
+  min-width: 120px;
+}
+
+.health-signal-detail {
+  color: #64748b;
+}
+
+/* Compact mode (inline in card headers) */
+.health-card-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.8rem;
+  padding: 2px 8px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.health-compact-label {
+  color: #64748b;
+  font-weight: 500;
+  margin-right: 2px;
+}
+
+/* Manual health score */
+.health-manual-section {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.health-manual-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.health-manual-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.health-manual-badge {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.health-manual-badge.manual-good {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.health-manual-badge.manual-fair,
+.health-manual-badge.manual-ok {
+  background: #fef3c7;
+  color: #854d0e;
+}
+
+.health-manual-badge.manual-poor,
+.health-manual-badge.manual-bad,
+.health-manual-badge.manual-at\ risk {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.health-manual-description {
+  font-size: 0.82rem;
+  color: #475569;
+  margin: 0.5rem 0 0;
+  line-height: 1.4;
+}
+
+.health-risk-drivers {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin: 0.25rem 0 0;
 }
 
 .usage-view {

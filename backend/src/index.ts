@@ -31,6 +31,7 @@ import { createAgentRoutes } from "./routes/agent.js";
 import { createUserRoutes } from "./routes/user.js";
 import { createCalendarRoutes } from "./routes/calendar.js";
 import { createAmplitudeRoutes } from "./routes/amplitude.js";
+import { createHealthRoutes } from "./routes/health.js";
 
 dotenv.config();
 
@@ -492,6 +493,9 @@ async function startServer() {
     app.use("/api/github", optionalAuth, createGitHubRoutes(db));
     app.use("/api/user", optionalAuth, createUserRoutes(db));
     app.use("/api/calendar", optionalAuth, createCalendarRoutes());
+    if (salesforce) {
+      app.use("/api/health", optionalAuth, createHealthRoutes(db, salesforce));
+    }
     if (agent) {
       app.use("/api/agent", optionalAuth, createAgentRoutes(agent));
     }
