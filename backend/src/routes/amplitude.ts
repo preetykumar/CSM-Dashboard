@@ -2,16 +2,20 @@ import { Router, Request, Response } from "express";
 import { AmplitudeService } from "../services/amplitude.js";
 import { amplitudeCache } from "../services/cache.js";
 
-// Helper: wrap an async handler with caching (15 min TTL)
-function cachedHandler(keyFn: (req: Request) => string, handler: (req: Request) => Promise<any>) {
+// Helper: wrap an async handler with caching (30 min TTL) and HTTP cache headers
+function cachedHandler(keyFn: (req: Request) => string, handler: (req: Request) => Promise<any>, ttlMinutes: number = 30) {
   return async (req: Request, res: Response) => {
     try {
       const cacheKey = keyFn(req);
       const cached = amplitudeCache.get<any>(cacheKey);
-      if (cached) return res.json(cached);
+      if (cached) {
+        res.set("Cache-Control", "public, max-age=600");
+        return res.json(cached);
+      }
 
       const result = await handler(req);
-      amplitudeCache.set(cacheKey, result);
+      amplitudeCache.set(cacheKey, result, ttlMinutes);
+      res.set("Cache-Control", "public, max-age=600");
       res.json(result);
     } catch (error) {
       console.error("Amplitude API error:", error);

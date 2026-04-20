@@ -51,11 +51,11 @@ export class MemoryCache {
 }
 
 // Shared cache instances
-// Renewals: 5 min TTL (data changes infrequently, refreshed on sync)
-export const renewalsCache = new MemoryCache(300);
+// Renewals: 10 min TTL (data changes infrequently, refreshed on sync)
+export const renewalsCache = new MemoryCache(600);
 
-// Amplitude: 15 min TTL (usage metrics change slowly)
-export const amplitudeCache = new MemoryCache(900);
+// Amplitude: 30 min TTL (usage metrics change slowly, expensive to fetch)
+export const amplitudeCache = new MemoryCache(1800);
 
-// Salesforce misc: 10 min TTL (subscriptions, etc.)
-export const salesforceCache = new MemoryCache(600);
+// Salesforce misc: 30 min TTL (subscriptions, health scores)
+export const salesforceCache = new MemoryCache(1800);

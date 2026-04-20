@@ -3,37 +3,13 @@ import {
   fetchOrganizations,
   fetchCSMPortfolios,
   fetchAccountsWithSubscriptions,
+  fetchHealthScoresBatch,
+  type HealthScoreResponse,
 } from "../services/api";
 import { Pagination, usePagination } from "./Pagination";
 import type { Organization } from "../types";
 
-const API_BASE = import.meta.env.VITE_API_URL || "/api";
-const fetchOptions: RequestInit = { credentials: "include" as const };
-
 type Signal = "green" | "yellow" | "red";
-
-interface HealthSignal {
-  signal: Signal;
-  label: string;
-  detail?: string;
-}
-
-interface DimensionScore {
-  signal: Signal;
-  signals: HealthSignal[];
-}
-
-interface HealthScoreResponse {
-  accountName: string;
-  accountId?: string;
-  adoption: DimensionScore;
-  engagement: DimensionScore;
-  support: DimensionScore;
-  manualHealthScore?: string;
-  manualHealthDescription?: string;
-  riskDrivers?: string;
-  interpretation?: string;
-}
 
 interface Props {
   mode: "csm" | "customer";
@@ -316,7 +292,6 @@ export function HealthView({ mode }: Props) {
     try {
       const [orgs, subsData] = await Promise.all([
         mode === "csm" ? fetchCSMPortfolios().then((d) => {
-          // Flatten all CSM portfolio orgs
           const allOrgs: Organization[] = [];
           for (const p of d.portfolios || []) {
             for (const c of p.customers || []) {
@@ -332,40 +307,45 @@ export function HealthView({ mode }: Props) {
       const consolidated = consolidateOrganizations(orgs).filter((a) => subsSet.has(a.accountName));
       setAccounts(consolidated);
 
-      // Pre-fetch health scores for all accounts in parallel (batched)
-      const batchSize = 10;
+      // Mark all as loading
+      setHealthScores((prev) => {
+        const next = new Map(prev);
+        for (const a of consolidated) next.set(a.accountName, "loading");
+        return next;
+      });
+
+      // Batch fetch all health scores (1 API call per batch of 50 instead of N individual calls)
+      const batchSize = 50;
       for (let i = 0; i < consolidated.length; i += batchSize) {
         const batch = consolidated.slice(i, i + batchSize);
-        await Promise.all(batch.map((a) => loadHealthScore(a.accountName)));
+        const names = batch.map((a) => a.accountName);
+        try {
+          const batchResults = await fetchHealthScoresBatch(names);
+          setHealthScores((prev) => {
+            const next = new Map(prev);
+            for (const [name, score] of Object.entries(batchResults)) {
+              next.set(name, score);
+            }
+            // Mark any that didn't return as error
+            for (const name of names) {
+              if (!batchResults[name] && next.get(name) === "loading") {
+                next.set(name, "error");
+              }
+            }
+            return next;
+          });
+        } catch {
+          setHealthScores((prev) => {
+            const next = new Map(prev);
+            for (const name of names) next.set(name, "error");
+            return next;
+          });
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function loadHealthScore(accountName: string) {
-    setHealthScores((prev) => {
-      const next = new Map(prev);
-      next.set(accountName, "loading");
-      return next;
-    });
-    try {
-      const res = await fetch(`${API_BASE}/health/${encodeURIComponent(accountName)}`, fetchOptions);
-      if (!res.ok) throw new Error("Failed");
-      const data: HealthScoreResponse = await res.json();
-      setHealthScores((prev) => {
-        const next = new Map(prev);
-        next.set(accountName, data);
-        return next;
-      });
-    } catch {
-      setHealthScores((prev) => {
-        const next = new Map(prev);
-        next.set(accountName, "error");
-        return next;
-      });
     }
   }
 

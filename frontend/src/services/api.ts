@@ -956,6 +956,82 @@ export async function fetchUnifiedUsageMetrics(orgIdentifier: string): Promise<U
   return res.json();
 }
 
+// ── Health Scores ───────────────────────────────────────────────────────────
+
+export interface HealthSignal {
+  signal: "green" | "yellow" | "red";
+  label: string;
+  detail?: string;
+}
+
+export interface DimensionScore {
+  signal: "green" | "yellow" | "red";
+  signals: HealthSignal[];
+}
+
+export interface HealthScoreResponse {
+  accountName: string;
+  accountId?: string;
+  adoption: DimensionScore;
+  engagement: DimensionScore;
+  support: DimensionScore;
+  manualHealthScore?: string;
+  manualHealthDescription?: string;
+  riskDrivers?: string;
+  interpretation?: string;
+}
+
+// In-memory frontend cache for health scores (avoids duplicate fetches across components)
+const healthScoreCache = new Map<string, { data: HealthScoreResponse; expiresAt: number }>();
+const HEALTH_CLIENT_TTL = 5 * 60 * 1000; // 5 minutes client-side
+
+export async function fetchHealthScore(accountName: string): Promise<HealthScoreResponse> {
+  const key = accountName.toLowerCase();
+  const cached = healthScoreCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+
+  const res = await fetch(`${API_BASE}/health/${encodeURIComponent(accountName)}`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch health score");
+  const data: HealthScoreResponse = await res.json();
+  healthScoreCache.set(key, { data, expiresAt: Date.now() + HEALTH_CLIENT_TTL });
+  return data;
+}
+
+export async function fetchHealthScoresBatch(accountNames: string[]): Promise<Record<string, HealthScoreResponse>> {
+  // Check client cache first, collect misses
+  const results: Record<string, HealthScoreResponse> = {};
+  const misses: string[] = [];
+
+  for (const name of accountNames) {
+    const key = name.toLowerCase();
+    const cached = healthScoreCache.get(key);
+    if (cached && Date.now() < cached.expiresAt) {
+      results[name] = cached.data;
+    } else {
+      misses.push(name);
+    }
+  }
+
+  if (misses.length > 0) {
+    const res = await fetch(`${API_BASE}/health/batch`, {
+      ...fetchOptions,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountNames: misses }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      for (const [name, score] of Object.entries(data.scores || {})) {
+        const s = score as HealthScoreResponse;
+        healthScoreCache.set(name.toLowerCase(), { data: s, expiresAt: Date.now() + HEALTH_CLIENT_TTL });
+        results[name] = s;
+      }
+    }
+  }
+
+  return results;
+}
+
 // ── Calendly ─────────────────────────────────────────────────────────────────
 
 

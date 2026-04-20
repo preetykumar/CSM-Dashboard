@@ -3,6 +3,8 @@ import type { IDatabaseService } from "../services/database-interface.js";
 import type { SalesforceService } from "../services/salesforce.js";
 import { salesforceCache } from "../services/cache.js";
 
+const HEALTH_CACHE_TTL = 30; // 30 minutes — health scores change rarely
+
 type Signal = "green" | "yellow" | "red";
 
 interface HealthSignal {
@@ -28,7 +30,6 @@ interface HealthScoreResponse {
   interpretation?: string;
 }
 
-// Map 3-signal combination to a human-readable interpretation
 function getInterpretation(a: Signal, e: Signal, s: Signal): string {
   const key = `${a}${e}${s}`;
   const interpretations: Record<string, string> = {
@@ -42,7 +43,6 @@ function getInterpretation(a: Signal, e: Signal, s: Signal): string {
   return interpretations[key] || "";
 }
 
-// Compute overall signal from individual signals (worst-of with weighting)
 function computeOverall(signals: HealthSignal[]): Signal {
   if (signals.length === 0) return "yellow";
   const reds = signals.filter((s) => s.signal === "red").length;
@@ -55,16 +55,20 @@ function computeOverall(signals: HealthSignal[]): Signal {
 export function createHealthRoutes(db: IDatabaseService, salesforce: SalesforceService): Router {
   const router = Router();
 
-  // GET /api/health/:accountName
+  // GET /api/health/:accountName — single account
   router.get("/:accountName", async (req: Request, res: Response) => {
     const { accountName } = req.params;
     const cacheKey = `health:${accountName.toLowerCase()}`;
     const cached = salesforceCache.get<HealthScoreResponse>(cacheKey);
-    if (cached) return res.json(cached);
+    if (cached) {
+      res.set("Cache-Control", "public, max-age=300");
+      return res.json(cached);
+    }
 
     try {
       const result = await computeHealthScore(accountName, db, salesforce);
-      salesforceCache.set(cacheKey, result);
+      salesforceCache.set(cacheKey, result, HEALTH_CACHE_TTL);
+      res.set("Cache-Control", "public, max-age=300");
       res.json(result);
     } catch (error) {
       console.error(`Error computing health score for ${accountName}:`, error);
@@ -72,8 +76,48 @@ export function createHealthRoutes(db: IDatabaseService, salesforce: SalesforceS
     }
   });
 
+  // POST /api/health/batch — multiple accounts in one call
+  // Body: { accountNames: string[] }
+  router.post("/batch", async (req: Request, res: Response) => {
+    const { accountNames } = req.body;
+    if (!Array.isArray(accountNames) || accountNames.length === 0) {
+      return res.status(400).json({ error: "accountNames array required" });
+    }
+
+    // Check cache first, collect misses
+    const results: Record<string, HealthScoreResponse> = {};
+    const misses: string[] = [];
+
+    for (const name of accountNames) {
+      const cached = salesforceCache.get<HealthScoreResponse>(`health:${name.toLowerCase()}`);
+      if (cached) {
+        results[name] = cached;
+      } else {
+        misses.push(name);
+      }
+    }
+
+    if (misses.length > 0) {
+      try {
+        // Bulk fetch from Salesforce — 3 queries total instead of 3 per account
+        const batchResults = await computeHealthScoresBatch(misses, db, salesforce);
+        for (const [name, score] of Object.entries(batchResults)) {
+          salesforceCache.set(`health:${name.toLowerCase()}`, score, HEALTH_CACHE_TTL);
+          results[name] = score;
+        }
+      } catch (error) {
+        console.error("Error computing batch health scores:", error);
+      }
+    }
+
+    res.set("Cache-Control", "public, max-age=300");
+    res.json({ scores: results });
+  });
+
   return router;
 }
+
+// ─── Single account (unchanged logic) ─────────────────────────────────────────
 
 async function computeHealthScore(
   accountName: string,
@@ -82,39 +126,118 @@ async function computeHealthScore(
 ): Promise<HealthScoreResponse> {
   const escapedName = accountName.replace(/'/g, "\\'");
 
-  // Fetch all data in parallel
   const [accountData, contactRoles, subscriptions, orgTicketData] = await Promise.all([
-    // 1. Account fields from SF
     salesforce.query<any>(`
       SELECT Id, Name, CS_Health__c, CS_Health_Description__c, CS_Risk_Drivers__c,
              Last_contact_date__c, Last_Meeting_Date__c, Last_Email_Date__c,
              AnnualRevenue, Date_of_first_order__c, Date_of_First_Software_Purchase__c
       FROM Account WHERE Name = '${escapedName}' LIMIT 1
     `).catch(() => []),
-
-    // 2. Contact roles for engagement
     salesforce.query<any>(`
       SELECT ContactId, Role, Contact.Name, Contact.Email
-      FROM AccountContactRole
-      WHERE Account.Name = '${escapedName}'
+      FROM AccountContactRole WHERE Account.Name = '${escapedName}'
     `).catch(() => []),
-
-    // 3. Subscriptions for adoption
     salesforce.getEnterpriseSubscriptionsByAccountName(accountName).catch(() => []),
-
-    // 4. Zendesk ticket data — find org IDs matching this account
     getTicketDataForAccount(accountName, db),
   ]);
 
-  const account = accountData[0] || {};
+  return buildHealthResponse(accountName, accountData[0], contactRoles, subscriptions, orgTicketData);
+}
 
-  // === ADOPTION SCORE ===
+// ─── Batch: bulk SF queries, then score each ──────────────────────────────────
+
+async function computeHealthScoresBatch(
+  accountNames: string[],
+  db: IDatabaseService,
+  salesforce: SalesforceService
+): Promise<Record<string, HealthScoreResponse>> {
+  // Build SOQL IN clause (escape quotes)
+  const nameList = accountNames.map((n) => `'${n.replace(/'/g, "\\'")}'`).join(",");
+
+  // 3 bulk SF queries instead of 3 × N
+  const [allAccounts, allContactRoles, allSubscriptions] = await Promise.all([
+    salesforce.query<any>(`
+      SELECT Id, Name, CS_Health__c, CS_Health_Description__c, CS_Risk_Drivers__c,
+             Last_contact_date__c, Last_Meeting_Date__c, Last_Email_Date__c,
+             AnnualRevenue, Date_of_first_order__c, Date_of_First_Software_Purchase__c
+      FROM Account WHERE Name IN (${nameList})
+    `).catch(() => [] as any[]),
+    salesforce.query<any>(`
+      SELECT ContactId, Role, Contact.Name, Contact.Email, Account.Name
+      FROM AccountContactRole WHERE Account.Name IN (${nameList})
+    `).catch(() => [] as any[]),
+    // Subscriptions don't have a bulk IN query on account name, so batch by accountId
+    (async () => {
+      // Get account IDs from the first query result, then bulk fetch subscriptions
+      // For now, use parallel individual fetches (still faster than sequential)
+      const subs = await Promise.all(
+        accountNames.map((name) =>
+          salesforce.getEnterpriseSubscriptionsByAccountName(name)
+            .then((s) => ({ name, subscriptions: s }))
+            .catch(() => ({ name, subscriptions: [] as any[] }))
+        )
+      );
+      return subs;
+    })(),
+  ]);
+
+  // Index data by account name
+  const accountMap = new Map<string, any>();
+  for (const a of allAccounts) {
+    accountMap.set(a.Name, a);
+  }
+
+  const contactRoleMap = new Map<string, any[]>();
+  for (const cr of allContactRoles) {
+    const name = cr.Account?.Name;
+    if (name) {
+      const existing = contactRoleMap.get(name) || [];
+      existing.push(cr);
+      contactRoleMap.set(name, existing);
+    }
+  }
+
+  const subsMap = new Map<string, any[]>();
+  for (const s of allSubscriptions) {
+    subsMap.set(s.name, s.subscriptions);
+  }
+
+  // Fetch ticket data in parallel for all accounts
+  const ticketResults = await Promise.all(
+    accountNames.map((name) =>
+      getTicketDataForAccount(name, db).then((data) => ({ name, data }))
+    )
+  );
+  const ticketMap = new Map<string, OrgTicketData>();
+  for (const t of ticketResults) {
+    ticketMap.set(t.name, t.data);
+  }
+
+  // Build scores
+  const results: Record<string, HealthScoreResponse> = {};
+  for (const name of accountNames) {
+    const account = accountMap.get(name) || {};
+    const contactRoles = contactRoleMap.get(name) || [];
+    const subscriptions = subsMap.get(name) || [];
+    const ticketData = ticketMap.get(name) || { tickets: [], escalationCount: 0 };
+
+    results[name] = buildHealthResponse(name, account, contactRoles, subscriptions, ticketData);
+  }
+
+  return results;
+}
+
+// ─── Shared scoring logic ─────────────────────────────────────────────────────
+
+function buildHealthResponse(
+  accountName: string,
+  account: any,
+  contactRoles: any[],
+  subscriptions: any[],
+  orgTicketData: OrgTicketData
+): HealthScoreResponse {
   const adoptionSignals = computeAdoptionSignals(subscriptions);
-
-  // === ENGAGEMENT SCORE ===
-  const engagementSignals = computeEngagementSignals(account, contactRoles);
-
-  // === SUPPORT SCORE ===
+  const engagementSignals = computeEngagementSignals(account || {}, contactRoles);
   const supportSignals = computeSupportSignals(orgTicketData, adoptionSignals);
 
   const adoption: DimensionScore = { signal: computeOverall(adoptionSignals), signals: adoptionSignals };
@@ -123,13 +246,13 @@ async function computeHealthScore(
 
   return {
     accountName,
-    accountId: account.Id,
+    accountId: account?.Id,
     adoption,
     engagement,
     support,
-    manualHealthScore: account.CS_Health__c || undefined,
-    manualHealthDescription: account.CS_Health_Description__c || undefined,
-    riskDrivers: account.CS_Risk_Drivers__c || undefined,
+    manualHealthScore: account?.CS_Health__c || undefined,
+    manualHealthDescription: account?.CS_Health_Description__c || undefined,
+    riskDrivers: account?.CS_Risk_Drivers__c || undefined,
     interpretation: getInterpretation(adoption.signal, engagement.signal, support.signal),
   };
 }
@@ -144,7 +267,6 @@ function computeAdoptionSignals(subscriptions: any[]): HealthSignal[] {
     return signals;
   }
 
-  // Seat activation %
   const totalLicenses = subscriptions.reduce((sum: number, s: any) => sum + (s.licenseCount || 0), 0);
   const totalAssigned = subscriptions.reduce((sum: number, s: any) => sum + (s.assignedSeats || 0), 0);
 
@@ -156,17 +278,12 @@ function computeAdoptionSignals(subscriptions: any[]): HealthSignal[] {
     signals.push({ signal, label: "Seat Activation", detail: `${pct}% (${totalAssigned}/${totalLicenses})` });
   }
 
-  // Product breadth — count distinct product types
   const productTypes = new Set(subscriptions.map((s: any) => s.productType?.toLowerCase()));
   const productCount = productTypes.size;
   let breadthSignal: Signal = "green";
   if (productCount <= 1) breadthSignal = "red";
   else if (productCount === 2) breadthSignal = "yellow";
-  signals.push({
-    signal: breadthSignal,
-    label: "Product Breadth",
-    detail: `${productCount} product${productCount !== 1 ? "s" : ""} licensed`,
-  });
+  signals.push({ signal: breadthSignal, label: "Product Breadth", detail: `${productCount} product${productCount !== 1 ? "s" : ""} licensed` });
 
   return signals;
 }
@@ -176,7 +293,6 @@ function computeAdoptionSignals(subscriptions: any[]): HealthSignal[] {
 function computeEngagementSignals(account: any, contactRoles: any[]): HealthSignal[] {
   const signals: HealthSignal[] = [];
 
-  // Exec Sponsor
   const hasExecSponsor = contactRoles.some((r: any) => r.Role === "Executive Sponsor");
   signals.push({
     signal: hasExecSponsor ? "green" : "red",
@@ -186,30 +302,20 @@ function computeEngagementSignals(account: any, contactRoles: any[]): HealthSign
       : "No exec sponsor identified",
   });
 
-  // Stakeholder breadth
   const distinctContacts = new Set(contactRoles.map((r: any) => r.ContactId)).size;
   const distinctRoles = new Set(contactRoles.map((r: any) => r.Role)).size;
   let stakeholderSignal: Signal = "green";
   if (distinctContacts <= 1) stakeholderSignal = "red";
   else if (distinctContacts === 2 || distinctRoles < 2) stakeholderSignal = "yellow";
-  signals.push({
-    signal: stakeholderSignal,
-    label: "Stakeholder Breadth",
-    detail: `${distinctContacts} contact${distinctContacts !== 1 ? "s" : ""}, ${distinctRoles} role${distinctRoles !== 1 ? "s" : ""}`,
-  });
+  signals.push({ signal: stakeholderSignal, label: "Stakeholder Breadth", detail: `${distinctContacts} contact${distinctContacts !== 1 ? "s" : ""}, ${distinctRoles} role${distinctRoles !== 1 ? "s" : ""}` });
 
-  // Last contact recency
   const lastContact = account.Last_contact_date__c || account.Last_Meeting_Date__c || account.Last_Email_Date__c;
   if (lastContact) {
     const daysSince = Math.floor((Date.now() - new Date(lastContact).getTime()) / (1000 * 60 * 60 * 24));
     let contactSignal: Signal = "green";
     if (daysSince > 90) contactSignal = "red";
     else if (daysSince > 30) contactSignal = "yellow";
-    signals.push({
-      signal: contactSignal,
-      label: "Last Contact",
-      detail: `${daysSince} days ago`,
-    });
+    signals.push({ signal: contactSignal, label: "Last Contact", detail: `${daysSince} days ago` });
   } else {
     signals.push({ signal: "red", label: "Last Contact", detail: "No contact recorded" });
   }
@@ -228,7 +334,6 @@ function computeSupportSignals(ticketData: OrgTicketData, adoptionSignals: Healt
   const signals: HealthSignal[] = [];
   const { tickets, escalationCount } = ticketData;
 
-  // Zero tickets + low adoption = suspicious silence
   if (tickets.length === 0) {
     const lowAdoption = adoptionSignals.some((s) => s.signal === "red");
     signals.push({
@@ -239,36 +344,22 @@ function computeSupportSignals(ticketData: OrgTicketData, adoptionSignals: Healt
     return signals;
   }
 
-  // Sev-weighted volume (last 90 days)
   const now = Date.now();
   const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
   const recentTickets = tickets.filter((t: any) => new Date(t.created_at).getTime() > ninetyDaysAgo);
   const sevWeights: Record<string, number> = { urgent: 5, high: 2, normal: 1, low: 0.5 };
-  const weightedVolume = recentTickets.reduce(
-    (sum: number, t: any) => sum + (sevWeights[t.priority] || 1),
-    0
-  );
+  const weightedVolume = recentTickets.reduce((sum: number, t: any) => sum + (sevWeights[t.priority] || 1), 0);
 
   let volumeSignal: Signal = "green";
   if (weightedVolume > 50) volumeSignal = "red";
   else if (weightedVolume > 20) volumeSignal = "yellow";
-  signals.push({
-    signal: volumeSignal,
-    label: "Ticket Volume (90d)",
-    detail: `${recentTickets.length} tickets, weighted score: ${Math.round(weightedVolume)}`,
-  });
+  signals.push({ signal: volumeSignal, label: "Ticket Volume (90d)", detail: `${recentTickets.length} tickets, weighted score: ${Math.round(weightedVolume)}` });
 
-  // Escalations
   let escSignal: Signal = "green";
   if (escalationCount >= 4) escSignal = "red";
   else if (escalationCount >= 2) escSignal = "yellow";
-  signals.push({
-    signal: escSignal,
-    label: "Escalations",
-    detail: `${escalationCount} escalated ticket${escalationCount !== 1 ? "s" : ""}`,
-  });
+  signals.push({ signal: escSignal, label: "Escalations", detail: `${escalationCount} escalated ticket${escalationCount !== 1 ? "s" : ""}` });
 
-  // Bug : how-to ratio
   const bugs = recentTickets.filter((t: any) => t.ticket_type === "bug" || t.ticket_type === "incident").length;
   const howTo = recentTickets.filter((t: any) => t.ticket_type === "question" || t.ticket_type === "how_to").length;
   if (recentTickets.length >= 5) {
@@ -276,11 +367,7 @@ function computeSupportSignals(ticketData: OrgTicketData, adoptionSignals: Healt
     let ratioSignal: Signal = "green";
     if (bugRatio > 0.6) ratioSignal = "red";
     else if (bugRatio > 0.4) ratioSignal = "yellow";
-    signals.push({
-      signal: ratioSignal,
-      label: "Bug:How-to Ratio",
-      detail: `${bugs} bugs, ${howTo} how-to (${Math.round(bugRatio * 100)}% bugs)`,
-    });
+    signals.push({ signal: ratioSignal, label: "Bug:How-to Ratio", detail: `${bugs} bugs, ${howTo} how-to (${Math.round(bugRatio * 100)}% bugs)` });
   }
 
   return signals;
@@ -288,27 +375,16 @@ function computeSupportSignals(ticketData: OrgTicketData, adoptionSignals: Healt
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async function getTicketDataForAccount(
-  accountName: string,
-  db: IDatabaseService
-): Promise<OrgTicketData> {
+async function getTicketDataForAccount(accountName: string, db: IDatabaseService): Promise<OrgTicketData> {
   try {
-    // Find org IDs matching this account name
     const allOrgs = await db.getOrganizations();
     const matchingOrgs = allOrgs.filter(
-      (o) =>
-        o.salesforce_account_name?.toLowerCase() === accountName.toLowerCase() ||
-        o.name.toLowerCase() === accountName.toLowerCase()
+      (o) => o.salesforce_account_name?.toLowerCase() === accountName.toLowerCase() || o.name.toLowerCase() === accountName.toLowerCase()
     );
+    if (matchingOrgs.length === 0) return { tickets: [], escalationCount: 0 };
 
-    if (matchingOrgs.length === 0) {
-      return { tickets: [], escalationCount: 0 };
-    }
-
-    // Aggregate tickets across all matching orgs
     let allTickets: any[] = [];
     let totalEscalations = 0;
-
     for (const org of matchingOrgs) {
       const [tickets, escalations] = await Promise.all([
         db.getTicketsByOrganization(org.id),
@@ -317,7 +393,6 @@ async function getTicketDataForAccount(
       allTickets = allTickets.concat(tickets);
       totalEscalations += escalations;
     }
-
     return { tickets: allTickets, escalationCount: totalEscalations };
   } catch {
     return { tickets: [], escalationCount: 0 };

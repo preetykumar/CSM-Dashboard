@@ -1,31 +1,7 @@
 import { useEffect, useState } from "react";
-
-const API_BASE = import.meta.env.VITE_API_URL || "/api";
-const fetchOptions: RequestInit = { credentials: "include" as const };
+import { fetchHealthScore, type HealthScoreResponse, type DimensionScore } from "../services/api";
 
 type Signal = "green" | "yellow" | "red";
-
-interface HealthSignal {
-  signal: Signal;
-  label: string;
-  detail?: string;
-}
-
-interface DimensionScore {
-  signal: Signal;
-  signals: HealthSignal[];
-}
-
-interface HealthScoreResponse {
-  accountName: string;
-  adoption: DimensionScore;
-  engagement: DimensionScore;
-  support: DimensionScore;
-  manualHealthScore?: string;
-  manualHealthDescription?: string;
-  riskDrivers?: string;
-  interpretation?: string;
-}
 
 interface Props {
   accountName: string;
@@ -158,11 +134,7 @@ export function CustomerHealthCard({ accountName, compact }: Props) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetch(`${API_BASE}/health/${encodeURIComponent(accountName)}`, fetchOptions)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to load health score");
-        return res.json();
-      })
+    fetchHealthScore(accountName)
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));

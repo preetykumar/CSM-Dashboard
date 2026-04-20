@@ -58,8 +58,8 @@ class SimpleCache {
   }
 }
 
-// Global cache for Amplitude data (15 minute TTL)
-const amplitudeCache = new SimpleCache(15);
+// Global cache for Amplitude data (30 minute TTL)
+const amplitudeCache = new SimpleCache(30);
 
 interface UsageData {
   date: string;
