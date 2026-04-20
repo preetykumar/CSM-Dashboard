@@ -2324,9 +2324,10 @@ export class AmplitudeService {
     orgValue: string,
     eventType: string,
     metric: "uniques" | "totals" = "totals",
-    orgProperty: string = "gp:organization"
+    orgProperty: string = "gp:organization",
+    matchOp: "is" | "contains" = "is"
   ): Promise<{ current: number; previous: number; twoAgo: number; labels: [string, string, string] }> {
-    const cacheKey = `qem:${this.projectId}:${orgValue}:${eventType}:${metric}`;
+    const cacheKey = `qem:${this.projectId}:${orgValue}:${eventType}:${metric}:${matchOp}`;
     const cached = amplitudeCache.get<{ current: number; previous: number; twoAgo: number; labels: [string, string, string] }>(cacheKey);
     if (cached) return cached;
 
@@ -2338,13 +2339,14 @@ export class AmplitudeService {
 
     const fetchOne = async (start: Date, end: Date): Promise<number> => {
       try {
+        const filterValues = matchOp === "is" ? [orgValue] : [orgValue, orgValue.toLowerCase()];
         const e = JSON.stringify({
           event_type: eventType,
           filters: [{
             subprop_type: "user",
             subprop_key: orgProperty,
-            subprop_op: "is",
-            subprop_value: [orgValue],
+            subprop_op: matchOp,
+            subprop_value: filterValues,
           }],
         });
         const response = await this.request<EventSegmentationResponse>("/events/segmentation", {

@@ -896,10 +896,12 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
   };
 
   // GET /api/amplitude/unified/:orgIdentifier — all product metrics in one call
+  // Optional query param: ?monitorDomain=oracle (domain prefix for axe-monitor matching)
   router.get("/unified/:orgIdentifier", cachedHandler(
-    (req) => `amp:unified:${req.params.orgIdentifier.toLowerCase()}`,
+    (req) => `amp:unified:${req.params.orgIdentifier.toLowerCase()}:${(req.query.monitorDomain as string || "").toLowerCase()}`,
     async (req) => {
       const { orgIdentifier } = req.params;
+      const monitorDomain = (req.query.monitorDomain as string) || "";
 
       // Fetch all products in parallel
       const productResults = await Promise.allSettled(
@@ -907,14 +909,26 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
           const entry = services.get(slug);
           if (!entry) return { slug, error: "Product not configured" };
 
+          // Monitor workaround: use initial_referring_domain with contains
+          let orgValue = orgIdentifier;
+          let orgProp = config.orgProperty || "gp:organization";
+          let matchOp: "is" | "contains" = "is";
+
+          if (slug === "axe-monitor" && monitorDomain) {
+            orgValue = monitorDomain;
+            orgProp = "gp:initial_referring_domain";
+            matchOp = "contains";
+          }
+
           // Fetch all events for this product in parallel
           const eventResults = await Promise.allSettled(
             config.events.map(async ({ event, label, metric }) => {
               const data = await entry.service.getQuarterlyEventMetric(
-                orgIdentifier,
+                orgValue,
                 event,
                 metric,
-                config.orgProperty || "gp:organization"
+                orgProp,
+                matchOp
               );
               return { event, label, metric, ...data };
             })

@@ -4,6 +4,7 @@ import { fetchUnifiedUsageMetrics, type UnifiedUsageResponse, type UnifiedProduc
 interface Props {
   enterpriseUuid: string;
   accountName: string;
+  monitorDomain?: string;
 }
 
 function TrendIndicator({ current, previous }: { current: number; previous: number }) {
@@ -54,7 +55,7 @@ function ProductMetricsTable({ product }: { product: UnifiedProductMetrics }) {
   );
 }
 
-export function UnifiedUsageSection({ enterpriseUuid, accountName }: Props) {
+export function UnifiedUsageSection({ enterpriseUuid, accountName, monitorDomain }: Props) {
   const [data, setData] = useState<UnifiedUsageResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -63,11 +64,11 @@ export function UnifiedUsageSection({ enterpriseUuid, accountName }: Props) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetchUnifiedUsageMetrics(enterpriseUuid)
+    fetchUnifiedUsageMetrics(enterpriseUuid, monitorDomain)
       .then(setData)
       .catch((err) => setError(err.message || "Failed to load usage data"))
       .finally(() => setLoading(false));
-  }, [enterpriseUuid]);
+  }, [enterpriseUuid, monitorDomain]);
 
   const toggleProduct = (slug: string) => {
     setExpandedProducts((prev) => {

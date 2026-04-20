@@ -1066,11 +1066,13 @@ export function CSMUsageView() {
                                     />
                                     {subscriptions.length > 0 && (() => {
                                       const euuid = subscriptions.find(s => s.enterpriseUuid)?.enterpriseUuid;
+                                      const domain = subscriptions.find(s => s.enterpriseDomain)?.enterpriseDomain?.split('.')[0];
                                       if (euuid) {
                                         return (
                                           <UnifiedUsageSection
                                             enterpriseUuid={euuid}
                                             accountName={customer.accountName}
+                                            monitorDomain={domain}
                                           />
                                         );
                                       }

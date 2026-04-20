@@ -428,6 +428,7 @@ export interface EnterpriseSubscription {
   monitorPageCount?: number;
   monitorProjectCount?: number;
   enterpriseUuid?: string;
+  enterpriseDomain?: string;
 }
 
 export interface SubscriptionsResponse {
@@ -950,8 +951,9 @@ export interface UnifiedUsageResponse {
   products: Record<string, UnifiedProductMetrics>;
 }
 
-export async function fetchUnifiedUsageMetrics(orgIdentifier: string): Promise<UnifiedUsageResponse> {
-  const res = await fetch(`${API_BASE}/amplitude/unified/${encodeURIComponent(orgIdentifier)}`, fetchOptions);
+export async function fetchUnifiedUsageMetrics(orgIdentifier: string, monitorDomain?: string): Promise<UnifiedUsageResponse> {
+  const params = monitorDomain ? `?monitorDomain=${encodeURIComponent(monitorDomain)}` : "";
+  const res = await fetch(`${API_BASE}/amplitude/unified/${encodeURIComponent(orgIdentifier)}${params}`, fetchOptions);
   if (!res.ok) throw new Error("Failed to fetch unified usage metrics");
   return res.json();
 }

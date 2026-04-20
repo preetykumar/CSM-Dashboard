@@ -122,6 +122,7 @@ export interface EnterpriseSubscription {
   monitorPageCount?: number;
   monitorProjectCount?: number;
   enterpriseUuid?: string;
+  enterpriseDomain?: string;
 }
 
 export interface RenewalOpportunity {
@@ -260,6 +261,7 @@ interface SFEnterpriseSubscription {
   Monitor_Page_Count__c?: number;
   Monitor_Project_Count__c?: number;
   Enterprise_UUID__c?: string;
+  Enterprise_Domain__c?: string;
 }
 
 export class SalesforceService {
@@ -700,7 +702,7 @@ export class SalesforceService {
       const subscriptions = await this.query<SFEnterpriseSubscription>(`
         SELECT Id, Name, Account__c, Product_Type__c, License_Count__c, Assigned_Seats__c,
                Percentage_Assigned__c, Environment__c, Type__c, Start_Date__c, End_Date__c,
-               Monitor_Page_Count__c, Monitor_Project_Count__c, Enterprise_UUID__c
+               Monitor_Page_Count__c, Monitor_Project_Count__c, Enterprise_UUID__c, Enterprise_Domain__c
         FROM Enterprise_Subscription__c
         WHERE Account__r.Name = '${escapedName}'
         AND Type__c = 'paid'
@@ -725,6 +727,7 @@ export class SalesforceService {
         monitorPageCount: sub.Monitor_Page_Count__c,
         monitorProjectCount: sub.Monitor_Project_Count__c,
         enterpriseUuid: sub.Enterprise_UUID__c,
+        enterpriseDomain: sub.Enterprise_Domain__c,
       }));
     } catch (error) {
       console.error(`Error fetching subscriptions for ${accountName}:`, error);
@@ -739,7 +742,7 @@ export class SalesforceService {
       const subscriptions = await this.query<SFEnterpriseSubscription>(`
         SELECT Id, Name, Account__c, Product_Type__c, License_Count__c, Assigned_Seats__c,
                Percentage_Assigned__c, Environment__c, Type__c, Start_Date__c, End_Date__c,
-               Monitor_Page_Count__c, Monitor_Project_Count__c, Enterprise_UUID__c
+               Monitor_Page_Count__c, Monitor_Project_Count__c, Enterprise_UUID__c, Enterprise_Domain__c
         FROM Enterprise_Subscription__c
         WHERE Account__c = '${accountId}'
         AND Type__c = 'paid'
@@ -764,6 +767,7 @@ export class SalesforceService {
         monitorPageCount: sub.Monitor_Page_Count__c,
         monitorProjectCount: sub.Monitor_Project_Count__c,
         enterpriseUuid: sub.Enterprise_UUID__c,
+        enterpriseDomain: sub.Enterprise_Domain__c,
       }));
     } catch (error) {
       console.error(`Error fetching subscriptions for account ${accountId}:`, error);
