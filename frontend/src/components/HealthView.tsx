@@ -282,6 +282,7 @@ export function HealthView({ mode }: Props) {
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
   const [filterSignal, setFilterSignal] = useState<Signal | "all">("all");
+  const [showMethodology, setShowMethodology] = useState(false);
 
   useEffect(() => {
     loadAccounts();
@@ -404,9 +405,102 @@ export function HealthView({ mode }: Props) {
   return (
     <div className="health-view">
       <div className="health-view-header">
-        <h2>Customer Health Overview</h2>
+        <h2>
+          Customer Health Overview
+          <button
+            className="health-info-btn"
+            onClick={() => setShowMethodology(!showMethodology)}
+            aria-label="How health score is calculated"
+            title="How health score is calculated"
+          >
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.5"/><text x="8" y="12" textAnchor="middle" fontSize="11" fontWeight="700" fontFamily="serif">i</text></svg>
+          </button>
+        </h2>
         <span className="section-count">{filteredAccounts.length} customers</span>
       </div>
+
+      {showMethodology && (
+        <div className="health-info-panel">
+          <div className="health-info-header">
+            <h4>How Customer Health is Calculated</h4>
+            <button className="health-info-close" onClick={() => setShowMethodology(false)} aria-label="Close">&times;</button>
+          </div>
+          <div className="health-info-body">
+            <p className="health-info-intro">
+              Each customer is scored across three dimensions. Each signal within a dimension is rated
+              <span className="threshold-green"> Green (Healthy)</span>,
+              <span className="threshold-yellow"> Yellow (Needs Attention)</span>, or
+              <span className="threshold-red"> Red (At Risk)</span>.
+              The overall dimension score is the worst-of: 2+ reds = red, 1 red or 2+ yellows = yellow, otherwise green.
+            </p>
+
+            <div className="health-info-dimension">
+              <h5>Product Adoption — is value being realized?</h5>
+              <table className="health-formula-table">
+                <thead><tr><th>Signal</th><th style={{color: "#16a34a"}}>Green</th><th style={{color: "#ca8a04"}}>Yellow</th><th style={{color: "#dc2626"}}>Red</th></tr></thead>
+                <tbody>
+                  <tr><td className="health-signal-name">Seat Activation</td><td>{"\u2265"}70% assigned</td><td>40{"\u2013"}70%</td><td>&lt;40%</td></tr>
+                  <tr><td className="health-signal-name">Product Breadth</td><td>3+ products</td><td>2 products</td><td>1 or none</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="health-info-dimension">
+              <h5>Customer Engagement — is the relationship real?</h5>
+              <table className="health-formula-table">
+                <thead><tr><th>Signal</th><th style={{color: "#16a34a"}}>Green</th><th style={{color: "#ca8a04"}}>Yellow</th><th style={{color: "#dc2626"}}>Red</th></tr></thead>
+                <tbody>
+                  <tr><td className="health-signal-name">Executive Sponsor</td><td>Named in Salesforce</td><td>{"\u2014"}</td><td>None identified</td></tr>
+                  <tr><td className="health-signal-name">Stakeholder Breadth</td><td>3+ contacts, 2+ roles</td><td>2 contacts</td><td>1 or none</td></tr>
+                  <tr><td className="health-signal-name">Last Contact</td><td>&lt;30 days</td><td>30{"\u2013"}90 days</td><td>&gt;90 days</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="health-info-dimension">
+              <h5>Support — is using us painful?</h5>
+              <table className="health-formula-table">
+                <thead><tr><th>Signal</th><th style={{color: "#16a34a"}}>Green</th><th style={{color: "#ca8a04"}}>Yellow</th><th style={{color: "#dc2626"}}>Red</th></tr></thead>
+                <tbody>
+                  <tr><td className="health-signal-name">Ticket Volume</td><td>Weighted &lt;20</td><td>20{"\u2013"}50</td><td>&gt;50</td></tr>
+                  <tr><td className="health-signal-name">Escalations</td><td>0{"\u2013"}1/quarter</td><td>2{"\u2013"}3</td><td>4+</td></tr>
+                  <tr><td className="health-signal-name">Bug:How-to Ratio</td><td>&lt;40% bugs</td><td>40{"\u2013"}60%</td><td>&gt;60%</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="health-info-dimension">
+              <h5>Signal Combination Guide</h5>
+              <table className="health-formula-table">
+                <thead><tr><th>Adoption</th><th>Engagement</th><th>Support</th><th>Interpretation</th></tr></thead>
+                <tbody>
+                  <tr><td><SignalDot signal="green" size={10} /></td><td><SignalDot signal="green" size={10} /></td><td><SignalDot signal="green" size={10} /></td><td>Reference-able. Ask for expansion and a case study.</td></tr>
+                  <tr><td><SignalDot signal="green" size={10} /></td><td><SignalDot signal="red" size={10} /></td><td><SignalDot signal="green" size={10} /></td><td>Silent adopter / renewal risk. Classic surprise churn.</td></tr>
+                  <tr><td><SignalDot signal="red" size={10} /></td><td><SignalDot signal="green" size={10} /></td><td><SignalDot signal="green" size={10} /></td><td>Shelfware with a smile. Re-onboard.</td></tr>
+                  <tr><td><SignalDot signal="green" size={10} /></td><td><SignalDot signal="green" size={10} /></td><td><SignalDot signal="red" size={10} /></td><td>Engaged and struggling. Escalate to engineering.</td></tr>
+                  <tr><td><SignalDot signal="red" size={10} /></td><td><SignalDot signal="red" size={10} /></td><td><SignalDot signal="red" size={10} /></td><td>Write the save plan. Or the eulogy.</td></tr>
+                  <tr><td><SignalDot signal="red" size={10} /></td><td><SignalDot signal="green" size={10} /></td><td><SignalDot signal="red" size={10} /></td><td>Champion is loyal but can't drive usage. Org/change-management problem.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="health-info-dimension">
+              <h5>Data Sources</h5>
+              <ul className="health-info-sources">
+                <li><strong>Adoption:</strong> Salesforce Enterprise Subscriptions (seat counts, product types)</li>
+                <li><strong>Engagement:</strong> Salesforce Account Contact Roles, Account activity dates</li>
+                <li><strong>Support:</strong> Zendesk tickets (priority, escalation, type)</li>
+                <li><strong>Manual Score:</strong> CS_Health__c field in Salesforce (set by CSM)</li>
+              </ul>
+            </div>
+
+            <p className="health-info-note">
+              Zero tickets is not green. Often it means the product isn't being used deeply enough to generate friction.
+              Always read Support against Adoption — the combination reveals whether silence is confidence or abandonment.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Summary stats */}
       <div className="health-stats-bar">
