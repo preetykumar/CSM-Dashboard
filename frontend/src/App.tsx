@@ -20,6 +20,7 @@ import { ClosedLostView } from "./components/ClosedLostView";
 import { ProcessAuditView } from "./components/ProcessAuditView";
 import { ComingSoonPlaceholder } from "./components/ComingSoonPlaceholder";
 import { HomePage } from "./components/HomePage";
+import { HealthView } from "./components/HealthView";
 import { useAuth } from "./contexts/AuthContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import { ToastProvider } from "./components/renewal/ToastProvider";
@@ -32,6 +33,7 @@ const ROUTES = {
   CSM_SUPPORT: "/csm/support",
   CSM_USAGE: "/csm/usage",
   CSM_RENEWALS: "/csm/renewals",
+  CSM_HEALTH: "/csm/health",
   CSM_PROJECTS: "/csm/projects",
   // PM persona (role-based)
   PM_SUPPORT: "/pm/support",
@@ -45,6 +47,7 @@ const ROUTES = {
   CUSTOMER_SUPPORT: "/customer/support",
   CUSTOMER_USAGE: "/customer/usage",
   CUSTOMER_RENEWALS: "/customer/renewals",
+  CUSTOMER_HEALTH: "/customer/health",
   // Product persona
   PRODUCT_SUPPORT: "/product/support",
   PRODUCT_USAGE: "/product/usage",
@@ -93,6 +96,8 @@ function Dashboard() {
         return "View product usage metrics grouped by CSM portfolio";
       case ROUTES.CSM_RENEWALS:
         return "View renewal opportunities grouped by Customer Success Manager";
+      case ROUTES.CSM_HEALTH:
+        return "Customer health scores for your CSM portfolio — adoption, engagement, and support";
       case ROUTES.CSM_PROJECTS:
         return "Active projects grouped by CSM (coming soon)";
       case ROUTES.PM_SUPPORT:
@@ -215,6 +220,9 @@ function Dashboard() {
             <NavLink to={ROUTES.CSM_RENEWALS}>
               Renewals
             </NavLink>
+            <NavLink to={ROUTES.CSM_HEALTH}>
+              Health
+            </NavLink>
             <NavLink to={ROUTES.CSM_PROJECTS} className="coming-soon-tab">
               Active Projects <span className="tab-badge-soon">Soon</span>
             </NavLink>
@@ -247,6 +255,9 @@ function Dashboard() {
             </NavLink>
             <NavLink to={ROUTES.CUSTOMER_RENEWALS}>
               Renewals
+            </NavLink>
+            <NavLink to={ROUTES.CUSTOMER_HEALTH}>
+              Health
             </NavLink>
           </nav>
         )}
@@ -300,6 +311,7 @@ function Dashboard() {
           <Route path="/csm/support" element={<CSMPortfolioView />} />
           <Route path="/csm/usage" element={<CSMUsageView />} />
           <Route path="/csm/renewals" element={<CSMRenewalView />} />
+          <Route path="/csm/health" element={<HealthView mode="csm" />} />
           <Route path="/csm/projects" element={<ComingSoonPlaceholder title="CSM Active Projects" description="View active product implementations and service projects grouped by CSM. Data will be sourced from Salesforce." />} />
 
           {/* PM Routes */}
@@ -317,6 +329,7 @@ function Dashboard() {
           <Route path="/customer/support" element={<SupportCustomersView />} />
           <Route path="/customer/usage" element={<CustomerUsageView />} />
           <Route path="/customer/renewals" element={<CustomerRenewalView />} />
+          <Route path="/customer/health" element={<HealthView mode="customer" />} />
 
           {/* Product Routes */}
           <Route path="/product/support" element={<ProductView />} />

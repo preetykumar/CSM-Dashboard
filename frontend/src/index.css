@@ -5209,6 +5209,285 @@ header .hint {
   color: #166534;
 }
 
+/* ─── Health View (tab) ─── */
+.health-view {
+  padding: 1rem 0;
+}
+
+.health-view-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.health-view-header h2 {
+  margin: 0;
+}
+
+.health-stats-bar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.health-stat-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  background: white;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.15s;
+}
+
+.health-stat-btn:hover {
+  background: #f8fafc;
+}
+
+.health-stat-btn.active {
+  border-color: #667eea;
+  background: #eef2ff;
+  font-weight: 600;
+}
+
+.health-search {
+  position: relative;
+  max-width: 400px;
+  margin-bottom: 1rem;
+}
+
+.health-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.health-table th {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 2px solid #e2e8f0;
+  font-weight: 600;
+  color: #475569;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.health-table td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.health-row.clickable {
+  cursor: pointer;
+}
+
+.health-row.clickable:hover {
+  background: #f8fafc;
+}
+
+.health-row.expanded {
+  background: #eef2ff;
+}
+
+.health-account-name {
+  font-weight: 600;
+}
+
+.health-signal-pill {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.health-loading-cell,
+.health-error-cell {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.health-interpretation-cell {
+  max-width: 300px;
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+/* Drill-down panel */
+.health-drilldown {
+  border: 2px solid #667eea;
+  border-radius: 12px;
+  margin: 1rem 0;
+  background: white;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.15);
+}
+
+.health-drilldown-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 10px 10px 0 0;
+}
+
+.health-drilldown-header h3 {
+  margin: 0;
+  flex: 1;
+  font-size: 1.1rem;
+}
+
+.health-drilldown-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.health-drilldown-summary .health-manual-badge {
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
+}
+
+.health-drilldown-close {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  font-size: 1.4rem;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.health-drilldown-close:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.health-drilldown .health-interpretation {
+  margin: 1rem 1.25rem 0;
+}
+
+.health-drilldown-dimension {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.health-drilldown-dimension:last-of-type {
+  border-bottom: none;
+}
+
+.health-drilldown-dim-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.health-drilldown-dim-header h4 {
+  margin: 0;
+  flex: 1;
+  font-size: 0.92rem;
+}
+
+.health-drilldown-dim-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.health-signals-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.health-signals-table th {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  font-weight: 600;
+  color: #64748b;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.78rem;
+}
+
+.health-signals-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #f8fafc;
+}
+
+.health-signal-name {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.health-signal-detail-cell {
+  color: #475569;
+}
+
+.health-formula-details {
+  margin-top: 0.5rem;
+}
+
+.health-formula-details summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: #667eea;
+  font-weight: 500;
+}
+
+.health-formula-details summary:hover {
+  text-decoration: underline;
+}
+
+.health-formula-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+}
+
+.health-formula-table th {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+.health-formula-table td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid #f8fafc;
+  color: #475569;
+}
+
+.health-drilldown-manual {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid #e2e8f0;
+  background: #fafbfc;
+  border-radius: 0 0 10px 10px;
+}
+
+.health-drilldown-manual h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+
+.health-risk-tag {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin-left: 0.5rem;
+}
+
 .health-manual-badge.manual-fair,
 .health-manual-badge.manual-ok {
   background: #fef3c7;
