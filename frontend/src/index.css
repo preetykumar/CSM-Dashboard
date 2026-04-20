@@ -5204,6 +5204,110 @@ header .hint {
   font-weight: 600;
 }
 
+.health-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.health-summary-dim {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.health-compact-dim {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.health-compact-dim-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: inherit;
+  opacity: 0.8;
+}
+
+/* Dimension detail (full card) */
+.health-dim-detail {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.health-dim-detail:last-of-type {
+  border-bottom: none;
+}
+
+.health-dim-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.health-dim-detail-title {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.health-dim-detail-title strong {
+  font-size: 0.9rem;
+}
+
+.health-dim-description {
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.health-dim-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.health-dim-detail-table th {
+  text-align: left;
+  padding: 0.35rem 0.5rem;
+  font-weight: 600;
+  color: #64748b;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.health-dim-detail-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #f8fafc;
+  vertical-align: middle;
+}
+
+.health-current-value {
+  color: #1e293b;
+  font-weight: 500;
+}
+
+.health-threshold-col {
+  min-width: 200px;
+}
+
+.health-threshold-cell {
+  font-size: 0.78rem;
+}
+
+.health-threshold-text {
+  color: #64748b;
+}
+
+.threshold-green { color: #16a34a; }
+.threshold-yellow { color: #ca8a04; }
+.threshold-red { color: #dc2626; }
+
 .health-manual-badge.manual-good {
   background: #dcfce7;
   color: #166534;
