@@ -5308,6 +5308,109 @@ header .hint {
 .threshold-yellow { color: #ca8a04; }
 .threshold-red { color: #dc2626; }
 
+/* Health Info Button & Panel */
+.health-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: #667eea;
+  cursor: pointer;
+  padding: 2px;
+  margin-left: 6px;
+  vertical-align: middle;
+  border-radius: 50%;
+  transition: background 0.15s;
+}
+
+.health-info-btn:hover {
+  background: rgba(102, 126, 234, 0.1);
+}
+
+.health-info-btn:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: 2px;
+}
+
+.health-info-panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.health-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  border-radius: 8px 8px 0 0;
+}
+
+.health-info-header h4 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.health-info-close {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #64748b;
+  padding: 0 4px;
+}
+
+.health-info-close:hover {
+  color: #1e293b;
+}
+
+.health-info-body {
+  padding: 1rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.health-info-intro {
+  margin: 0 0 1rem;
+  color: #475569;
+}
+
+.health-info-dimension {
+  margin-bottom: 1rem;
+}
+
+.health-info-dimension h5 {
+  margin: 0 0 0.25rem;
+  font-size: 0.88rem;
+}
+
+.health-info-sources {
+  margin: 0.25rem 0 0;
+  padding-left: 1.25rem;
+  color: #475569;
+}
+
+.health-info-sources li {
+  margin-bottom: 0.25rem;
+}
+
+.health-info-note {
+  margin: 1rem 0 0;
+  padding: 0.75rem;
+  background: #fffbeb;
+  border-left: 3px solid #ca8a04;
+  border-radius: 4px;
+  color: #854d0e;
+  font-style: italic;
+}
+
 .health-manual-badge.manual-good {
   background: #dcfce7;
   color: #166534;

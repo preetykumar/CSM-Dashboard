@@ -126,10 +126,100 @@ function DimensionDetail({ dimKey, dimension }: { dimKey: string; dimension: Dim
   );
 }
 
+function HealthInfoPanel({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="health-info-panel">
+      <div className="health-info-header">
+        <h4>How Customer Health is Calculated</h4>
+        <button className="health-info-close" onClick={onClose} aria-label="Close">&times;</button>
+      </div>
+      <div className="health-info-body">
+        <p className="health-info-intro">
+          Each customer is scored across three dimensions. Each signal within a dimension is rated
+          <span className="threshold-green"> Green (Healthy)</span>,
+          <span className="threshold-yellow"> Yellow (Needs Attention)</span>, or
+          <span className="threshold-red"> Red (At Risk)</span>.
+          The overall dimension score is the worst-of: 2+ reds = red, 1 red or 2+ yellows = yellow, otherwise green.
+        </p>
+
+        {Object.entries(DIMENSION_INFO).map(([key, dim]) => (
+          <div key={key} className="health-info-dimension">
+            <h5>{dim.title}</h5>
+            <p className="health-dim-description">{dim.description}</p>
+            <table className="health-formula-table">
+              <thead>
+                <tr>
+                  <th>Signal</th>
+                  <th style={{ color: SIGNAL_COLORS.green }}>Green</th>
+                  <th style={{ color: SIGNAL_COLORS.yellow }}>Yellow</th>
+                  <th style={{ color: SIGNAL_COLORS.red }}>Red</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dim.thresholds.map((t, i) => (
+                  <tr key={i}>
+                    <td className="health-signal-name">{t.label}</td>
+                    <td>{t.green}</td>
+                    <td>{t.yellow}</td>
+                    <td>{t.red}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+
+        <div className="health-info-dimension">
+          <h5>Signal Combination Guide</h5>
+          <p className="health-dim-description">What the three signals together tell you about the account.</p>
+          <table className="health-formula-table">
+            <thead>
+              <tr><th>Adoption</th><th>Engagement</th><th>Support</th><th>Interpretation</th></tr>
+            </thead>
+            <tbody>
+              {[
+                { a: "green", e: "green", s: "green", t: "Reference-able. Ask for expansion and a case study." },
+                { a: "green", e: "red", s: "green", t: "Silent adopter / renewal risk. Classic surprise churn." },
+                { a: "red", e: "green", s: "green", t: "Shelfware with a smile. Re-onboard." },
+                { a: "green", e: "green", s: "red", t: "Engaged and struggling. Escalate to engineering." },
+                { a: "red", e: "red", s: "red", t: "Write the save plan. Or the eulogy." },
+                { a: "red", e: "green", s: "red", t: "Champion is loyal but can't drive usage. Org/change-management problem." },
+              ].map((row, i) => (
+                <tr key={i}>
+                  <td><SignalDot signal={row.a as Signal} size={10} /></td>
+                  <td><SignalDot signal={row.e as Signal} size={10} /></td>
+                  <td><SignalDot signal={row.s as Signal} size={10} /></td>
+                  <td>{row.t}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="health-info-dimension">
+          <h5>Data Sources</h5>
+          <ul className="health-info-sources">
+            <li><strong>Adoption:</strong> Salesforce Enterprise Subscriptions (seat counts, product types)</li>
+            <li><strong>Engagement:</strong> Salesforce Account Contact Roles, Account activity dates</li>
+            <li><strong>Support:</strong> Zendesk tickets (priority, escalation, type)</li>
+            <li><strong>Manual Score:</strong> CS_Health__c field in Salesforce (set by CSM)</li>
+          </ul>
+        </div>
+
+        <p className="health-info-note">
+          Zero tickets is not green. Often it means the product isn't being used deeply enough to generate friction.
+          Always read Support against Adoption — the combination reveals whether silence is confidence or abandonment.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function CustomerHealthCard({ accountName, compact }: Props) {
   const [data, setData] = useState<HealthScoreResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showInfo, setShowInfo] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -181,7 +271,17 @@ export function CustomerHealthCard({ accountName, compact }: Props) {
   return (
     <div className="health-card">
       <div className="health-card-header">
-        <h4 className="health-card-title">Customer Health Score</h4>
+        <h4 className="health-card-title">
+          Customer Health Score
+          <button
+            className="health-info-btn"
+            onClick={(e) => { e.stopPropagation(); setShowInfo(!showInfo); }}
+            aria-label="How health score is calculated"
+            title="How health score is calculated"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" strokeWidth="1.5"/><text x="8" y="12" textAnchor="middle" fontSize="11" fontWeight="700" fontFamily="serif">i</text></svg>
+          </button>
+        </h4>
         <div className="health-summary-row">
           <span className="health-summary-dim">
             <SignalDot signal={data.adoption.signal} size={12} /> Adoption
@@ -199,6 +299,8 @@ export function CustomerHealthCard({ accountName, compact }: Props) {
           )}
         </div>
       </div>
+
+      {showInfo && <HealthInfoPanel onClose={() => setShowInfo(false)} />}
 
       {data.interpretation && (
         <p className="health-interpretation">{data.interpretation}</p>
