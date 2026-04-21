@@ -6,16 +6,20 @@ import { salesforceCache } from "../services/cache.js";
 const HEALTH_CACHE_TTL = 30; // 30 minutes — health scores change rarely
 
 type Signal = "green" | "yellow" | "red";
+type Trend = "improving" | "worsening" | "flat" | null;
 
 interface HealthSignal {
   signal: Signal;
   label: string;
   detail?: string;
+  trend?: Trend;
+  trendDetail?: string;
 }
 
 interface DimensionScore {
   signal: Signal;
   signals: HealthSignal[];
+  trend?: Trend;
 }
 
 interface HealthScoreResponse {
@@ -50,6 +54,34 @@ function computeOverall(signals: HealthSignal[]): Signal {
   if (reds >= 2 || (reds >= 1 && signals.length <= 2)) return "red";
   if (reds === 1 || yellows >= 2) return "yellow";
   return "green";
+}
+
+// Compute trend: higher is better (for adoption) or higher is worse (for support)
+function computeTrend(current: number, previous: number, higherIsBetter: boolean = true, threshold: number = 0.15, minPrevious: number = 3): Trend {
+  if (previous < minPrevious && current < minPrevious) return null; // not enough data
+  if (previous === 0 && current > 0) return higherIsBetter ? "improving" : "worsening";
+  if (previous === 0) return "flat";
+  const pctChange = (current - previous) / previous;
+  if (Math.abs(pctChange) < threshold) return "flat";
+  if (pctChange > 0) return higherIsBetter ? "improving" : "worsening";
+  return higherIsBetter ? "worsening" : "improving";
+}
+
+function formatTrendDetail(label: string, current: number, previous: number): string {
+  if (previous === 0 && current === 0) return "";
+  const pctChange = previous > 0 ? Math.round(((current - previous) / previous) * 100) : 0;
+  const arrow = pctChange > 0 ? "+" : "";
+  return `${label}: ${previous}\u2192${current} (${arrow}${pctChange}%)`;
+}
+
+function computeDimensionTrend(signals: HealthSignal[]): Trend {
+  const trends = signals.map((s) => s.trend).filter((t): t is Trend => t !== null && t !== undefined);
+  if (trends.length === 0) return null;
+  const worsening = trends.filter((t) => t === "worsening").length;
+  const improving = trends.filter((t) => t === "improving").length;
+  if (worsening > improving) return "worsening";
+  if (improving > worsening) return "improving";
+  return "flat";
 }
 
 export function createHealthRoutes(db: IDatabaseService, salesforce: SalesforceService): Router {
@@ -240,9 +272,9 @@ function buildHealthResponse(
   const engagementSignals = computeEngagementSignals(account || {}, contactRoles);
   const supportSignals = computeSupportSignals(orgTicketData, adoptionSignals);
 
-  const adoption: DimensionScore = { signal: computeOverall(adoptionSignals), signals: adoptionSignals };
-  const engagement: DimensionScore = { signal: computeOverall(engagementSignals), signals: engagementSignals };
-  const support: DimensionScore = { signal: computeOverall(supportSignals), signals: supportSignals };
+  const adoption: DimensionScore = { signal: computeOverall(adoptionSignals), signals: adoptionSignals, trend: computeDimensionTrend(adoptionSignals) };
+  const engagement: DimensionScore = { signal: computeOverall(engagementSignals), signals: engagementSignals, trend: computeDimensionTrend(engagementSignals) };
+  const support: DimensionScore = { signal: computeOverall(supportSignals), signals: supportSignals, trend: computeDimensionTrend(supportSignals) };
 
   return {
     accountName,
@@ -346,28 +378,76 @@ function computeSupportSignals(ticketData: OrgTicketData, adoptionSignals: Healt
 
   const now = Date.now();
   const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
-  const recentTickets = tickets.filter((t: any) => new Date(t.created_at).getTime() > ninetyDaysAgo);
+  const oneEightyDaysAgo = now - 180 * 24 * 60 * 60 * 1000;
+
+  const currentWindow = tickets.filter((t: any) => new Date(t.created_at).getTime() > ninetyDaysAgo);
+  const previousWindow = tickets.filter((t: any) => {
+    const ts = new Date(t.created_at).getTime();
+    return ts > oneEightyDaysAgo && ts <= ninetyDaysAgo;
+  });
+
   const sevWeights: Record<string, number> = { urgent: 5, high: 2, normal: 1, low: 0.5 };
-  const weightedVolume = recentTickets.reduce((sum: number, t: any) => sum + (sevWeights[t.priority] || 1), 0);
+  const calcWeighted = (tix: any[]) => tix.reduce((sum: number, t: any) => sum + (sevWeights[t.priority] || 1), 0);
+
+  const currentWeighted = calcWeighted(currentWindow);
+  const previousWeighted = calcWeighted(previousWindow);
 
   let volumeSignal: Signal = "green";
-  if (weightedVolume > 50) volumeSignal = "red";
-  else if (weightedVolume > 20) volumeSignal = "yellow";
-  signals.push({ signal: volumeSignal, label: "Ticket Volume (90d)", detail: `${recentTickets.length} tickets, weighted score: ${Math.round(weightedVolume)}` });
+  if (currentWeighted > 50) volumeSignal = "red";
+  else if (currentWeighted > 20) volumeSignal = "yellow";
+  const volumeTrend = computeTrend(currentWeighted, previousWeighted, false); // higher is worse
+  signals.push({
+    signal: volumeSignal,
+    label: "Ticket Volume (90d)",
+    detail: `${currentWindow.length} tickets, weighted score: ${Math.round(currentWeighted)}`,
+    trend: volumeTrend,
+    trendDetail: formatTrendDetail("Weighted volume", Math.round(currentWeighted), Math.round(previousWeighted)),
+  });
 
+  // Escalations — compare current vs previous window
+  const currentEsc = currentWindow.filter((t: any) => t.is_escalated).length;
+  const previousEsc = previousWindow.filter((t: any) => t.is_escalated).length;
   let escSignal: Signal = "green";
-  if (escalationCount >= 4) escSignal = "red";
-  else if (escalationCount >= 2) escSignal = "yellow";
-  signals.push({ signal: escSignal, label: "Escalations", detail: `${escalationCount} escalated ticket${escalationCount !== 1 ? "s" : ""}` });
+  if (currentEsc >= 4) escSignal = "red";
+  else if (currentEsc >= 2) escSignal = "yellow";
+  const escTrend = computeTrend(currentEsc, previousEsc, false, 0.15, 1);
+  signals.push({
+    signal: escSignal,
+    label: "Escalations",
+    detail: `${currentEsc} escalated ticket${currentEsc !== 1 ? "s" : ""} (last 90d)`,
+    trend: escTrend,
+    trendDetail: formatTrendDetail("Escalations", currentEsc, previousEsc),
+  });
 
-  const bugs = recentTickets.filter((t: any) => t.ticket_type === "bug" || t.ticket_type === "incident").length;
-  const howTo = recentTickets.filter((t: any) => t.ticket_type === "question" || t.ticket_type === "how_to").length;
-  if (recentTickets.length >= 5) {
-    const bugRatio = bugs / recentTickets.length;
+  // Bug:how-to ratio — compare windows
+  const currentBugs = currentWindow.filter((t: any) => t.ticket_type === "bug" || t.ticket_type === "incident").length;
+  const previousBugs = previousWindow.filter((t: any) => t.ticket_type === "bug" || t.ticket_type === "incident").length;
+  const currentHowTo = currentWindow.filter((t: any) => t.ticket_type === "question" || t.ticket_type === "how_to").length;
+
+  if (currentWindow.length >= 5) {
+    const currentBugRatio = currentBugs / currentWindow.length;
+    const previousBugRatio = previousWindow.length >= 5 ? previousBugs / previousWindow.length : null;
     let ratioSignal: Signal = "green";
-    if (bugRatio > 0.6) ratioSignal = "red";
-    else if (bugRatio > 0.4) ratioSignal = "yellow";
-    signals.push({ signal: ratioSignal, label: "Bug:How-to Ratio", detail: `${bugs} bugs, ${howTo} how-to (${Math.round(bugRatio * 100)}% bugs)` });
+    if (currentBugRatio > 0.6) ratioSignal = "red";
+    else if (currentBugRatio > 0.4) ratioSignal = "yellow";
+
+    let ratioTrend: Trend = null;
+    let ratioTrendDetail = "";
+    if (previousBugRatio !== null) {
+      const diff = currentBugRatio - previousBugRatio;
+      if (Math.abs(diff) < 0.05) ratioTrend = "flat";
+      else if (diff > 0) ratioTrend = "worsening"; // more bugs = worse
+      else ratioTrend = "improving";
+      ratioTrendDetail = `Bug ratio: ${Math.round(previousBugRatio * 100)}%\u2192${Math.round(currentBugRatio * 100)}%`;
+    }
+
+    signals.push({
+      signal: ratioSignal,
+      label: "Bug:How-to Ratio",
+      detail: `${currentBugs} bugs, ${currentHowTo} how-to (${Math.round(currentBugRatio * 100)}% bugs)`,
+      trend: ratioTrend,
+      trendDetail: ratioTrendDetail,
+    });
   }
 
   return signals;

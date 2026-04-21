@@ -5308,6 +5308,16 @@ header .hint {
 .threshold-yellow { color: #ca8a04; }
 .threshold-red { color: #dc2626; }
 
+/* Health Trend Arrows */
+.health-trend-arrow {
+  display: inline-block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-left: 4px;
+  vertical-align: middle;
+  line-height: 1;
+}
+
 /* Health Info Button & Panel */
 .health-info-btn {
   display: inline-flex;

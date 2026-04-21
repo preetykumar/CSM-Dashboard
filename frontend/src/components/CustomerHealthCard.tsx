@@ -1,7 +1,24 @@
 import { useEffect, useState } from "react";
-import { fetchHealthScore, type HealthScoreResponse, type DimensionScore } from "../services/api";
+import { fetchHealthScore, type HealthScoreResponse, type DimensionScore, type Trend } from "../services/api";
 
 type Signal = "green" | "yellow" | "red";
+
+const TREND_DISPLAY: Record<string, { arrow: string; color: string; label: string }> = {
+  improving: { arrow: "\u2191", color: "#16a34a", label: "Improving" },
+  worsening: { arrow: "\u2193", color: "#dc2626", label: "Worsening" },
+  flat: { arrow: "\u2192", color: "#6b7280", label: "Flat" },
+};
+
+function TrendArrow({ trend, detail }: { trend?: Trend; detail?: string }) {
+  if (!trend) return null;
+  const info = TREND_DISPLAY[trend];
+  if (!info) return null;
+  return (
+    <span className="health-trend-arrow" style={{ color: info.color }} title={detail || info.label}>
+      {info.arrow}
+    </span>
+  );
+}
 
 interface Props {
   accountName: string;
@@ -87,6 +104,7 @@ function DimensionDetail({ dimKey, dimension }: { dimKey: string; dimension: Dim
           <span className="health-dim-description">{info.description}</span>
         </div>
         <SignalPill signal={dimension.signal} />
+        <TrendArrow trend={dimension.trend} />
       </div>
 
       <table className="health-dim-detail-table">
@@ -95,6 +113,7 @@ function DimensionDetail({ dimKey, dimension }: { dimKey: string; dimension: Dim
             <th>Signal</th>
             <th>Current Value</th>
             <th>Status</th>
+            <th>Trend</th>
             <th className="health-threshold-col">Thresholds: Green / Yellow / Red</th>
           </tr>
         </thead>
@@ -106,6 +125,7 @@ function DimensionDetail({ dimKey, dimension }: { dimKey: string; dimension: Dim
                 <td className="health-signal-name">{s.label}</td>
                 <td className="health-current-value">{s.detail || "\u2014"}</td>
                 <td><SignalPill signal={s.signal} /></td>
+                <td><TrendArrow trend={s.trend} detail={s.trendDetail} /></td>
                 <td className="health-threshold-cell">
                   {threshold ? (
                     <span className="health-threshold-text">
@@ -248,14 +268,17 @@ export function CustomerHealthCard({ accountName, compact }: Props) {
         <span className="health-compact-label">Health</span>
         <span className="health-compact-dim">
           <SignalDot signal={data.adoption.signal} size={10} />
+          <TrendArrow trend={data.adoption.trend} />
           <span className="health-compact-dim-label">A</span>
         </span>
         <span className="health-compact-dim">
           <SignalDot signal={data.engagement.signal} size={10} />
+          <TrendArrow trend={data.engagement.trend} />
           <span className="health-compact-dim-label">E</span>
         </span>
         <span className="health-compact-dim">
           <SignalDot signal={data.support.signal} size={10} />
+          <TrendArrow trend={data.support.trend} />
           <span className="health-compact-dim-label">S</span>
         </span>
         {data.manualHealthScore && (
@@ -284,13 +307,13 @@ export function CustomerHealthCard({ accountName, compact }: Props) {
         </h4>
         <div className="health-summary-row">
           <span className="health-summary-dim">
-            <SignalDot signal={data.adoption.signal} size={12} /> Adoption
+            <SignalDot signal={data.adoption.signal} size={12} /> Adoption <TrendArrow trend={data.adoption.trend} />
           </span>
           <span className="health-summary-dim">
-            <SignalDot signal={data.engagement.signal} size={12} /> Engagement
+            <SignalDot signal={data.engagement.signal} size={12} /> Engagement <TrendArrow trend={data.engagement.trend} />
           </span>
           <span className="health-summary-dim">
-            <SignalDot signal={data.support.signal} size={12} /> Support
+            <SignalDot signal={data.support.signal} size={12} /> Support <TrendArrow trend={data.support.trend} />
           </span>
           {data.manualHealthScore && (
             <span className={`health-manual-badge manual-${data.manualHealthScore.toLowerCase()}`}>

@@ -5,11 +5,29 @@ import {
   fetchAccountsWithSubscriptions,
   fetchHealthScoresBatch,
   type HealthScoreResponse,
+  type Trend,
 } from "../services/api";
 import { Pagination, usePagination } from "./Pagination";
 import type { Organization } from "../types";
 
 type Signal = "green" | "yellow" | "red";
+
+const TREND_DISPLAY: Record<string, { arrow: string; color: string; label: string }> = {
+  improving: { arrow: "\u2191", color: "#16a34a", label: "Improving" },
+  worsening: { arrow: "\u2193", color: "#dc2626", label: "Worsening" },
+  flat: { arrow: "\u2192", color: "#6b7280", label: "Flat" },
+};
+
+function TrendArrow({ trend, detail }: { trend?: Trend; detail?: string }) {
+  if (!trend) return null;
+  const info = TREND_DISPLAY[trend];
+  if (!info) return null;
+  return (
+    <span className="health-trend-arrow" style={{ color: info.color }} title={detail || info.label}>
+      {info.arrow}
+    </span>
+  );
+}
 
 interface Props {
   mode: "csm" | "customer";
@@ -600,16 +618,19 @@ export function HealthView({ mode }: Props) {
                     <span className="health-signal-pill" style={{ backgroundColor: SIGNAL_BG[score.adoption.signal], color: SIGNAL_COLORS[score.adoption.signal] }}>
                       {SIGNAL_LABELS[score.adoption.signal]}
                     </span>
+                    <TrendArrow trend={score.adoption.trend} />
                   </td>
                   <td>
                     <span className="health-signal-pill" style={{ backgroundColor: SIGNAL_BG[score.engagement.signal], color: SIGNAL_COLORS[score.engagement.signal] }}>
                       {SIGNAL_LABELS[score.engagement.signal]}
                     </span>
+                    <TrendArrow trend={score.engagement.trend} />
                   </td>
                   <td>
                     <span className="health-signal-pill" style={{ backgroundColor: SIGNAL_BG[score.support.signal], color: SIGNAL_COLORS[score.support.signal] }}>
                       {SIGNAL_LABELS[score.support.signal]}
                     </span>
+                    <TrendArrow trend={score.support.trend} />
                   </td>
                   <td>
                     {score.manualHealthScore ? (

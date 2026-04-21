@@ -960,15 +960,20 @@ export async function fetchUnifiedUsageMetrics(orgIdentifier: string, monitorDom
 
 // ── Health Scores ───────────────────────────────────────────────────────────
 
+export type Trend = "improving" | "worsening" | "flat" | null;
+
 export interface HealthSignal {
   signal: "green" | "yellow" | "red";
   label: string;
   detail?: string;
+  trend?: Trend;
+  trendDetail?: string;
 }
 
 export interface DimensionScore {
   signal: "green" | "yellow" | "red";
   signals: HealthSignal[];
+  trend?: Trend;
 }
 
 export interface HealthScoreResponse {
