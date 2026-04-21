@@ -28,6 +28,21 @@ function stripDomainSuffix(name: string): string {
   return name.replace(/\.(com|org|net|io|co|edu|gov|us|uk|de|fr|ca|au|jp|in)$/i, '').trim();
 }
 
+// Helper: Collapse name to alphanumeric only for fuzzy matching
+// "Iron Mountain" → "ironmountain", "T. Rowe Price" → "troweprice"
+function collapseToAlpha(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Words that are too common to use for substring matching
+const COMMON_WORDS = new Set([
+  'bank', 'university', 'digital', 'government', 'service', 'services',
+  'systems', 'technology', 'technologies', 'group', 'financial', 'health',
+  'agency', 'state', 'county', 'city', 'national', 'international',
+  'solutions', 'software', 'consulting', 'wholesale', 'insurance',
+  'federal', 'corp', 'corporation', 'company', 'holdings', 'enterprises',
+]);
+
 // Helper: Get initials from a company name, splitting on spaces and hyphens.
 // e.g., "Bristol-Myers Squibb" → "bms", "General Electric" → "ge"
 function getCompanyInitials(name: string): string {
@@ -534,12 +549,11 @@ export class SyncService {
         }
 
         // ALSO find ALL orgs whose name contains or is contained by the SF account name
-        // This handles cases like "ADP" SF account matching "ADP -Corp", "ADP Enterprise", "ADP, Inc.", etc.
-        // Also normalizes accents so "Nestlé" matches "Nestle"
         const accountNameLower = normalizeAccents(a.accountName.toLowerCase().trim());
         const accountNameNormalized = accountNameLower
           .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
           .trim();
+        const accountCollapsed = collapseToAlpha(accountNameNormalized);
 
         // Find all matching orgs by name pattern
         for (const org of orgs) {
@@ -552,30 +566,37 @@ export class SyncService {
             .replace(/,?\s*(inc\.?|llc|ltd\.?|corp\.?|corporation)$/i, "")
             .replace(/\s*-\s*(corp|enterprise|wfn|llc|inc)$/i, "")
             .trim());
+          const orgCollapsed = collapseToAlpha(orgNameNormalized);
 
-          // Match criteria:
-          // 1. Exact match (normalized, including accent normalization)
-          // 2. Org name starts with SF account name (e.g., "ADP -Corp" starts with "ADP")
-          // 3. SF account name starts with org name (e.g., "KPMG UK" starts with "KPMG",
-          //    "British Telecommunications PLC" starts with "British Telecom")
-          // 4. Org name contains SF account name as a word boundary (for longer names)
-          // 5. SF account name contains org name as a word boundary (e.g., "Nestle Purina" contains "Purina")
-          // 6. Parenthesized acronym in SF name matches org name initials
-          //    (e.g., "...Limited (BAT)" matches "British American Tobacco" → B.A.T.)
-          // 7. Org name is an acronym of the SF account name
-          //    (e.g., "BMS" matches "Bristol-Myers Squibb", "GE" matches "General Electric")
-          // 8. SF account name is an acronym of the org name
+          // Check if the account name is entirely a common word (prevent false matches)
+          const accountWords = accountNameNormalized.split(/\s+/).filter(w => w.length > 2);
+          const significantWords = accountWords.filter(w => !COMMON_WORDS.has(w));
+          const hasDistinctiveWords = significantWords.length > 0;
+
           // Escape special regex characters for word boundary matching
           const escapedAccountName = accountNameNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const escapedOrgName = orgNameNormalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
           const isMatch =
+            // 1. Exact normalized match
             orgNameNormalized === accountNameNormalized ||
             orgNameLower === accountNameLower ||
+            // 2. Collapsed alphanumeric match (catches "IronMountain" = "Iron Mountain",
+            //    "CorebridgeFinancial" = "Corebridge Financial", "troweprice" = "T. Rowe Price")
+            (accountCollapsed.length >= 4 && orgCollapsed === accountCollapsed) ||
+            // 3. Domain-based org name matches collapsed SF name
+            //    (e.g., org "troweprice.com" → collapsed "troweprice" matches "T. Rowe Price" → "troweprice")
+            (orgNameLower.includes('.') && collapseToAlpha(stripDomainSuffix(orgNameLower)) === accountCollapsed && accountCollapsed.length >= 4) ||
+            // 4. Org starts with SF name (e.g., "ADP -Corp" starts with "ADP")
             (accountNameNormalized.length >= 3 && orgNameNormalized.startsWith(accountNameNormalized)) ||
-            (orgNameNormalized.length >= 4 && accountNameNormalized.startsWith(orgNameNormalized)) ||
-            (accountNameNormalized.length >= 4 && new RegExp(`\\b${escapedAccountName}\\b`, 'i').test(orgNameLower)) ||
-            (orgNameNormalized.length >= 5 && new RegExp(`\\b${escapedOrgName}\\b`, 'i').test(accountNameLower)) ||
+            // 5. SF name starts with org name — only if org name is distinctive (not just "bank")
+            (orgNameNormalized.length >= 4 && hasDistinctiveWords && accountNameNormalized.startsWith(orgNameNormalized)) ||
+            // 6. Word boundary match — only for longer, distinctive names
+            (accountNameNormalized.length >= 6 && hasDistinctiveWords && new RegExp(`\\b${escapedAccountName}\\b`, 'i').test(orgNameLower)) ||
+            (orgNameNormalized.length >= 6 && hasDistinctiveWords && new RegExp(`\\b${escapedOrgName}\\b`, 'i').test(accountNameLower)) ||
+            // 7. Parenthesized acronym matching
             matchesParenthesizedAcronym(accountNameLower, orgNameLower) ||
+            // 8. Acronym to initials matching
             matchesAcronymToInitials(orgNameNormalized, accountNameNormalized) ||
             matchesAcronymToInitials(accountNameNormalized, orgNameNormalized);
 
