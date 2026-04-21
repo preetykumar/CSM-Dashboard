@@ -521,15 +521,18 @@ export class SyncService {
       // Get organizations for matching
       const orgs = await this.db.getOrganizations();
 
-      // Primary: Build a map of Salesforce ID -> Zendesk org
+      // Primary: Build maps of Salesforce ID -> Zendesk org
+      // Zendesk stores 15-char SF IDs, Salesforce returns 18-char IDs
+      // Index by both 15-char and 18-char versions for reliable matching
       const sfIdToOrg = new Map<string, CachedOrganization>();
       for (const org of orgs) {
         if (org.salesforce_id) {
-          sfIdToOrg.set(org.salesforce_id, org);
+          sfIdToOrg.set(org.salesforce_id, org);             // as-stored (usually 15-char)
+          sfIdToOrg.set(org.salesforce_id.substring(0, 15), org); // normalized 15-char
         }
       }
 
-      console.log(`Matching using ${sfIdToOrg.size} orgs with Salesforce ID, ${orgs.length} total orgs`);
+      console.log(`Matching using ${sfIdToOrg.size / 2} orgs with Salesforce ID, ${orgs.length} total orgs`);
 
       let matchedBySfId = 0;
       let matchedByName = 0;
@@ -540,8 +543,8 @@ export class SyncService {
       for (const a of assignments) {
         let primaryZendeskOrg: CachedOrganization | undefined;
 
-        // Primary: Match by Salesforce Account ID
-        primaryZendeskOrg = sfIdToOrg.get(a.accountId);
+        // Primary: Match by Salesforce Account ID (try 18-char, then 15-char)
+        primaryZendeskOrg = sfIdToOrg.get(a.accountId) || sfIdToOrg.get(a.accountId.substring(0, 15));
         if (primaryZendeskOrg) {
           matchedBySfId++;
           // Update the org's salesforce_account_name for display
@@ -667,10 +670,11 @@ export class SyncService {
       for (const org of orgs) {
         if (org.salesforce_id) {
           sfIdToOrg.set(org.salesforce_id, org);
+          sfIdToOrg.set(org.salesforce_id.substring(0, 15), org);
         }
       }
 
-      console.log(`Matching PM assignments using ${sfIdToOrg.size} orgs with Salesforce ID`);
+      console.log(`Matching PM assignments using ${sfIdToOrg.size / 2} orgs with Salesforce ID`);
 
       let matchedBySfId = 0;
       let matchedByName = 0;
@@ -679,8 +683,8 @@ export class SyncService {
       const cachedAssignments: CachedPMAssignment[] = assignments.map((a) => {
         let primaryZendeskOrg: CachedOrganization | undefined;
 
-        // Primary: Match by Salesforce Account ID
-        primaryZendeskOrg = sfIdToOrg.get(a.accountId);
+        // Primary: Match by Salesforce Account ID (try 18-char, then 15-char)
+        primaryZendeskOrg = sfIdToOrg.get(a.accountId) || sfIdToOrg.get(a.accountId.substring(0, 15));
         if (primaryZendeskOrg) {
           matchedBySfId++;
         }
