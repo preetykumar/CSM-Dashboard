@@ -561,8 +561,12 @@ export class SyncService {
         // Find all matching orgs by name pattern
         for (const org of orgs) {
           // Skip if already matched by SF ID or is the primary match
-          if (org.salesforce_id === a.accountId) continue;
+          if (org.salesforce_id === a.accountId || org.salesforce_id === a.accountId.substring(0, 15)) continue;
           if (primaryZendeskOrg && org.id === primaryZendeskOrg.id) continue;
+          // Skip orgs that have a real SF Account ID (starts with "001") mapped to a DIFFERENT account
+          // Don't skip Enterprise object IDs (start with "a4o") — those aren't account mappings
+          if (org.salesforce_id && org.salesforce_id.startsWith("001") &&
+              org.salesforce_id !== a.accountId && org.salesforce_id !== a.accountId.substring(0, 15)) continue;
 
           const orgNameLower = normalizeAccents(org.name.toLowerCase().trim());
           const orgNameNormalized = stripDomainSuffix(orgNameLower
