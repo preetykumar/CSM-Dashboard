@@ -364,6 +364,42 @@ External API calls (Salesforce, Amplitude) are cached in memory with TTL to elim
 - **Cache invalidation**: Caches are cleared at the start of sync pre-warming, so fresh data replaces stale entries
 - When adding new external API routes, always wrap them with caching to prevent slow page loads
 
+### 14. Salesforce Account ID Matching (15 vs 18 characters)
+- Salesforce returns **18-character** Account IDs (e.g., `0015000001Z0wZ3AAJ`)
+- Zendesk stores IDs as **15-character** in the `salesforce_id` custom field (e.g., `0015000001Z0wZ3`)
+- The sync code must match by 15-char prefix: index by both `sfIdToOrg.set(id, org)` and `sfIdToOrg.set(id.substring(0, 15), org)`
+- **CRITICAL**: Zendesk orgs with a real Account ID (`001*`) in `salesforce_id` must NOT be re-mapped by fuzzy name matching to a different account. Only Enterprise object IDs (`a4o*`) can be overridden.
+- When looking up SF Account IDs, always use the CSM assignment data (source of truth) — never guess IDs by fuzzy name search
+
+### 15. Account Hierarchy and Org Matching
+- SF accounts form a tree: parent accounts have child accounts (e.g., "The Walt Disney Co" → "Disney Technology Services Co. LLC")
+- CSM assignments exist on both parent and child accounts
+- Zendesk orgs map to individual SF accounts via `salesforce_id`
+- The sync matches by: (1) SF ID exact match, (2) fuzzy name match as fallback
+- Fuzzy matching uses: collapsed alphanumeric comparison, domain-to-name matching, acronym-to-initials, word boundary matching
+- Common words (bank, university, digital, service, etc.) are blacklisted from substring matching to prevent false positives
+- Script to batch-fix Zendesk SF IDs: `scripts/fix-zendesk-sf-ids.py` (--dry-run or --apply)
+
+### 16. Amplitude Usage Data Architecture
+- Enterprise UUID (`Enterprise_UUID__c` on `Enterprise_Subscription__c`) is the linking key between SF and Amplitude
+- `gp:organization` in Amplitude stores UUIDs for DevTools Extension; human-readable names for other products
+- Unified endpoint `GET /api/amplitude/unified/:orgIdentifier` fetches all products in parallel
+- Axe Monitor uses `gp:initial_referring_domain` with `contains` match (workaround until UUID is deployed)
+- Products tracked: Axe Accounts, DevTools Extension, Developer Hub, DevTools Mobile, Axe Assistant, Deque University, Axe Monitor
+- Products removed: Axe Auditor (no org tracking), Axe Linter (no data), MCP Server (no data), Axe Reports (no gp:organization data)
+- Cache TTLs: renewals 10min, amplitude 30min, salesforce 30min, health scores 30min
+
+### 17. Customer Health Dashboard
+- Three dimensions: Product Adoption, Customer Engagement, Support
+- Each gets green/yellow/red signal with individual sub-signals
+- Adoption: seat activation % (SF subscriptions), product breadth
+- Engagement: exec sponsor (SF AccountContactRole), stakeholder breadth, last contact date
+- Support: sev-weighted ticket volume, escalations, bug:how-to ratio (Zendesk tickets)
+- Support trends computed by comparing last-90d vs prior-90d ticket windows
+- Manual health score from `CS_Health__c` field in SF displayed alongside automated score
+- Batch endpoint `POST /api/health/batch` for bulk scoring (reduces N individual calls to 3 bulk SF queries)
+- Frontend caches health scores client-side for 5 minutes to avoid duplicate fetches
+
 ---
 
 ## Key Files
@@ -378,7 +414,13 @@ External API calls (Salesforce, Amplitude) are cached in memory with TTL to elim
 | `/backend/src/services/sync.ts` | Sync service (Zendesk, Salesforce, GitHub) |
 | `/backend/src/services/agent.ts` | AI chat agent with tool definitions |
 | `/backend/src/services/cache.ts` | In-memory TTL cache for Salesforce/Amplitude API responses |
+| `/backend/src/routes/health.ts` | Customer health score computation (adoption, engagement, support) |
+| `/backend/src/routes/amplitude.ts` | Amplitude routes including unified usage endpoint |
+| `/frontend/src/components/HealthView.tsx` | Health tab with drill-down and scoring methodology |
+| `/frontend/src/components/CustomerHealthCard.tsx` | Health score card (compact and full modes) |
+| `/frontend/src/components/UnifiedUsageSection.tsx` | Unified usage data display by product |
 | `/frontend/src/App.tsx` | Main React app with routing and layout |
+| `/scripts/fix-zendesk-sf-ids.py` | Batch-fix Zendesk SF ID fields (15→18 char upgrade) |
 | `/RELEASE_NOTES.md` | User-facing changelog (linked from dashboard footer) |
 | `/Dockerfile` | Multi-stage Docker build for Cloud Run |
 | `/cloudbuild.yaml` | Cloud Build configuration (includes Cloud SQL instance) |
