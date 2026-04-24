@@ -1,4 +1,4 @@
-import type { CustomerSummary, DetailedCustomerSummary, Organization, Ticket, CSMPortfolio, PMPortfolio, EnhancedCustomerSummary, GitHubDevelopmentStatus } from "../types";
+import type { CustomerSummary, DetailedCustomerSummary, Organization, Ticket, CSMPortfolio, CSMCustomerSummary, PMPortfolio, EnhancedCustomerSummary, GitHubDevelopmentStatus } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -64,6 +64,7 @@ export async function searchTickets(query: string): Promise<Ticket[]> {
 // CSM Portfolio APIs
 export interface CSMPortfoliosResponse {
   portfolios: CSMPortfolio[];
+  unassignedAccounts?: CSMCustomerSummary[];
   count: number;
   cached: boolean;
   isAdmin: boolean;

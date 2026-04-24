@@ -880,8 +880,62 @@ export function createCachedRoutes(db: IDatabaseService): Router {
 
       portfolios.sort((a, b) => b.totalTickets - a.totalTickets);
 
+      // For admins: find orgs with tickets but no CSM assignment
+      let unassignedAccounts: CSMCustomerSummary[] | undefined;
+      if (userIsAdmin) {
+        const allAssignments = await db.getCSMAssignments();
+        const assignedOrgIds = new Set(allAssignments.filter(a => a.zendesk_org_id).map(a => a.zendesk_org_id));
+        const allTickets = await db.getAllTickets();
+        const orgsWithTickets = new Set(allTickets.map(t => t.organization_id).filter(Boolean));
+        const unassignedOrgIds = [...orgsWithTickets].filter(id => !assignedOrgIds.has(id));
+
+        unassignedAccounts = [];
+        for (const orgId of unassignedOrgIds) {
+          const org = allOrgs.find(o => o.id === orgId);
+          if (!org) continue;
+          const tickets = await db.getTicketsByOrganization(orgId);
+          if (tickets.length === 0) continue;
+          const ticketStats = await db.getTicketStats(orgId);
+          const priorityBreakdown = await db.getPriorityBreakdown(orgId);
+
+          unassignedAccounts.push({
+            organization: {
+              id: org.id,
+              url: `https://dequehelp.zendesk.com/agent/organizations/${org.id}`,
+              name: org.name,
+              domain_names: JSON.parse(org.domain_names || "[]"),
+              salesforce_account_name: org.salesforce_account_name || undefined,
+              sf_ultimate_parent_name: org.sf_ultimate_parent_name || undefined,
+              created_at: org.created_at,
+              updated_at: org.updated_at,
+            },
+            tickets: tickets.slice(0, 5).map(t => ({
+              id: t.id,
+              subject: t.subject,
+              status: t.status,
+              priority: t.priority,
+              ticket_type: t.ticket_type || undefined,
+              is_escalated: t.is_escalated === 1,
+              product: t.product || undefined,
+              module: t.module || undefined,
+              issue_subtype: t.issue_subtype || undefined,
+              created_at: t.created_at,
+              updated_at: t.updated_at,
+              url: `https://dequehelp.zendesk.com/agent/tickets/${t.id}`,
+            })),
+            ticketStats,
+            priorityBreakdown,
+            featureRequests: 0,
+            problemReports: 0,
+            escalations: tickets.filter(t => t.is_escalated === 1).length,
+          });
+        }
+        unassignedAccounts.sort((a, b) => b.ticketStats.total - a.ticketStats.total);
+      }
+
       res.json({
         portfolios,
+        unassignedAccounts,
         count: portfolios.length,
         cached: true,
         isAdmin: userIsAdmin,

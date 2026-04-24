@@ -89,12 +89,18 @@ export function CSMPortfolioView() {
   // Apply pagination to sorted portfolios
   const paginatedPortfolios = usePagination(sortedPortfolios, pageSize, currentPage);
 
+  const [unassignedAccounts, setUnassignedAccounts] = useState<CSMCustomerSummary[]>([]);
+  const [showUnassigned, setShowUnassigned] = useState(false);
+
   useEffect(() => {
     async function loadPortfolios() {
       try {
         const data = await fetchCSMPortfolios();
         setPortfolios(data.portfolios);
         setIsAdmin(data.isAdmin);
+        if (data.unassignedAccounts) {
+          setUnassignedAccounts(data.unassignedAccounts);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load portfolios");
       } finally {
@@ -151,6 +157,54 @@ export function CSMPortfolioView() {
             }
           />
         ))}
+
+        {/* Unassigned accounts - admin only */}
+        {isAdmin && unassignedAccounts.length > 0 && (
+          <div className="csm-portfolio unassigned-portfolio">
+            <div
+              className={`csm-header unassigned-header ${showUnassigned ? "expanded" : ""}`}
+              onClick={() => setShowUnassigned(!showUnassigned)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowUnassigned(!showUnassigned); } }}
+              aria-expanded={showUnassigned}
+            >
+              <div className="csm-info">
+                <h3>No CSM Assigned</h3>
+                <span className="csm-email">Not currently assigned — should be</span>
+              </div>
+              <div className="csm-stats">
+                <div className="csm-stat">
+                  <span className="value">{unassignedAccounts.length}</span>
+                  <span className="label">Accounts</span>
+                </div>
+                <div className="csm-stat">
+                  <span className="value">{unassignedAccounts.reduce((s, c) => s + c.ticketStats.total, 0)}</span>
+                  <span className="label">Tickets</span>
+                </div>
+              </div>
+              <span className="expand-icon">{showUnassigned ? "\u25BC" : "\u25B6"}</span>
+            </div>
+
+            {showUnassigned && (
+              <div className="csm-customers">
+                {unassignedAccounts.map((customer) => (
+                  <div key={customer.organization.id} className="customer-card">
+                    <div className="customer-header">
+                      <span className="customer-name">
+                        {customer.organization.salesforce_account_name || customer.organization.name}
+                      </span>
+                      <span className="customer-stats">
+                        {customer.ticketStats.total} tickets
+                        {customer.escalations > 0 && ` \u00B7 ${customer.escalations} escalated`}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
