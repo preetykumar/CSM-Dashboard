@@ -19,15 +19,15 @@ function isAdmin(email: string | undefined): boolean {
   return ADMIN_EMAILS.some((admin) => admin.toLowerCase() === email.toLowerCase());
 }
 
-// Helper: Expand org IDs to include all orgs sharing the same salesforce_account_name
-// or the same sf_ultimate_parent_name. This handles:
-// 1. One SF account → multiple Zendesk orgs (e.g., "AXA Assistance France" matches both
-//    "axa.fr" and "AXA Assistance France" in Zendesk)
-// 2. Parent company grouping (e.g., "Purina" and "Blue Bottle Coffee" both under "Nestle")
+// Helper: Expand org IDs to include related orgs, but only if they have the
+// same CSM assigned or no CSM at all. Prevents sister companies under the same
+// parent (e.g., Audi under Volkswagen) from appearing in a CSM's portfolio
+// when that CSM only manages one subsidiary (e.g., Porsche).
 async function expandOrgIdsByParentName(
   db: IDatabaseService,
   orgIds: number[],
-  allOrgs?: Awaited<ReturnType<IDatabaseService["getOrganizations"]>>
+  allOrgs?: Awaited<ReturnType<IDatabaseService["getOrganizations"]>>,
+  csmEmail?: string
 ): Promise<number[]> {
   const orgs = allOrgs || (await db.getOrganizations());
 
@@ -50,9 +50,31 @@ async function expandOrgIdsByParentName(
     }
   }
 
+  // Build a map of org ID -> assigned CSM email for filtering
+  const orgCsmMap = new Map<number, string>();
+  if (csmEmail) {
+    const allAssignments = await db.getCSMAssignments();
+    for (const a of allAssignments) {
+      if (a.zendesk_org_id) {
+        orgCsmMap.set(a.zendesk_org_id, a.csm_email);
+      }
+    }
+  }
+
+  // For parent expansion: only include sibling orgs that have the SAME CSM assigned.
+  // Unassigned siblings under a shared parent should NOT automatically appear in
+  // a CSM's portfolio (e.g., Audi under Volkswagen shouldn't appear for Porsche's CSM).
+  const shouldIncludeForParent = (candidateOrgId: number): boolean => {
+    if (!csmEmail) return true; // No CSM filter, include all
+    const assignedCsm = orgCsmMap.get(candidateOrgId);
+    if (!assignedCsm) return false; // Unassigned — don't pull into CSM portfolio
+    return assignedCsm.toLowerCase() === csmEmail.toLowerCase();
+  };
+
   const expandedSet = new Set(orgIds);
 
   // 1. Expand by salesforce_account_name (same SF account → multiple ZD orgs)
+  // Always include these — same account, just different ZD orgs
   for (const orgId of orgIds) {
     const org = orgLookup.get(orgId);
     if (org?.salesforce_account_name) {
@@ -61,12 +83,16 @@ async function expandOrgIdsByParentName(
     }
   }
 
-  // 2. Expand by sf_ultimate_parent_name (parent hierarchy grouping)
+  // 2. Expand by sf_ultimate_parent_name — only if same CSM or no CSM
   for (const orgId of orgIds) {
     const org = orgLookup.get(orgId);
     if (org?.sf_ultimate_parent_name) {
       const children = parentNameToOrgIds.get(org.sf_ultimate_parent_name.toLowerCase()) || [];
-      for (const id of children) expandedSet.add(id);
+      for (const id of children) {
+        if (shouldIncludeForParent(id)) {
+          expandedSet.add(id);
+        }
+      }
     }
   }
 
@@ -757,7 +783,8 @@ export function createCachedRoutes(db: IDatabaseService): Router {
 
       for (const portfolio of csmPortfolios) {
         // Expand org_ids to include sibling orgs sharing the same parent account
-        const expandedOrgIds = await expandOrgIdsByParentName(db, portfolio.org_ids, allOrgs);
+        // Only include siblings/children with the same CSM or no CSM assigned
+        const expandedOrgIds = await expandOrgIdsByParentName(db, portfolio.org_ids, allOrgs, portfolio.csm_email);
 
         const customers: CSMCustomerSummary[] = [];
         let totalTickets = 0;
@@ -893,7 +920,7 @@ export function createCachedRoutes(db: IDatabaseService): Router {
       const portfolios: PMPortfolio[] = [];
 
       for (const portfolio of pmPortfolios) {
-        // Expand org_ids to include sibling orgs sharing the same parent account
+        // Expand org_ids — PM doesn't filter by CSM, just expand all
         const expandedOrgIds = await expandOrgIdsByParentName(db, portfolio.org_ids, allOrgsForPM);
 
         const customers: CSMCustomerSummary[] = [];
