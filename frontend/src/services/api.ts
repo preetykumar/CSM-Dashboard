@@ -446,6 +446,22 @@ export async function fetchEnterpriseSubscriptionsByName(accountName: string): P
   return res.json();
 }
 
+export async function fetchEnterpriseSubscriptionsById(accountId: string): Promise<SubscriptionsResponse> {
+  const res = await fetch(
+    `${API_BASE}/salesforce/subscriptions/id/${encodeURIComponent(accountId)}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch enterprise subscriptions");
+  return res.json();
+}
+
+// Fetch subscriptions by SF Account ID if available, fallback to name
+export async function fetchEnterpriseSubscriptions(accountId?: string, accountName?: string): Promise<SubscriptionsResponse> {
+  if (accountId) return fetchEnterpriseSubscriptionsById(accountId);
+  if (accountName) return fetchEnterpriseSubscriptionsByName(accountName);
+  throw new Error("Either accountId or accountName required");
+}
+
 export interface AccountsWithSubscriptionsResponse {
   accountNames: string[];
   count: number;

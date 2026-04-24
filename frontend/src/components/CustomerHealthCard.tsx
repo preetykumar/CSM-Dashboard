@@ -22,6 +22,7 @@ function TrendArrow({ trend, detail }: { trend?: Trend; detail?: string }) {
 
 interface Props {
   accountName: string;
+  accountId?: string; // SF Account ID — preferred, falls back to accountName
   compact?: boolean;
 }
 
@@ -235,7 +236,7 @@ function HealthInfoPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function CustomerHealthCard({ accountName, compact }: Props) {
+export function CustomerHealthCard({ accountName, accountId, compact }: Props) {
   const [data, setData] = useState<HealthScoreResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -244,11 +245,11 @@ export function CustomerHealthCard({ accountName, compact }: Props) {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetchHealthScore(accountName)
+    fetchHealthScore(accountId || accountName)
       .then(setData)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [accountName]);
+  }, [accountId, accountName]);
 
   if (loading) {
     return (

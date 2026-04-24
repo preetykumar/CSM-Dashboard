@@ -779,6 +779,17 @@ export function createCachedRoutes(db: IDatabaseService): Router {
       // Pre-fetch all orgs for parent name expansion (shared across all portfolios)
       const allOrgs = await db.getOrganizations();
 
+      // Build org ID -> SF Account ID lookup from all CSM assignments
+      const allCsmAssignments = await db.getCSMAssignments();
+      const orgToSfAccountId = new Map<number, string>();
+      const orgToSfAccountName = new Map<number, string>();
+      for (const a of allCsmAssignments) {
+        if (a.zendesk_org_id) {
+          orgToSfAccountId.set(a.zendesk_org_id, a.account_id);
+          orgToSfAccountName.set(a.zendesk_org_id, a.account_name);
+        }
+      }
+
       const portfolios: CSMPortfolio[] = [];
 
       for (const portfolio of csmPortfolios) {
@@ -829,7 +840,8 @@ export function createCachedRoutes(db: IDatabaseService): Router {
               url: "",
               name: org.name,
               domain_names: JSON.parse(org.domain_names || "[]"),
-              salesforce_account_name: org.salesforce_account_name || undefined,
+              salesforce_account_id: orgToSfAccountId.get(org.id) || undefined,
+              salesforce_account_name: org.salesforce_account_name || orgToSfAccountName.get(org.id) || undefined,
               sf_ultimate_parent_name: org.sf_ultimate_parent_name || undefined,
               created_at: org.created_at,
               updated_at: org.updated_at,

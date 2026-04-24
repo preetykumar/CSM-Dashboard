@@ -3,6 +3,7 @@ import {
   fetchCSMPortfolios,
   fetchAmplitudeProducts,
   fetchEnterpriseSubscriptionsByName,
+  fetchEnterpriseSubscriptionsById,
   fetchAccountsWithSubscriptions,
   fetchQuarterlyLoginsByOrg,
   fetchAccountPortalMetricsByOrg,
@@ -706,7 +707,7 @@ export function CSMUsageView() {
   }, []);
 
   // Load account data (subscriptions)
-  const loadAccountUsage = useCallback(async (key: string, accountName: string) => {
+  const loadAccountUsage = useCallback(async (key: string, accountName: string, accountId?: string) => {
     if (customerUsage.has(key) && !customerUsage.get(key)?.error) {
       return;
     }
@@ -723,7 +724,9 @@ export function CSMUsageView() {
     });
 
     try {
-      const subscriptionResult = await fetchEnterpriseSubscriptionsByName(accountName);
+      const subscriptionResult = accountId
+        ? await fetchEnterpriseSubscriptionsById(accountId)
+        : await fetchEnterpriseSubscriptionsByName(accountName);
       const subscriptions = subscriptionResult.subscriptions;
 
       setCustomerUsage((prev) => {
@@ -887,12 +890,12 @@ export function CSMUsageView() {
     setExpandedCSM(expandedCSM === csmEmail ? null : csmEmail);
   };
 
-  const toggleCustomer = useCallback((key: string, accountName: string) => {
+  const toggleCustomer = useCallback((key: string, accountName: string, accountId?: string) => {
     if (expandedCustomer === key) {
       setExpandedCustomer(null);
     } else {
       setExpandedCustomer(key);
-      loadAccountUsage(key, accountName);
+      loadAccountUsage(key, accountName, accountId);
     }
   }, [expandedCustomer, loadAccountUsage]);
 
@@ -1031,14 +1034,14 @@ export function CSMUsageView() {
                           <div key={customerKey} className={`customer-card ${isCustomerExpanded ? "expanded" : ""}`}>
                             <div
                               className="customer-header"
-                              onClick={() => toggleCustomer(customerKey, customer.accountName)}
+                              onClick={() => toggleCustomer(customerKey, customer.accountName, customer.organizations[0]?.salesforce_account_id)}
                               role="button"
                               tabIndex={0}
                               aria-expanded={isCustomerExpanded}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
-                                  toggleCustomer(customerKey, customer.accountName);
+                                  toggleCustomer(customerKey, customer.accountName, customer.organizations[0]?.salesforce_account_id);
                                 }
                               }}
                             >
@@ -1057,7 +1060,7 @@ export function CSMUsageView() {
                                   <div className="error">{usageData.error}</div>
                                 ) : (
                                   <>
-                                    <CustomerHealthCard accountName={customer.accountName} />
+                                    <CustomerHealthCard accountName={customer.accountName} accountId={customer.organizations[0]?.salesforce_account_id} />
                                     <LicenseBanner
                                       subscriptions={subscriptions}
                                       loading={false}

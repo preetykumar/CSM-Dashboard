@@ -146,7 +146,7 @@ export function CustomerSummaryCard({ summary, subtitle, onClick, onStatusClick,
       <div className="summary-card-header">
         <h2>{organization.name}{subtitle && <span className="account-subtitle"> ({subtitle})</span>}</h2>
         <div className="summary-card-header-right">
-          <CustomerHealthCard accountName={organization.salesforce_account_name || organization.name} compact />
+          <CustomerHealthCard accountName={organization.salesforce_account_name || organization.name} accountId={organization.salesforce_account_id} compact />
           <div className="total-tickets">{ticketStats.total} total tickets</div>
         </div>
       </div>

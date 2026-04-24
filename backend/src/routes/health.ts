@@ -87,10 +87,10 @@ function computeDimensionTrend(signals: HealthSignal[]): Trend {
 export function createHealthRoutes(db: IDatabaseService, salesforce: SalesforceService): Router {
   const router = Router();
 
-  // GET /api/health/:accountName — single account
-  router.get("/:accountName", async (req: Request, res: Response) => {
-    const { accountName } = req.params;
-    const cacheKey = `health:${accountName.toLowerCase()}`;
+  // GET /api/health/:identifier — single account (accepts SF Account ID or account name)
+  router.get("/:identifier", async (req: Request, res: Response) => {
+    const { identifier } = req.params;
+    const cacheKey = `health:${identifier.toLowerCase()}`;
     const cached = salesforceCache.get<HealthScoreResponse>(cacheKey);
     if (cached) {
       res.set("Cache-Control", "public, max-age=300");
@@ -98,12 +98,16 @@ export function createHealthRoutes(db: IDatabaseService, salesforce: SalesforceS
     }
 
     try {
-      const result = await computeHealthScore(accountName, db, salesforce);
+      // Detect if identifier is an SF Account ID (starts with 001) or account name
+      const isSfId = identifier.startsWith("001");
+      const result = isSfId
+        ? await computeHealthScoreById(identifier, db, salesforce)
+        : await computeHealthScore(identifier, db, salesforce);
       salesforceCache.set(cacheKey, result, HEALTH_CACHE_TTL);
       res.set("Cache-Control", "public, max-age=300");
       res.json(result);
     } catch (error) {
-      console.error(`Error computing health score for ${accountName}:`, error);
+      console.error(`Error computing health score for ${identifier}:`, error);
       res.status(500).json({ error: "Failed to compute health score" });
     }
   });
@@ -149,7 +153,7 @@ export function createHealthRoutes(db: IDatabaseService, salesforce: SalesforceS
   return router;
 }
 
-// ─── Single account (unchanged logic) ─────────────────────────────────────────
+// ─── Single account by name (legacy fallback) ────────────────────────────────
 
 async function computeHealthScore(
   accountName: string,
@@ -173,6 +177,32 @@ async function computeHealthScore(
     getTicketDataForAccount(accountName, db),
   ]);
 
+  return buildHealthResponse(accountName, accountData[0], contactRoles, subscriptions, orgTicketData);
+}
+
+// ─── Single account by SF Account ID (preferred) ─────────────────────────────
+
+async function computeHealthScoreById(
+  accountId: string,
+  db: IDatabaseService,
+  salesforce: SalesforceService
+): Promise<HealthScoreResponse> {
+  const [accountData, contactRoles, subscriptions, orgTicketData] = await Promise.all([
+    salesforce.query<any>(`
+      SELECT Id, Name, CS_Health__c, CS_Health_Description__c, CS_Risk_Drivers__c,
+             Last_contact_date__c, Last_Meeting_Date__c, Last_Email_Date__c,
+             AnnualRevenue, Date_of_first_order__c, Date_of_First_Software_Purchase__c
+      FROM Account WHERE Id = '${accountId}' LIMIT 1
+    `).catch(() => []),
+    salesforce.query<any>(`
+      SELECT ContactId, Role, Contact.Name, Contact.Email
+      FROM AccountContactRole WHERE AccountId = '${accountId}'
+    `).catch(() => []),
+    salesforce.getEnterpriseSubscriptionsByAccountId(accountId).catch(() => []),
+    getTicketDataForAccountById(accountId, db),
+  ]);
+
+  const accountName = accountData[0]?.Name || accountId;
   return buildHealthResponse(accountName, accountData[0], contactRoles, subscriptions, orgTicketData);
 }
 
@@ -461,20 +491,37 @@ async function getTicketDataForAccount(accountName: string, db: IDatabaseService
     const matchingOrgs = allOrgs.filter(
       (o) => o.salesforce_account_name?.toLowerCase() === accountName.toLowerCase() || o.name.toLowerCase() === accountName.toLowerCase()
     );
-    if (matchingOrgs.length === 0) return { tickets: [], escalationCount: 0 };
-
-    let allTickets: any[] = [];
-    let totalEscalations = 0;
-    for (const org of matchingOrgs) {
-      const [tickets, escalations] = await Promise.all([
-        db.getTicketsByOrganization(org.id),
-        db.getEscalationCount(org.id),
-      ]);
-      allTickets = allTickets.concat(tickets);
-      totalEscalations += escalations;
-    }
-    return { tickets: allTickets, escalationCount: totalEscalations };
+    return aggregateTicketData(matchingOrgs, db);
   } catch {
     return { tickets: [], escalationCount: 0 };
   }
+}
+
+async function getTicketDataForAccountById(accountId: string, db: IDatabaseService): Promise<OrgTicketData> {
+  try {
+    const allOrgs = await db.getOrganizations();
+    // Match by SF ID (15 or 18 char) stored in the org's salesforce_id field
+    const accountId15 = accountId.substring(0, 15);
+    const matchingOrgs = allOrgs.filter(
+      (o) => o.salesforce_id === accountId || o.salesforce_id === accountId15
+    );
+    return aggregateTicketData(matchingOrgs, db);
+  } catch {
+    return { tickets: [], escalationCount: 0 };
+  }
+}
+
+async function aggregateTicketData(orgs: any[], db: IDatabaseService): Promise<OrgTicketData> {
+  if (orgs.length === 0) return { tickets: [], escalationCount: 0 };
+  let allTickets: any[] = [];
+  let totalEscalations = 0;
+  for (const org of orgs) {
+    const [tickets, escalations] = await Promise.all([
+      db.getTicketsByOrganization(org.id),
+      db.getEscalationCount(org.id),
+    ]);
+    allTickets = allTickets.concat(tickets);
+    totalEscalations += escalations;
+  }
+  return { tickets: allTickets, escalationCount: totalEscalations };
 }

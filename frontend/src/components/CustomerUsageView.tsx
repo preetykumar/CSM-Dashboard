@@ -3,6 +3,7 @@ import {
   fetchOrganizations,
   fetchAmplitudeProducts,
   fetchEnterpriseSubscriptionsByName,
+  fetchEnterpriseSubscriptionsById,
   fetchAccountsWithSubscriptions,
   fetchQuarterlyLoginsByOrg,
   fetchAccountPortalMetricsByOrg,
@@ -755,7 +756,10 @@ export function CustomerUsageView() {
     });
 
     try {
-      const subscriptionResult = await fetchEnterpriseSubscriptionsByName(account.accountName);
+      const sfAccountId = account.organizations[0]?.salesforce_account_id;
+      const subscriptionResult = sfAccountId
+        ? await fetchEnterpriseSubscriptionsById(sfAccountId)
+        : await fetchEnterpriseSubscriptionsByName(account.accountName);
       const subscriptions = subscriptionResult.subscriptions;
 
       setCustomerUsage((prev) => {
@@ -1049,7 +1053,7 @@ export function CustomerUsageView() {
                       <div className="usage-error">{usageData.error}</div>
                     ) : (
                       <>
-                        <CustomerHealthCard accountName={account.accountName} />
+                        <CustomerHealthCard accountName={account.accountName} accountId={account.organizations[0]?.salesforce_account_id} />
                         <LicenseBanner
                           subscriptions={subscriptions}
                           loading={false}

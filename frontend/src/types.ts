@@ -24,6 +24,7 @@ export interface Organization {
   id: number;
   name: string;
   domain_names?: string[];
+  salesforce_account_id?: string; // SF Account ID for API lookups
   salesforce_account_name?: string; // SF Account Name for display
   sf_ultimate_parent_name?: string; // Ultimate parent account from SF hierarchy
   created_at: string;
