@@ -821,7 +821,10 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
   const PRODUCT_EVENTS: Record<string, { events: Array<{ event: string; label: string; metric: "uniques" | "totals" }>; orgProperty?: string }> = {
     "axe-account-portal": {
       events: [
-        { event: "login", label: "User Logins", metric: "uniques" },
+        { event: "login", label: "Active Users (Logins)", metric: "uniques" },
+        { event: "login", label: "Total Logins", metric: "totals" },
+        { event: "user-management:export:success", label: "User List Exports", metric: "totals" },
+        { event: "conversion:license", label: "Seat Assignments", metric: "totals" },
         { event: "integration:issue:send:success", label: "Jira Issues Sent", metric: "totals" },
       ],
     },
@@ -867,8 +870,8 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     },
     "axe-assistant": {
       events: [
+        { event: "user:message_sent", label: "Active Users", metric: "uniques" },
         { event: "user:message_sent", label: "Messages Sent", metric: "totals" },
-        { event: "user:response_received", label: "Responses Received", metric: "totals" },
       ],
     },
     "deque-university": {
@@ -879,8 +882,10 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     },
     "axe-monitor": {
       events: [
-        { event: "Scan started", label: "Scans Started", metric: "totals" },
-        { event: "Schedule Spiderjob", label: "Spiderjobs Scheduled", metric: "totals" },
+        { event: "scan:create:complete", label: "Active Users", metric: "uniques" },
+        { event: "scan:create:complete", label: "Scans Created", metric: "totals" },
+        { event: "Create an Organization Project", label: "Projects Created", metric: "totals" },
+        { event: "scripts:create:click", label: "Scripts Created", metric: "totals" },
       ],
     },
   };
