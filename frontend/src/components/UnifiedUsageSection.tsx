@@ -19,11 +19,40 @@ const PRODUCT_SUBSCRIPTION_TYPES: Record<string, string[]> = {
   "axe-monitor": ["axe-monitor", "axe-monitor-pro"],
 };
 
-function getProductSubscriptionSummary(slug: string, subscriptions: EnterpriseSubscription[]): { licensed: number; assigned: number; pct: number } | null {
+interface ProductSubsSummary {
+  licensed: number;
+  assigned: number;
+  pct: number;
+  // Monitor-specific
+  isMonitor?: boolean;
+  pageCapacity?: number;
+  pagesUsed?: number;
+  pagePct?: number;
+  projects?: number;
+}
+
+function getProductSubscriptionSummary(slug: string, subscriptions: EnterpriseSubscription[]): ProductSubsSummary | null {
   const types = PRODUCT_SUBSCRIPTION_TYPES[slug];
-  if (!types || types.length === 0) return null; // no specific subscription type
+  if (!types || types.length === 0) return null;
   const matching = subscriptions.filter((s) => types.includes(s.productType.toLowerCase()));
   if (matching.length === 0) return null;
+
+  // Monitor uses pages, not seats
+  if (slug === "axe-monitor") {
+    const pageCapacity = matching.reduce((sum, s) => sum + s.licenseCount, 0);
+    const pagesUsed = matching.reduce((sum, s) => sum + (s.monitorPageCount || 0), 0);
+    const projects = matching.reduce((sum, s) => sum + (s.monitorProjectCount || 0), 0);
+    const isUnlimited = pageCapacity >= 9999999;
+    return {
+      licensed: 0, assigned: 0, pct: 0,
+      isMonitor: true,
+      pageCapacity: isUnlimited ? -1 : pageCapacity, // -1 = unlimited
+      pagesUsed,
+      pagePct: isUnlimited ? 0 : (pageCapacity > 0 ? Math.round((pagesUsed / pageCapacity) * 100) : 0),
+      projects,
+    };
+  }
+
   const licensed = matching.reduce((sum, s) => sum + s.licenseCount, 0);
   const assigned = matching.reduce((sum, s) => sum + s.assignedSeats, 0);
   const pct = licensed > 0 ? Math.round((assigned / licensed) * 100) : 0;
@@ -42,9 +71,9 @@ function TrendIndicator({ current, previous }: { current: number; previous: numb
   );
 }
 
-function ProductMetricsTable({ product, subsSummary }: { product: UnifiedProductMetrics; subsSummary?: { licensed: number; assigned: number; pct: number } | null }) {
+function ProductMetricsTable({ product, subsSummary }: { product: UnifiedProductMetrics; subsSummary?: ProductSubsSummary | null }) {
   const activeEvents = product.events.filter((e) => e.current > 0 || e.previous > 0 || e.twoAgo > 0);
-  const hasSubsData = subsSummary && subsSummary.licensed > 0;
+  const hasSubsData = subsSummary && (subsSummary.licensed > 0 || subsSummary.isMonitor);
 
   if (activeEvents.length === 0 && !hasSubsData) {
     return <p className="usage-no-data">No usage data available for this product.</p>;
@@ -63,7 +92,27 @@ function ProductMetricsTable({ product, subsSummary }: { product: UnifiedProduct
         </tr>
       </thead>
       <tbody>
-        {hasSubsData && (
+        {hasSubsData && subsSummary!.isMonitor ? (
+          <>
+            <tr className="subscription-row">
+              <td className="metric-label-col">Page Tier</td>
+              <td className="quarter-col" colSpan={3}>
+                {subsSummary!.pageCapacity === -1 ? "Unlimited" : subsSummary!.pageCapacity!.toLocaleString() + " pages"}
+              </td>
+            </tr>
+            <tr className="subscription-row">
+              <td className="metric-label-col">Unique Pages Processed</td>
+              <td className="quarter-col" colSpan={3}>
+                {subsSummary!.pagesUsed!.toLocaleString()}
+                {subsSummary!.pageCapacity !== -1 && ` (${subsSummary!.pagePct}% of capacity)`}
+              </td>
+            </tr>
+            <tr className="subscription-row">
+              <td className="metric-label-col">Projects</td>
+              <td className="quarter-col" colSpan={3}>{subsSummary!.projects!.toLocaleString()}</td>
+            </tr>
+          </>
+        ) : hasSubsData ? (
           <>
             <tr className="subscription-row">
               <td className="metric-label-col">Licensed Seats</td>
@@ -76,7 +125,7 @@ function ProductMetricsTable({ product, subsSummary }: { product: UnifiedProduct
               </td>
             </tr>
           </>
-        )}
+        ) : null}
         {activeEvents.map((evt, i) => (
           <tr key={`${evt.event}-${evt.metric}-${i}`}>
             <td className="metric-label-col">{evt.label}</td>
@@ -142,7 +191,7 @@ export function UnifiedUsageSection({ enterpriseUuid, accountName, monitorDomain
         const hasAnyData = product.events.some((e) => e.current > 0 || e.previous > 0 || e.twoAgo > 0);
         const expanded = expandedProducts.has(product.slug);
         const subsSummary = subscriptions ? getProductSubscriptionSummary(product.slug, subscriptions) : null;
-        const hasLicense = subsSummary && subsSummary.licensed > 0;
+        const hasLicense = subsSummary && (subsSummary.licensed > 0 || subsSummary.isMonitor);
 
         return (
           <div key={product.slug} className={`unified-product-card ${expanded ? "expanded" : ""}`}>
@@ -156,9 +205,13 @@ export function UnifiedUsageSection({ enterpriseUuid, accountName, monitorDomain
             >
               <div className="unified-product-info">
                 <span className="unified-product-name">{product.displayName}</span>
-                {hasLicense && (
+                {hasLicense && subsSummary!.isMonitor ? (
+                  <span className="unified-product-seats">
+                    {subsSummary!.pagesUsed!.toLocaleString()}{subsSummary!.pageCapacity === -1 ? " pages (unlimited)" : `/${subsSummary!.pageCapacity!.toLocaleString()} pages (${subsSummary!.pagePct}%)`}
+                  </span>
+                ) : hasLicense ? (
                   <span className="unified-product-seats">{subsSummary!.assigned}/{subsSummary!.licensed} seats ({subsSummary!.pct}%)</span>
-                )}
+                ) : null}
                 {hasAnyData ? (
                   <span className="unified-product-badge active">Active</span>
                 ) : (
