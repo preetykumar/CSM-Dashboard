@@ -188,10 +188,12 @@ export function UnifiedUsageSection({ enterpriseUuid, accountName, monitorDomain
   return (
     <div className="unified-usage-section">
       {productList.map((product) => {
-        const hasAnyData = product.events.some((e) => e.current > 0 || e.previous > 0 || e.twoAgo > 0);
+        const hasAmplitudeData = product.events.some((e) => e.current > 0 || e.previous > 0 || e.twoAgo > 0);
         const expanded = expandedProducts.has(product.slug);
         const subsSummary = subscriptions ? getProductSubscriptionSummary(product.slug, subscriptions) : null;
         const hasLicense = subsSummary && (subsSummary.licensed > 0 || subsSummary.isMonitor);
+        const hasSubsActivity = subsSummary?.isMonitor ? (subsSummary.pagesUsed || 0) > 0 : (subsSummary?.assigned || 0) > 0;
+        const hasAnyData = hasAmplitudeData || hasSubsActivity;
 
         return (
           <div key={product.slug} className={`unified-product-card ${expanded ? "expanded" : ""}`}>
