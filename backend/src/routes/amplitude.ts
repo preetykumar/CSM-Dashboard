@@ -925,10 +925,10 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
             matchOp = "contains";
           }
 
-          // Fetch all events for this product in parallel
+          // Fetch all events for this product in parallel (monthly granularity)
           const eventResults = await Promise.allSettled(
             config.events.map(async ({ event, label, metric }) => {
-              const data = await entry.service.getQuarterlyEventMetric(
+              const data = await entry.service.getMonthlyEventMetric(
                 orgValue,
                 event,
                 metric,

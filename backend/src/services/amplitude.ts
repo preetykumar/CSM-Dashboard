@@ -2306,6 +2306,28 @@ export class AmplitudeService {
   }
 
   /**
+   * Get month date range for a given offset (0 = current month, -1 = previous, etc.)
+   */
+  private getMonthDateRange(monthOffset: number = 0): { start: Date; end: Date; label: string } {
+    const now = new Date();
+    const targetMonth = now.getMonth() + monthOffset;
+    const targetYear = now.getFullYear();
+
+    const start = new Date(targetYear, targetMonth, 1);
+    const end = new Date(targetYear, targetMonth + 1, 0); // Last day of month
+
+    // If current month, end at today
+    if (monthOffset === 0 && end > now) {
+      end.setTime(now.getTime());
+    }
+
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const label = `${monthNames[start.getMonth()]} ${start.getFullYear()}`;
+
+    return { start, end, label };
+  }
+
+  /**
    * Get the project ID for this service instance
    */
   getProjectId(): string {
@@ -2372,6 +2394,66 @@ export class AmplitudeService {
       previous,
       twoAgo,
       labels: [quarters[0].label, quarters[1].label, quarters[2].label] as [string, string, string],
+    };
+    amplitudeCache.set(cacheKey, result);
+    return result;
+  }
+
+  /**
+   * Generic: fetch event count for a specific org across 3 months.
+   * Same as getQuarterlyEventMetric but with monthly granularity.
+   */
+  async getMonthlyEventMetric(
+    orgValue: string,
+    eventType: string,
+    metric: "uniques" | "totals" = "totals",
+    orgProperty: string = "gp:organization",
+    matchOp: "is" | "contains" = "is"
+  ): Promise<{ current: number; previous: number; twoAgo: number; labels: [string, string, string] }> {
+    const cacheKey = `mem:${this.projectId}:${orgValue}:${eventType}:${metric}:${matchOp}`;
+    const cached = amplitudeCache.get<{ current: number; previous: number; twoAgo: number; labels: [string, string, string] }>(cacheKey);
+    if (cached) return cached;
+
+    const months = [
+      this.getMonthDateRange(0),
+      this.getMonthDateRange(-1),
+      this.getMonthDateRange(-2),
+    ];
+
+    const fetchOne = async (start: Date, end: Date): Promise<number> => {
+      try {
+        const filterValues = matchOp === "is" ? [orgValue] : [orgValue, orgValue.toLowerCase()];
+        const e = JSON.stringify({
+          event_type: eventType,
+          filters: [{
+            subprop_type: "user",
+            subprop_key: orgProperty,
+            subprop_op: matchOp,
+            subprop_value: filterValues,
+          }],
+        });
+        const response = await this.request<EventSegmentationResponse>("/events/segmentation", {
+          e,
+          start: this.formatDate(start),
+          end: this.formatDate(end),
+          m: metric,
+        });
+        const series = response.data?.series?.[0] || [];
+        return series.reduce((sum, val) => sum + (val || 0), 0);
+      } catch {
+        return 0;
+      }
+    };
+
+    const [current, previous, twoAgo] = await Promise.all(
+      months.map((m) => fetchOne(m.start, m.end))
+    );
+
+    const result = {
+      current,
+      previous,
+      twoAgo,
+      labels: [months[0].label, months[1].label, months[2].label] as [string, string, string],
     };
     amplitudeCache.set(cacheKey, result);
     return result;
