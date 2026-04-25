@@ -27,7 +27,6 @@ import {
   GenericMetricsResponse,
 } from "../services/api";
 import { Pagination, usePagination } from "./Pagination";
-import { LicenseBanner } from "./LicenseBanner";
 import { UnifiedUsageSection } from "./UnifiedUsageSection";
 import { CustomerHealthCard } from "./CustomerHealthCard";
 import type { Organization } from "../types";
@@ -1054,12 +1053,6 @@ export function CustomerUsageView() {
                     ) : (
                       <>
                         <CustomerHealthCard accountName={account.accountName} accountId={account.organizations[0]?.salesforce_account_id} />
-                        <LicenseBanner
-                          subscriptions={subscriptions}
-                          loading={false}
-                          accountName={account.accountName}
-                          compact
-                        />
                         {subscriptions.length > 0 && (() => {
                           const euuid = subscriptions.find(s => s.enterpriseUuid)?.enterpriseUuid;
                           const domain = subscriptions.find(s => s.enterpriseDomain)?.enterpriseDomain?.split('.')[0];
@@ -1069,6 +1062,7 @@ export function CustomerUsageView() {
                                 enterpriseUuid={euuid}
                                 accountName={account.accountName}
                                 monitorDomain={domain}
+                                subscriptions={subscriptions}
                               />
                             );
                           }

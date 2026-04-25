@@ -1,10 +1,33 @@
 import { useEffect, useState } from "react";
-import { fetchUnifiedUsageMetrics, type UnifiedUsageResponse, type UnifiedProductMetrics } from "../services/api";
+import { fetchUnifiedUsageMetrics, type UnifiedUsageResponse, type UnifiedProductMetrics, type EnterpriseSubscription } from "../services/api";
 
 interface Props {
   enterpriseUuid: string;
   accountName: string;
   monitorDomain?: string;
+  subscriptions?: EnterpriseSubscription[];
+}
+
+// Map Amplitude product slugs to SF subscription product types
+const PRODUCT_SUBSCRIPTION_TYPES: Record<string, string[]> = {
+  "axe-account-portal": [], // available with any subscription
+  "axe-devtools-(browser-extension)": ["axe-devtools-pro", "axe-devtools-html"],
+  "developer-hub": [], // included with devtools
+  "axe-devtools-mobile": ["axe-devtools-mobile"],
+  "axe-assistant": ["axe-assistant-slack", "axe-assistant-teams"],
+  "deque-university": ["deque-university", "dequeu"],
+  "axe-monitor": ["axe-monitor", "axe-monitor-pro"],
+};
+
+function getProductSubscriptionSummary(slug: string, subscriptions: EnterpriseSubscription[]): { licensed: number; assigned: number; pct: number } | null {
+  const types = PRODUCT_SUBSCRIPTION_TYPES[slug];
+  if (!types || types.length === 0) return null; // no specific subscription type
+  const matching = subscriptions.filter((s) => types.includes(s.productType.toLowerCase()));
+  if (matching.length === 0) return null;
+  const licensed = matching.reduce((sum, s) => sum + s.licenseCount, 0);
+  const assigned = matching.reduce((sum, s) => sum + s.assignedSeats, 0);
+  const pct = licensed > 0 ? Math.round((assigned / licensed) * 100) : 0;
+  return { licensed, assigned, pct };
 }
 
 function TrendIndicator({ current, previous }: { current: number; previous: number }) {
@@ -19,14 +42,15 @@ function TrendIndicator({ current, previous }: { current: number; previous: numb
   );
 }
 
-function ProductMetricsTable({ product }: { product: UnifiedProductMetrics }) {
+function ProductMetricsTable({ product, subsSummary }: { product: UnifiedProductMetrics; subsSummary?: { licensed: number; assigned: number; pct: number } | null }) {
   const activeEvents = product.events.filter((e) => e.current > 0 || e.previous > 0 || e.twoAgo > 0);
+  const hasSubsData = subsSummary && subsSummary.licensed > 0;
 
-  if (activeEvents.length === 0) {
+  if (activeEvents.length === 0 && !hasSubsData) {
     return <p className="usage-no-data">No usage data available for this product.</p>;
   }
 
-  const labels = activeEvents[0]?.labels || ["", "", ""];
+  const labels = activeEvents[0]?.labels || product.events[0]?.labels || ["", "", ""];
 
   return (
     <table className="devtools-metrics-table">
@@ -39,8 +63,22 @@ function ProductMetricsTable({ product }: { product: UnifiedProductMetrics }) {
         </tr>
       </thead>
       <tbody>
-        {activeEvents.map((evt) => (
-          <tr key={evt.event}>
+        {hasSubsData && (
+          <>
+            <tr className="subscription-row">
+              <td className="metric-label-col">Licensed Seats</td>
+              <td className="quarter-col" colSpan={3}>{subsSummary!.licensed.toLocaleString()}</td>
+            </tr>
+            <tr className="subscription-row">
+              <td className="metric-label-col">Assigned Seats</td>
+              <td className="quarter-col" colSpan={3}>
+                {subsSummary!.assigned.toLocaleString()} ({subsSummary!.pct}%)
+              </td>
+            </tr>
+          </>
+        )}
+        {activeEvents.map((evt, i) => (
+          <tr key={`${evt.event}-${evt.metric}-${i}`}>
             <td className="metric-label-col">{evt.label}</td>
             <td className="quarter-col">{evt.twoAgo.toLocaleString()}</td>
             <td className="quarter-col">{evt.previous.toLocaleString()}</td>
@@ -55,7 +93,7 @@ function ProductMetricsTable({ product }: { product: UnifiedProductMetrics }) {
   );
 }
 
-export function UnifiedUsageSection({ enterpriseUuid, accountName, monitorDomain }: Props) {
+export function UnifiedUsageSection({ enterpriseUuid, accountName, monitorDomain, subscriptions }: Props) {
   const [data, setData] = useState<UnifiedUsageResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,6 +141,8 @@ export function UnifiedUsageSection({ enterpriseUuid, accountName, monitorDomain
       {productList.map((product) => {
         const hasAnyData = product.events.some((e) => e.current > 0 || e.previous > 0 || e.twoAgo > 0);
         const expanded = expandedProducts.has(product.slug);
+        const subsSummary = subscriptions ? getProductSubscriptionSummary(product.slug, subscriptions) : null;
+        const hasLicense = subsSummary && subsSummary.licensed > 0;
 
         return (
           <div key={product.slug} className={`unified-product-card ${expanded ? "expanded" : ""}`}>
@@ -116,6 +156,9 @@ export function UnifiedUsageSection({ enterpriseUuid, accountName, monitorDomain
             >
               <div className="unified-product-info">
                 <span className="unified-product-name">{product.displayName}</span>
+                {hasLicense && (
+                  <span className="unified-product-seats">{subsSummary!.assigned}/{subsSummary!.licensed} seats ({subsSummary!.pct}%)</span>
+                )}
                 {hasAnyData ? (
                   <span className="unified-product-badge active">Active</span>
                 ) : (
@@ -127,7 +170,7 @@ export function UnifiedUsageSection({ enterpriseUuid, accountName, monitorDomain
 
             {expanded && (
               <div className="unified-product-body">
-                <ProductMetricsTable product={product} />
+                <ProductMetricsTable product={product} subsSummary={subsSummary} />
               </div>
             )}
           </div>

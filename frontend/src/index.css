@@ -5004,6 +5004,18 @@ header .hint {
   font-size: 0.9rem;
 }
 
+.unified-product-seats {
+  font-size: 0.78rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.subscription-row td {
+  background: #f8fafc;
+  font-weight: 500;
+  color: #475569;
+}
+
 .unified-product-badge {
   font-size: 0.7rem;
   padding: 0.15rem 0.5rem;
