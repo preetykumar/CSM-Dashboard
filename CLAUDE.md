@@ -400,6 +400,50 @@ External API calls (Salesforce, Amplitude) are cached in memory with TTL to elim
 - Batch endpoint `POST /api/health/batch` for bulk scoring (reduces N individual calls to 3 bulk SF queries)
 - Frontend caches health scores client-side for 5 minutes to avoid duplicate fetches
 
+### 18. Usage Data Architecture
+- **Monthly granularity**: Usage data shows last 3 calendar months (not quarters) for better directionality
+- **Trend arrows**: Month-over-month comparison with ▲/▼/→ indicators
+- **Subscription data merged into usage table**: Each product shows licensed/assigned seats (or page tiers for Monitor) alongside Amplitude metrics in one table — no separate LicenseBanner
+- **Product-specific display**:
+  - **Axe Monitor**: Shows page tier (10K/25K/50K/unlimited), unique pages processed, projects — NOT seats
+  - **All other products**: Shows licensed seats, assigned seats, % assigned
+- **Active badge logic**: Shows "Active" if Amplitude has data OR subscription has activity (e.g., Monitor with 87K pages but no Amplitude tracking yet)
+
+### 19. Product Event Definitions (Amplitude)
+Each product has specific events tracked in the unified endpoint (`PRODUCT_EVENTS` in `amplitude.ts`):
+
+| Product | Events (metric) |
+|---|---|
+| **Axe Account Portal** | Active Users (login/uniques), Total Logins, User List Exports, Seat Assignments, Jira Issues Sent |
+| **Axe DevTools Extension** | 22 events: scans, guided tests, IGT, issues, ML, recordings, performance |
+| **Developer Hub** | Projects Created, Shares |
+| **Axe DevTools Mobile** | Scans Created/Saved/Sent, Dashboard Views |
+| **Axe Assistant** | Active Users (message_sent/uniques), Messages Sent |
+| **Deque University** | Sessions Started, Files Downloaded |
+| **Axe Monitor** | Active Users, Scans Created (scan:create:complete), Projects Created, Scripts Created |
+
+**Monitor note**: `gp:organization` is empty — uses `gp:initial_referring_domain` with `contains` match as workaround. Will switch to `gp:organization` with Enterprise UUID when Monitor deploys the fix.
+
+**Products not tracked**: Axe Auditor (no org tracking), Axe Linter (no data), MCP Server (no data), Axe Reports (no gp:organization data)
+
+### 20. Keying Strategy for Data Lookups
+All data lookups prefer stable IDs over name strings:
+1. **Amplitude**: Enterprise UUID via `gp:organization` (exact match). Fallback: SF Account Name (contains match)
+2. **Health scores**: SF Account ID (`WHERE Id = '001...'`). Fallback: account name
+3. **Subscriptions**: SF Account ID (`/subscriptions/id/:id`). Fallback: account name
+4. **Tickets**: SF Account ID → match ZD orgs by `salesforce_id`. Fallback: account name
+5. **Frontend**: Passes `salesforce_account_id` from portfolio response to all downstream APIs
+6. **Admin users**: Bypass role selection on Home page, default to CSM view
+
+### 21. Cache TTLs
+| Cache | TTL | Purpose |
+|---|---|---|
+| Renewals | 10 min | Renewal opportunity data |
+| Amplitude | 30 min | Usage metrics (expensive to fetch) |
+| Salesforce | 30 min | Subscriptions, health scores |
+| Health (client) | 5 min | Frontend dedup across components |
+| HTTP Cache-Control | 5-10 min | Browser caching |
+
 ---
 
 ## Key Files
