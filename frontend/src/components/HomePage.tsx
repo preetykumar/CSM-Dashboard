@@ -5,6 +5,7 @@ import { RoleSelectionModal, type UserRole } from "./home/RoleSelectionModal";
 import { TodoList } from "./home/TodoList";
 import { CalendarWidget } from "./home/CalendarWidget";
 import { CalendlyWidget } from "./home/CalendlyWidget";
+import { PersonalTodoWidget } from "./home/PersonalTodoWidget";
 
 const ROLE_DISPLAY: Record<UserRole, string> = {
   csm: "Customer Success Manager",
@@ -168,8 +169,9 @@ export function HomePage() {
           ) : null}
         </div>
 
-        {/* Right column: calendar + Calendly */}
+        {/* Right column: personal todos, calendar, Calendly */}
         <div className="home-col-side">
+          <PersonalTodoWidget />
           <CalendarWidget />
           <CalendlyWidget
             calendlyUrl={calendlyUrl}
