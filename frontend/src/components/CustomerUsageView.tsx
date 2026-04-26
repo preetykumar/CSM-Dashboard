@@ -1064,7 +1064,11 @@ export function CustomerUsageView() {
                       <div className="usage-error">{usageData.error}</div>
                     ) : (
                       <>
-                        <CustomerHealthCard accountName={account.accountName} accountId={account.organizations[0]?.salesforce_account_id} />
+                        {(() => {
+                          const euuid = subscriptions.find(s => s.enterpriseUuid)?.enterpriseUuid;
+                          const domain = subscriptions.find(s => s.enterpriseDomain)?.enterpriseDomain?.split('.')[0];
+                          return <CustomerHealthCard accountName={account.accountName} accountId={account.organizations[0]?.salesforce_account_id} enterpriseUuid={euuid} monitorDomain={domain} subscriptions={subscriptions} />;
+                        })()}
                         {subscriptions.length > 0 && (() => {
                           const euuid = subscriptions.find(s => s.enterpriseUuid)?.enterpriseUuid;
                           const domain = subscriptions.find(s => s.enterpriseDomain)?.enterpriseDomain?.split('.')[0];

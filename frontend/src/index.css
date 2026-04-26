@@ -5337,6 +5337,91 @@ header .hint {
 .threshold-yellow { color: #ca8a04; }
 .threshold-red { color: #dc2626; }
 
+/* Per-Product Health Breakdown */
+.product-health-breakdown {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.product-health-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+.product-health-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.product-health-table th {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  font-weight: 600;
+  color: #64748b;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 0.75rem;
+}
+
+.product-health-row {
+  cursor: pointer;
+}
+
+.product-health-row:hover {
+  background: #f8fafc;
+}
+
+.product-health-row td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #f8fafc;
+}
+
+.product-health-name {
+  font-weight: 500;
+}
+
+.product-health-summary {
+  color: #475569;
+  font-size: 0.78rem;
+}
+
+.product-health-detail-row td {
+  padding: 0.25rem 0.5rem 0.75rem 1.5rem;
+  background: #fafbfc;
+}
+
+.product-health-signals {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.product-health-signal {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.product-signal-label {
+  font-weight: 500;
+  color: #334155;
+  min-width: 120px;
+}
+
+.product-signal-detail {
+  color: #64748b;
+}
+
+.health-product-micro {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  margin-left: 4px;
+  font-weight: 500;
+}
+
 /* Health Trend Arrows */
 .health-trend-arrow {
   display: inline-block;

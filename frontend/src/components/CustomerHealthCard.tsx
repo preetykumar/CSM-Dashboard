@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { fetchHealthScore, type HealthScoreResponse, type DimensionScore, type Trend } from "../services/api";
+import { useEffect, useState, useMemo } from "react";
+import { fetchHealthScore, type HealthScoreResponse, type DimensionScore, type Trend, type UnifiedUsageResponse, type EnterpriseSubscription } from "../services/api";
+import { computeProductHealthScores, computeOverallAdoption, type ProductHealthScore } from "../services/product-health";
 
 type Signal = "green" | "yellow" | "red";
 
@@ -22,8 +23,12 @@ function TrendArrow({ trend, detail }: { trend?: Trend; detail?: string }) {
 
 interface Props {
   accountName: string;
-  accountId?: string; // SF Account ID — preferred, falls back to accountName
+  accountId?: string;
   compact?: boolean;
+  amplitudeData?: UnifiedUsageResponse;
+  subscriptions?: EnterpriseSubscription[];
+  enterpriseUuid?: string; // if provided, auto-fetches Amplitude data for product scoring
+  monitorDomain?: string;
 }
 
 const SIGNAL_COLORS: Record<Signal, string> = {
@@ -236,11 +241,100 @@ function HealthInfoPanel({ onClose }: { onClose: () => void }) {
   );
 }
 
-export function CustomerHealthCard({ accountName, accountId, compact }: Props) {
+function ProductHealthBreakdown({ scores }: { scores: ProductHealthScore[] }) {
+  const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
+
+  if (scores.length === 0) return null;
+
+  return (
+    <div className="product-health-breakdown">
+      <h5 className="product-health-title">Per-Product Adoption</h5>
+      <table className="product-health-table">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th>Status</th>
+            <th>Trend</th>
+            <th>Key Metric</th>
+          </tr>
+        </thead>
+        <tbody>
+          {scores.map((score) => (
+            <>
+              <tr
+                key={score.slug}
+                className={`product-health-row ${expandedProduct === score.slug ? "expanded" : ""}`}
+                onClick={() => setExpandedProduct(expandedProduct === score.slug ? null : score.slug)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedProduct(expandedProduct === score.slug ? null : score.slug); } }}
+              >
+                <td className="product-health-name">{score.displayName}</td>
+                <td><SignalPill signal={score.signal} /></td>
+                <td><TrendArrow trend={score.trend} /></td>
+                <td className="product-health-summary">{score.summary}</td>
+              </tr>
+              {expandedProduct === score.slug && (
+                <tr key={`${score.slug}-detail`} className="product-health-detail-row">
+                  <td colSpan={4}>
+                    <div className="product-health-signals">
+                      {score.signals.map((s, i) => (
+                        <div key={i} className="product-health-signal">
+                          <SignalDot signal={s.signal} size={10} />
+                          <span className="product-signal-label">{s.label}</span>
+                          <span className="product-signal-detail">{s.detail}</span>
+                          {s.trend && <TrendArrow trend={s.trend} />}
+                        </div>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function CustomerHealthCard({ accountName, accountId, compact, amplitudeData: propAmplitudeData, subscriptions: propSubscriptions, enterpriseUuid, monitorDomain }: Props) {
   const [data, setData] = useState<HealthScoreResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
+  const [fetchedAmplitudeData, setFetchedAmplitudeData] = useState<UnifiedUsageResponse | null>(null);
+  const [fetchedSubscriptions, setFetchedSubscriptions] = useState<EnterpriseSubscription[] | null>(null);
+
+  const amplitudeData = propAmplitudeData || fetchedAmplitudeData;
+  const subscriptions = propSubscriptions || fetchedSubscriptions;
+
+  // Auto-fetch Amplitude + subscription data for product scoring if not provided as props
+  useEffect(() => {
+    if (propAmplitudeData || !enterpriseUuid || compact) return; // skip if data provided or compact mode
+    import("../services/api").then(({ fetchUnifiedUsageMetrics, fetchEnterpriseSubscriptionsById, fetchEnterpriseSubscriptionsByName }) => {
+      fetchUnifiedUsageMetrics(enterpriseUuid, monitorDomain, accountName)
+        .then(setFetchedAmplitudeData)
+        .catch(() => {}); // silent — product scores are optional
+      const fetchSubs = accountId
+        ? fetchEnterpriseSubscriptionsById(accountId)
+        : fetchEnterpriseSubscriptionsByName(accountName);
+      fetchSubs
+        .then((r) => setFetchedSubscriptions(r.subscriptions))
+        .catch(() => {});
+    });
+  }, [enterpriseUuid, accountId, accountName, monitorDomain, propAmplitudeData, compact]);
+
+  // Compute per-product scores from existing data (no additional API calls if cached)
+  const productScores = useMemo(() => {
+    if (!amplitudeData || !subscriptions) return [];
+    return computeProductHealthScores(amplitudeData, subscriptions);
+  }, [amplitudeData, subscriptions]);
+
+  const adoptionOverride = useMemo(() => {
+    if (productScores.length === 0) return null;
+    return computeOverallAdoption(productScores);
+  }, [productScores]);
 
   useEffect(() => {
     setLoading(true);
@@ -262,14 +356,18 @@ export function CustomerHealthCard({ accountName, accountId, compact }: Props) {
 
   if (error || !data) return null;
 
+  // Use per-product adoption if available, fall back to backend aggregate
+  const adoptionSignal = adoptionOverride?.signal || data.adoption.signal;
+  const adoptionTrend = adoptionOverride?.trend ?? data.adoption.trend;
+
   // Compact mode: 3 labeled dots inline
   if (compact) {
     return (
-      <div className="health-card-compact" title={`Adoption: ${SIGNAL_LABELS[data.adoption.signal]} | Engagement: ${SIGNAL_LABELS[data.engagement.signal]} | Support: ${SIGNAL_LABELS[data.support.signal]}`}>
+      <div className="health-card-compact" title={`Adoption: ${SIGNAL_LABELS[adoptionSignal]} | Engagement: ${SIGNAL_LABELS[data.engagement.signal]} | Support: ${SIGNAL_LABELS[data.support.signal]}`}>
         <span className="health-compact-label">Health</span>
         <span className="health-compact-dim">
-          <SignalDot signal={data.adoption.signal} size={10} />
-          <TrendArrow trend={data.adoption.trend} />
+          <SignalDot signal={adoptionSignal} size={10} />
+          <TrendArrow trend={adoptionTrend} />
           <span className="health-compact-dim-label">A</span>
         </span>
         <span className="health-compact-dim">
@@ -308,7 +406,12 @@ export function CustomerHealthCard({ accountName, accountId, compact }: Props) {
         </h4>
         <div className="health-summary-row">
           <span className="health-summary-dim">
-            <SignalDot signal={data.adoption.signal} size={12} /> Adoption <TrendArrow trend={data.adoption.trend} />
+            <SignalDot signal={adoptionSignal} size={12} /> Adoption <TrendArrow trend={adoptionTrend} />
+            {productScores.length > 0 && (
+              <span className="health-product-micro">
+                {productScores.filter(s => s.signal === "green").length}G {productScores.filter(s => s.signal === "yellow").length}Y {productScores.filter(s => s.signal === "red").length}R
+              </span>
+            )}
           </span>
           <span className="health-summary-dim">
             <SignalDot signal={data.engagement.signal} size={12} /> Engagement <TrendArrow trend={data.engagement.trend} />
@@ -331,7 +434,8 @@ export function CustomerHealthCard({ accountName, accountId, compact }: Props) {
       )}
 
       {/* All 3 dimensions with full transparency */}
-      <DimensionDetail dimKey="adoption" dimension={data.adoption} />
+      <DimensionDetail dimKey="adoption" dimension={adoptionOverride ? { ...data.adoption, signal: adoptionSignal, trend: adoptionTrend } : data.adoption} />
+      {productScores.length > 0 && <ProductHealthBreakdown scores={productScores} />}
       <DimensionDetail dimKey="engagement" dimension={data.engagement} />
       <DimensionDetail dimKey="support" dimension={data.support} />
 
