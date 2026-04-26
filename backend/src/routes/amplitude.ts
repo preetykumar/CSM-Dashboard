@@ -886,8 +886,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     "deque-university": {
       usesOrgName: true,
       events: [
-        { event: "session_start", label: "Sessions Started", metric: "uniques" },
-        { event: "[Amplitude] File Downloaded", label: "Files Downloaded", metric: "totals" },
+        { event: "session_start", label: "Unique User Logins", metric: "uniques" },
+        { event: "user:en:/member", label: "Course Dashboard Views", metric: "totals" },
+        { event: "[Amplitude] File Downloaded", label: "Course Materials Downloaded", metric: "totals" },
       ],
     },
     "axe-monitor": {
