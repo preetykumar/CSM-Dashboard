@@ -154,11 +154,11 @@ export function UnifiedUsageSection({ enterpriseUuid, accountName, monitorDomain
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetchUnifiedUsageMetrics(enterpriseUuid, monitorDomain)
+    fetchUnifiedUsageMetrics(enterpriseUuid, monitorDomain, accountName)
       .then(setData)
       .catch((err) => setError(err.message || "Failed to load usage data"))
       .finally(() => setLoading(false));
-  }, [enterpriseUuid, monitorDomain]);
+  }, [enterpriseUuid, monitorDomain, accountName]);
 
   const toggleProduct = (slug: string) => {
     setExpandedProducts((prev) => {

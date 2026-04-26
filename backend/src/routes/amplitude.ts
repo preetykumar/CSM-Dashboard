@@ -818,8 +818,11 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
   // ============================================================
 
   // Product → event definitions with user-friendly display names
-  const PRODUCT_EVENTS: Record<string, { events: Array<{ event: string; label: string; metric: "uniques" | "totals" }>; orgProperty?: string }> = {
+  // usesOrgName: true = gp:organization has human names (fall back to accountName with contains)
+  // usesOrgName: false/undefined = gp:organization has Enterprise UUIDs (use exact match)
+  const PRODUCT_EVENTS: Record<string, { events: Array<{ event: string; label: string; metric: "uniques" | "totals" }>; orgProperty?: string; usesOrgName?: boolean }> = {
     "axe-account-portal": {
+      usesOrgName: true,
       events: [
         { event: "login", label: "Active Users (Logins)", metric: "uniques" },
         { event: "login", label: "Total Logins", metric: "totals" },
@@ -856,6 +859,7 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       ],
     },
     "developer-hub": {
+      usesOrgName: true,
       events: [
         { event: "project:create", label: "Active Users", metric: "uniques" },
         { event: "project:create", label: "Projects Created", metric: "totals" },
@@ -864,6 +868,7 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       ],
     },
     "axe-devtools-mobile": {
+      usesOrgName: true,
       events: [
         { event: "scan:create", label: "Scans Created", metric: "totals" },
         { event: "scan:save", label: "Scans Saved", metric: "totals" },
@@ -872,12 +877,14 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       ],
     },
     "axe-assistant": {
+      usesOrgName: true, // mixed UUIDs + Slack team IDs
       events: [
         { event: "user:message_sent", label: "Active Users", metric: "uniques" },
         { event: "user:message_sent", label: "Messages Sent", metric: "totals" },
       ],
     },
     "deque-university": {
+      usesOrgName: true,
       events: [
         { event: "session_start", label: "Sessions Started", metric: "uniques" },
         { event: "[Amplitude] File Downloaded", label: "Files Downloaded", metric: "totals" },
@@ -906,6 +913,7 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       ],
     },
     "axe-mcp-server": {
+      usesOrgName: true,
       events: [
         { event: "axe-mcp-server:analyze", label: "Active Users", metric: "uniques" },
         { event: "axe-mcp-server:analyze", label: "Analyses", metric: "totals" },
@@ -929,12 +937,15 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
   };
 
   // GET /api/amplitude/unified/:orgIdentifier — all product metrics in one call
-  // Optional query param: ?monitorDomain=oracle (domain prefix for axe-monitor matching)
+  // Query params:
+  //   ?monitorDomain=oracle  (domain prefix for axe-monitor matching)
+  //   ?accountName=ADP       (SF account name for products using human org names)
   router.get("/unified/:orgIdentifier", cachedHandler(
-    (req) => `amp:unified:${req.params.orgIdentifier.toLowerCase()}:${(req.query.monitorDomain as string || "").toLowerCase()}`,
+    (req) => `amp:unified:${req.params.orgIdentifier.toLowerCase()}:${(req.query.monitorDomain as string || "").toLowerCase()}:${(req.query.accountName as string || "").toLowerCase()}`,
     async (req) => {
       const { orgIdentifier } = req.params;
       const monitorDomain = (req.query.monitorDomain as string) || "";
+      const accountName = (req.query.accountName as string) || "";
 
       // Fetch all products in parallel
       const productResults = await Promise.allSettled(
@@ -942,14 +953,20 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
           const entry = services.get(slug);
           if (!entry) return { slug, error: "Product not configured" };
 
-          // Monitor workaround: use initial_referring_domain with contains
+          // Determine matching strategy per product
           let orgValue = orgIdentifier;
           let orgProp = config.orgProperty || "gp:organization";
           let matchOp: "is" | "contains" = "is";
 
+          // Monitor workaround: use initial_referring_domain with contains
           if (slug === "axe-monitor" && monitorDomain) {
             orgValue = monitorDomain;
             orgProp = "gp:initial_referring_domain";
+            matchOp = "contains";
+          }
+          // Products using human org names: fall back to accountName with contains
+          else if (config.usesOrgName && accountName) {
+            orgValue = accountName;
             matchOp = "contains";
           }
 
