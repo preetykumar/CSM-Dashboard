@@ -118,21 +118,33 @@ const productDefinitions: ProductDefinition[] = [
     isAdditional: true,
     amplitudeSlug: AXE_ACCOUNT_PORTAL_SLUG,
   },
-  // {
-  //   id: "axe-reports",
-  //   displayName: "axe Reports",
-  //   subscriptionTypes: [], // Available with any subscription
-  //   isAdditional: true,
-  //   amplitudeSlug: AXE_REPORTS_SLUG,
-  //   // Uses custom metrics via orgName matching
-  // }, // Commented out - no Amplitude data
   {
     id: "axe-assistant",
     displayName: "Axe Assistant",
-    subscriptionTypes: [], // Available with any subscription
+    subscriptionTypes: [],
     isAdditional: true,
     amplitudeSlug: AXE_ASSISTANT_SLUG,
-    orgProperty: "org_name", // Axe Assistant uses org_name instead of gp:organization
+    orgProperty: "org_name",
+  },
+  {
+    id: "axe-reports",
+    displayName: "Axe Reports",
+    subscriptionTypes: [],
+    isAdditional: true,
+    amplitudeSlug: "axe-reports",
+  },
+  {
+    id: "axe-linter",
+    displayName: "Axe Linter",
+    subscriptionTypes: ["axe-devtools-linter"],
+    amplitudeSlug: "axe-linter",
+  },
+  {
+    id: "axe-mcp-server",
+    displayName: "Axe MCP Server",
+    subscriptionTypes: [],
+    isAdditional: true,
+    amplitudeSlug: "axe-mcp-server",
   },
 ];
 

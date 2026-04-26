@@ -117,6 +117,26 @@ const productDefinitions: ProductDefinition[] = [
     amplitudeSlug: AXE_ASSISTANT_SLUG,
     orgProperty: "org_name",
   },
+  {
+    id: "axe-reports",
+    displayName: "Axe Reports",
+    subscriptionTypes: [],
+    isAdditional: true,
+    amplitudeSlug: "axe-reports",
+  },
+  {
+    id: "axe-linter",
+    displayName: "Axe Linter",
+    subscriptionTypes: ["axe-devtools-linter"],
+    amplitudeSlug: "axe-linter",
+  },
+  {
+    id: "axe-mcp-server",
+    displayName: "Axe MCP Server",
+    subscriptionTypes: [],
+    isAdditional: true,
+    amplitudeSlug: "axe-mcp-server",
+  },
 ];
 
 // Consolidated account that groups multiple Zendesk orgs by SF account name
