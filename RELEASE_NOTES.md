@@ -1,5 +1,67 @@
 # Post-sales Customer Team Portal - Release Notes
 
+## Version 2.0.0
+
+**Release Date:** April 26, 2026
+
+### Customer Health Dashboard, Usage Data Overhaul, Account Mapping Fixes
+
+**Customer Health Dashboard:**
+- Three-dimension health scoring: **Product Adoption**, **Customer Engagement**, **Support** with green/yellow/red indicators
+- **Per-product adoption scores** — each product scored individually on Activation, Depth, and Velocity
+- Product-specific thresholds: DevTools (seat %, scans/user), Monitor (page capacity, projects), DU (session %, downloads), and more
+- Axe Monitor scored on pages processed and projects (not seats). Linter excluded from overall score (uses lines of code, local usage not tracked)
+- Monthly directionality: trend arrows showing month-over-month improvement or decline for each signal
+- Manual health score from Salesforce (CS_Health__c) displayed alongside automated scores
+- Scoring methodology fully transparent via info (i) button with per-product threshold tables
+- Signal combination guide: interpretations for key patterns (silent adopter, shelfware, engaged-struggling, etc.)
+- Health tab under both CSM and Customer views with searchable, filterable account list and drill-down
+- Batch health endpoint for performance (50 accounts per call instead of individual requests)
+
+**Usage Data:**
+- **Monthly granularity**: Last 3 calendar months with trend arrows (was quarterly)
+- **Unified endpoint**: Single API call fetches all product metrics in parallel (was 30+ sequential calls)
+- **10 products tracked**: Axe Accounts, DevTools Extension, Developer Hub, DevTools Mobile, Axe Assistant, Deque University, Axe Monitor, Axe Reports, Axe Linter, Axe MCP Server
+- **Per-product events**: Product-specific metrics with user-friendly labels (Active Users, Scans, Messages, etc.)
+- **Subscription data merged into usage table**: Licensed/assigned seats shown per product inline (no separate license banner)
+- **Monitor shows page tiers** (10K/25K/unlimited) and unique pages processed instead of seats
+- **Enterprise UUID matching**: Amplitude data matched by Enterprise UUID for DevTools, SF Account Name fallback for other products
+- **Monitor workaround**: Uses domain-based matching via initial_referring_domain until gp:organization is deployed
+
+**Account Mapping:**
+- Fixed 15-char vs 18-char Salesforce ID matching (doubled SF ID matches from 67 to 182)
+- Prevented fuzzy name matching from overriding explicit SF ID mappings
+- Parent expansion now only includes sibling orgs with the same CSM assigned (prevents Audi appearing under Porsche's CSM)
+- "No CSM Assigned" section in admin view for unassigned accounts with tickets
+- Account matching rate improved from 84% to 98%
+- Batch script for Zendesk SF ID corrections (scripts/fix-zendesk-sf-ids.py)
+
+**Navigation & UI:**
+- New Home tab with role selection, admin "View as" dropdown, calendar and Calendly widgets
+- Admin users bypass role selection, show "Working as: Admin (simulating CSM)" with "Simulate role" button
+- Health sub-tab added to CSM and Customer views
+- Renewals moved under Product tab with third-level sub-tabs
+- Process Audit is now admin-only top-level tab
+- "Submit Bug / Feature Request" link in footer (Jira CPI board)
+- Removed Renewal_at_Risk__c checkbox from all views (grandfathered)
+
+**Performance:**
+- Cache TTLs increased: renewals 10min, amplitude 30min, salesforce 30min
+- Frontend health score dedup cache (5min) prevents duplicate fetches
+- HTTP Cache-Control headers for browser caching
+- Per-product health scores computed on frontend from existing data (zero additional API calls)
+
+**Accessibility:**
+- Focus traps on modals (OrganizationDrilldown, TicketListModal)
+- Keyboard navigation for all interactive elements (cards, stats, filters)
+- ARIA attributes: combobox for search, dialog/modal roles, button roles with aria-expanded
+- Focus-visible outlines on all clickable elements
+- Color contrast fixes: replaced #999/#888/#666 with #595959 for WCAG compliance
+- prefers-reduced-motion support for animations
+- Table headers use scope="col"
+
+---
+
 ## Version 1.5.1
 
 **Release Date:** March 5, 2026
