@@ -252,11 +252,17 @@ function scoreLinter(product: UnifiedProductMetrics, subs: EnterpriseSubscriptio
   const trend = computeTrend(activeUsers.current, activeUsers.previous);
   signals.push({ label: "Usage Trend", signal: trend === "worsening" ? "red" : trend === "improving" ? "green" : "yellow", detail: `${activeUsers.previous}→${activeUsers.current} users`, trend });
 
+  const actionItems: string[] = [];
+  if (activeUsers.current === 0 && activeUsers.previous === 0 && activeUsers.twoAgo === 0) {
+    actionItems.push("Zero usage detected. Check with customer if the deque_enterprise_id property has been set in their axe Linter configuration.");
+  }
+
   return {
     slug: product.slug, displayName: product.displayName, signal: overallSignal(signals), trend, signals,
     summary: `${activeUsers.current} users, ${lintRuns.current} lint runs`,
     excludeFromOverall: true,
     note: "Linter uses lines of code (not seats). Local usage not tracked — score may undercount.",
+    actionItems: actionItems.length > 0 ? actionItems : undefined,
   };
 }
 
