@@ -356,6 +356,12 @@ function ProductHealthBreakdown({ scores }: { scores: ProductHealthScore[] }) {
                           {s.trend && <TrendArrow trend={s.trend} />}
                         </div>
                       ))}
+                      {score.actionItems && score.actionItems.map((item, i) => (
+                        <div key={`action-${i}`} className="product-health-action">
+                          <span className="action-icon">!</span>
+                          <span className="action-text">{item}</span>
+                        </div>
+                      ))}
                     </div>
                   </td>
                 </tr>

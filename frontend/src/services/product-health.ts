@@ -25,6 +25,7 @@ export interface ProductHealthScore {
   summary: string; // one-line key metric
   excludeFromOverall?: boolean; // if true, not counted in overall adoption score
   note?: string; // displayed as a caveat
+  actionItems?: string[]; // CSM action items when something needs attention
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -120,10 +121,16 @@ function scoreDevToolsExtension(product: UnifiedProductMetrics, subs: Enterprise
     trend,
   });
 
+  const actionItems: string[] = [];
+  if (assigned > 0 && activeUsers.current === 0 && activeUsers.previous === 0 && activeUsers.twoAgo === 0) {
+    actionItems.push("Zero usage detected with seats assigned. Check with customer if the deque_enterprise_id property has been set in their axe DevTools configuration.");
+  }
+
   return {
     slug: product.slug, displayName: product.displayName,
     signal: overallSignal(signals), trend,
     signals, summary: `${seatPct}% seats, ${activeUsers.current} active users`,
+    actionItems: actionItems.length > 0 ? actionItems : undefined,
   };
 }
 
