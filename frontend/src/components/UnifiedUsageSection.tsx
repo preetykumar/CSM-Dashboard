@@ -17,6 +17,9 @@ const PRODUCT_SUBSCRIPTION_TYPES: Record<string, string[]> = {
   "axe-assistant": ["axe-assistant-slack", "axe-assistant-teams"],
   "deque-university": ["deque-university", "dequeu"],
   "axe-monitor": ["axe-monitor", "axe-monitor-pro"],
+  "axe-reports": [], // included with other products
+  "axe-linter": ["axe-devtools-linter"],
+  "axe-mcp-server": [], // included with devtools
 };
 
 interface ProductSubsSummary {

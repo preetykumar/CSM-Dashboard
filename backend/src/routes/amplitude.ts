@@ -830,6 +830,7 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     },
     "axe-devtools-(browser-extension)": {
       events: [
+        { event: "analysis:complete", label: "Active Users", metric: "uniques" },
         { event: "analysis:analyze", label: "Scans Started", metric: "totals" },
         { event: "analysis:complete", label: "Scans Completed", metric: "totals" },
         { event: "analysis:save", label: "Scans Saved", metric: "totals" },
@@ -856,8 +857,10 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     },
     "developer-hub": {
       events: [
+        { event: "project:create", label: "Active Users", metric: "uniques" },
         { event: "project:create", label: "Projects Created", metric: "totals" },
-        { event: "share", label: "Shares", metric: "totals" },
+        { event: "page:exportIssues", label: "Issues Exported", metric: "totals" },
+        { event: "analysis:analyze", label: "Analyses Run", metric: "totals" },
       ],
     },
     "axe-devtools-mobile": {
@@ -888,6 +891,28 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
         { event: "scripts:create:click", label: "Scripts Created", metric: "totals" },
       ],
     },
+    "axe-reports": {
+      events: [
+        { event: "usage:chart:load", label: "Active Users", metric: "uniques" },
+        { event: "usage:chart:load", label: "Usage Charts Loaded", metric: "totals" },
+        { event: "outcomes:chart:load", label: "Outcomes Charts Loaded", metric: "totals" },
+      ],
+    },
+    "axe-linter": {
+      events: [
+        { event: "extension:configure", label: "Active Users", metric: "uniques" },
+        { event: "extension:configure", label: "Configurations", metric: "totals" },
+        { event: "extension:lsp-server-lint", label: "Lint Runs", metric: "totals" },
+      ],
+    },
+    "axe-mcp-server": {
+      events: [
+        { event: "axe-mcp-server:analyze", label: "Active Users", metric: "uniques" },
+        { event: "axe-mcp-server:analyze", label: "Analyses", metric: "totals" },
+        { event: "axe-mcp-server:remediate", label: "Remediations", metric: "totals" },
+        { event: "axe-mcp-server:fetch-configuration", label: "Config Fetches", metric: "totals" },
+      ],
+    },
   };
 
   const PRODUCT_DISPLAY_NAMES: Record<string, string> = {
@@ -898,6 +923,9 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     "axe-assistant": "Axe Assistant",
     "deque-university": "Deque University",
     "axe-monitor": "Axe Monitor",
+    "axe-reports": "Axe Reports",
+    "axe-linter": "Axe Linter",
+    "axe-mcp-server": "Axe MCP Server",
   };
 
   // GET /api/amplitude/unified/:orgIdentifier — all product metrics in one call
