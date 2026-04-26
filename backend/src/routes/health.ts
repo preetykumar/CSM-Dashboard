@@ -329,22 +329,34 @@ function computeAdoptionSignals(subscriptions: any[]): HealthSignal[] {
     return signals;
   }
 
-  // Only count seat-based products for aggregate score
-  // Exclude Monitor (pages, not seats) and Linter (lines of code, not seats — often local-only)
+  // Product display names for health signals
+  const PRODUCT_LABELS: Record<string, string> = {
+    "axe-devtools-pro": "DevTools Pro",
+    "axe-devtools-html": "DevTools HTML",
+    "axe-devtools-watcher": "DevTools Watcher",
+    "axe-devtools-mobile": "DevTools Mobile",
+    "axe-devtools-cli": "DevTools CLI",
+    "axe-devtools-reporter": "DevTools Reporter",
+    "deque-university": "Deque University",
+    "dequeu": "Deque University",
+    "axe-assistant-slack": "Axe Assistant (Slack)",
+    "axe-assistant-teams": "Axe Assistant (Teams)",
+  };
+  // Products that don't use seats — excluded from seat activation
   const NON_SEAT_PRODUCTS = new Set(["axe-monitor", "axe-monitor-pro", "axe-devtools-linter"]);
-  const seatBasedSubs = subscriptions.filter((s: any) =>
-    !NON_SEAT_PRODUCTS.has((s.productType || "").toLowerCase())
-  );
 
-  const totalLicenses = seatBasedSubs.reduce((sum: number, s: any) => sum + (s.licenseCount || 0), 0);
-  const totalAssigned = seatBasedSubs.reduce((sum: number, s: any) => sum + (s.assignedSeats || 0), 0);
+  // Show seat activation per product individually
+  for (const sub of subscriptions) {
+    const pt = (sub.productType || "").toLowerCase();
+    if (NON_SEAT_PRODUCTS.has(pt)) continue;
+    if (!sub.licenseCount || sub.licenseCount <= 0) continue;
 
-  if (totalLicenses > 0) {
-    const pct = Math.round((totalAssigned / totalLicenses) * 100);
+    const pct = Math.round(((sub.assignedSeats || 0) / sub.licenseCount) * 100);
+    const label = PRODUCT_LABELS[pt] || sub.productType || pt;
     let signal: Signal = "green";
     if (pct < 40) signal = "red";
     else if (pct < 70) signal = "yellow";
-    signals.push({ signal, label: "Seat Activation", detail: `${pct}% (${totalAssigned}/${totalLicenses} seats)` });
+    signals.push({ signal, label: `${label} Seats`, detail: `${pct}% (${sub.assignedSeats || 0}/${sub.licenseCount})` });
   }
 
   const productTypes = new Set(subscriptions.map((s: any) => s.productType?.toLowerCase()));
