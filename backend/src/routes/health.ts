@@ -329,15 +329,22 @@ function computeAdoptionSignals(subscriptions: any[]): HealthSignal[] {
     return signals;
   }
 
-  const totalLicenses = subscriptions.reduce((sum: number, s: any) => sum + (s.licenseCount || 0), 0);
-  const totalAssigned = subscriptions.reduce((sum: number, s: any) => sum + (s.assignedSeats || 0), 0);
+  // Only count seat-based products for aggregate score
+  // Exclude Monitor (pages, not seats) and Linter (lines of code, not seats — often local-only)
+  const NON_SEAT_PRODUCTS = new Set(["axe-monitor", "axe-monitor-pro", "axe-devtools-linter"]);
+  const seatBasedSubs = subscriptions.filter((s: any) =>
+    !NON_SEAT_PRODUCTS.has((s.productType || "").toLowerCase())
+  );
+
+  const totalLicenses = seatBasedSubs.reduce((sum: number, s: any) => sum + (s.licenseCount || 0), 0);
+  const totalAssigned = seatBasedSubs.reduce((sum: number, s: any) => sum + (s.assignedSeats || 0), 0);
 
   if (totalLicenses > 0) {
     const pct = Math.round((totalAssigned / totalLicenses) * 100);
     let signal: Signal = "green";
     if (pct < 40) signal = "red";
     else if (pct < 70) signal = "yellow";
-    signals.push({ signal, label: "Seat Activation", detail: `${pct}% (${totalAssigned}/${totalLicenses})` });
+    signals.push({ signal, label: "Seat Activation", detail: `${pct}% (${totalAssigned}/${totalLicenses} seats)` });
   }
 
   const productTypes = new Set(subscriptions.map((s: any) => s.productType?.toLowerCase()));

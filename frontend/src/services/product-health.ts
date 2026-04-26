@@ -23,6 +23,8 @@ export interface ProductHealthScore {
   trend: Trend;
   signals: ProductHealthSignal[];
   summary: string; // one-line key metric
+  excludeFromOverall?: boolean; // if true, not counted in overall adoption score
+  note?: string; // displayed as a caveat
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -243,7 +245,12 @@ function scoreLinter(product: UnifiedProductMetrics, subs: EnterpriseSubscriptio
   const trend = computeTrend(activeUsers.current, activeUsers.previous);
   signals.push({ label: "Usage Trend", signal: trend === "worsening" ? "red" : trend === "improving" ? "green" : "yellow", detail: `${activeUsers.previous}→${activeUsers.current} users`, trend });
 
-  return { slug: product.slug, displayName: product.displayName, signal: overallSignal(signals), trend, signals, summary: `${activeUsers.current} users, ${lintRuns.current} lint runs` };
+  return {
+    slug: product.slug, displayName: product.displayName, signal: overallSignal(signals), trend, signals,
+    summary: `${activeUsers.current} users, ${lintRuns.current} lint runs`,
+    excludeFromOverall: true,
+    note: "Linter uses lines of code (not seats). Local usage not tracked — score may undercount.",
+  };
 }
 
 function scoreReports(product: UnifiedProductMetrics): ProductHealthScore {
@@ -326,16 +333,18 @@ export function computeProductHealthScores(
  * Weighted worst-of: if only 1 of 5+ products is red, overall = yellow.
  */
 export function computeOverallAdoption(productScores: ProductHealthScore[]): { signal: Signal; trend: Trend } {
-  if (productScores.length === 0) return { signal: "yellow", trend: null };
+  // Only include products not excluded from overall score
+  const scoredProducts = productScores.filter((s) => !s.excludeFromOverall);
+  if (scoredProducts.length === 0) return { signal: "yellow", trend: null };
 
-  const reds = productScores.filter((s) => s.signal === "red").length;
-  const yellows = productScores.filter((s) => s.signal === "yellow").length;
-  const trends = productScores.map((s) => s.trend).filter((t): t is Trend => t !== null);
+  const reds = scoredProducts.filter((s) => s.signal === "red").length;
+  const yellows = scoredProducts.filter((s) => s.signal === "yellow").length;
+  const trends = scoredProducts.map((s) => s.trend).filter((t): t is Trend => t !== null);
 
   // Weighted worst-of: soften if only 1 red out of many products
   let signal: Signal;
   if (reds >= 2) signal = "red";
-  else if (reds === 1 && productScores.length >= 5) signal = "yellow"; // softened
+  else if (reds === 1 && scoredProducts.length >= 5) signal = "yellow"; // softened
   else if (reds === 1) signal = "red";
   else if (yellows >= 2) signal = "yellow";
   else signal = "green";

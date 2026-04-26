@@ -333,10 +333,16 @@ function ProductHealthBreakdown({ scores }: { scores: ProductHealthScore[] }) {
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedProduct(expandedProduct === score.slug ? null : score.slug); } }}
               >
-                <td className="product-health-name">{score.displayName}</td>
+                <td className="product-health-name">
+                  {score.displayName}
+                  {score.excludeFromOverall && <span className="product-excluded-badge" title={score.note}>not scored</span>}
+                </td>
                 <td><SignalPill signal={score.signal} /></td>
                 <td><TrendArrow trend={score.trend} /></td>
-                <td className="product-health-summary">{score.summary}</td>
+                <td className="product-health-summary">
+                  {score.summary}
+                  {score.note && <span className="product-health-note">{score.note}</span>}
+                </td>
               </tr>
               {expandedProduct === score.slug && (
                 <tr key={`${score.slug}-detail`} className="product-health-detail-row">
