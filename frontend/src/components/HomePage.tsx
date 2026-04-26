@@ -48,6 +48,9 @@ export function HomePage() {
       .then((prefs) => {
         if (prefs.role) {
           setRole(prefs.role as UserRole);
+        } else if (isAdmin) {
+          // Admins skip role selection — default to CSM view
+          setRole("csm");
         } else {
           setShowRoleSelection(true);
         }
@@ -58,6 +61,8 @@ export function HomePage() {
         if (saved) {
           setRole(saved);
           setCalendlyUrl(localStorage.getItem("home_calendly_url"));
+        } else if (isAdmin) {
+          setRole("csm");
         } else {
           setShowRoleSelection(true);
         }
