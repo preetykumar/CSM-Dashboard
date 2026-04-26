@@ -1062,6 +1062,12 @@ header .hint {
   text-decoration: underline;
 }
 
+.admin-simulating {
+  font-weight: 400;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
 .role-change-btn:hover { color: #4f5bd5; }
 
 .view-as-selector {

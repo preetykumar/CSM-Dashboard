@@ -125,9 +125,10 @@ export function HomePage() {
           <h2>Good {getGreeting()}, {userName} 👋</h2>
           {role && (
             <p className="home-role-badge">
-              Working as: <strong>{ROLE_DISPLAY[role]}</strong>
+              Working as: <strong>{isAdmin ? "Admin" : ROLE_DISPLAY[role]}</strong>
+              {isAdmin && <span className="admin-simulating"> (simulating {ROLE_DISPLAY[role]})</span>}
               <button className="role-change-btn" onClick={handleChangeRole}>
-                Change role
+                {isAdmin ? "Simulate role" : "Change role"}
               </button>
             </p>
           )}
