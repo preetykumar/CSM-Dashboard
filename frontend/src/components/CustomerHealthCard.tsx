@@ -223,9 +223,73 @@ function HealthInfoPanel({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="health-info-dimension">
+          <h5>Per-Product Adoption Scoring</h5>
+          <p className="health-dim-description">
+            Each product is scored individually on Activation (using what they bought), Depth (feature usage per user), and Velocity (month-over-month trend).
+            The overall Adoption signal is the weighted worst-of across products: if only 1 of 5+ products is red, overall = yellow (softened).
+          </p>
+          <table className="health-formula-table">
+            <thead>
+              <tr><th>Product</th><th>Activation (Green/Yellow/Red)</th><th>Depth (Green/Yellow/Red)</th><th>Velocity</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="health-signal-name">DevTools Extension</td>
+                <td>Seats: {"\u2265"}70% / 40-70% / &lt;40%</td>
+                <td>Scans/user: {"\u2265"}10 / 3-10 / &lt;3</td>
+                <td rowSpan={9}>MoM active users: {"\u2265"}+15% improving, {"\u2265"}-15% worsening</td>
+              </tr>
+              <tr>
+                <td className="health-signal-name">Developer Hub</td>
+                <td>Users/devtools seats: {"\u2265"}30% / 10-30% / &lt;10%</td>
+                <td>Analyses/user: {"\u2265"}5 / 1-5 / &lt;1</td>
+              </tr>
+              <tr>
+                <td className="health-signal-name">Axe Monitor</td>
+                <td>Page capacity: {"\u2265"}60% / 25-60% / &lt;25% + Projects: {"\u2265"}3 / 1-2 / 0</td>
+                <td>Scans/project: {"\u2265"}5 / 1-5 / &lt;1</td>
+              </tr>
+              <tr>
+                <td className="health-signal-name">DevTools Mobile</td>
+                <td>Seats: {"\u2265"}70% / 40-70% / &lt;40%</td>
+                <td>Save rate: {"\u2265"}50% / 20-50% / &lt;20%</td>
+              </tr>
+              <tr>
+                <td className="health-signal-name">Deque University</td>
+                <td>Sessions/seats: {"\u2265"}50% / 20-50% / &lt;20%</td>
+                <td>Downloads: {"\u2265"}5 / 1-5 / 0</td>
+              </tr>
+              <tr>
+                <td className="health-signal-name">Axe Assistant</td>
+                <td>Active users: {"\u2265"}5 / 2-5 / &lt;2</td>
+                <td>Messages/user: {"\u2265"}10 / 3-10 / &lt;3</td>
+              </tr>
+              <tr>
+                <td className="health-signal-name">Axe Linter</td>
+                <td>Seats: {"\u2265"}60% / 30-60% / &lt;30%</td>
+                <td>Lint runs/user: {"\u2265"}20 / 5-20 / &lt;5</td>
+              </tr>
+              <tr>
+                <td className="health-signal-name">Axe Reports</td>
+                <td>Active users: {"\u2265"}3 / 1-2 / 0</td>
+                <td>Chart loads: {"\u2265"}10 / 1-10 / 0</td>
+              </tr>
+              <tr>
+                <td className="health-signal-name">Axe MCP Server</td>
+                <td>Active users: {"\u2265"}3 / 1-2 / 0</td>
+                <td>Actions/user: {"\u2265"}5 / 1-5 / &lt;1</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="health-dim-description" style={{ marginTop: "0.5rem" }}>
+            Axe Account Portal is excluded from scoring (admin tool, not an adoption signal).
+          </p>
+        </div>
+
+        <div className="health-info-dimension">
           <h5>Data Sources</h5>
           <ul className="health-info-sources">
-            <li><strong>Adoption:</strong> Salesforce Enterprise Subscriptions (seat counts, product types)</li>
+            <li><strong>Per-Product Adoption:</strong> Amplitude usage events (monthly, last 3 months) + Salesforce subscriptions (seats, page capacity)</li>
             <li><strong>Engagement:</strong> Salesforce Account Contact Roles, Account activity dates</li>
             <li><strong>Support:</strong> Zendesk tickets (priority, escalation, type)</li>
             <li><strong>Manual Score:</strong> CS_Health__c field in Salesforce (set by CSM)</li>
