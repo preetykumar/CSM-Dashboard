@@ -5616,6 +5616,78 @@ header .hint {
   font-weight: 500;
 }
 
+/* Overdue Renewals View */
+.overdue-months {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.overdue-month-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: white;
+}
+
+.overdue-month-card.expanded {
+  border-color: #f97316;
+}
+
+.overdue-month-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  background: #fff7ed;
+  border-left: 4px solid #f97316;
+}
+
+.overdue-month-header:hover {
+  background: #ffedd5;
+}
+
+.overdue-month-header:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: -2px;
+}
+
+.overdue-month-info h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.overdue-month-stats {
+  font-size: 0.85rem;
+  color: #92400e;
+  margin-top: 0.15rem;
+}
+
+.overdue-month-body {
+  padding: 0.5rem;
+  border-top: 1px solid #fed7aa;
+}
+
+.overdue-days {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.overdue-days.warning {
+  color: #ca8a04;
+}
+
+.overdue-days.critical {
+  color: #dc2626;
+}
+
+.renewal-subtitle {
+  color: #64748b;
+  font-size: 0.9rem;
+  margin: 0.25rem 0 1rem;
+}
+
 /* Product Usage View (aggregate) */
 .product-usage-view {
   padding: 1rem 0;

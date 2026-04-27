@@ -22,6 +22,7 @@ import { ComingSoonPlaceholder } from "./components/ComingSoonPlaceholder";
 import { HomePage } from "./components/HomePage";
 import { HealthView } from "./components/HealthView";
 import { ProductUsageView } from "./components/ProductUsageView";
+import { OverdueRenewalsView } from "./components/OverdueRenewalsView";
 import { useAuth } from "./contexts/AuthContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import { ToastProvider } from "./components/renewal/ToastProvider";
@@ -57,6 +58,7 @@ const ROUTES = {
   PRODUCT_RENEWALS_QUARTERLY: "/product/renewals/quarterly",
   PRODUCT_RENEWALS_CLOSED_WON: "/product/renewals/closed-won",
   PRODUCT_RENEWALS_CLOSED_LOST: "/product/renewals/closed-lost",
+  PRODUCT_RENEWALS_OVERDUE: "/product/renewals/overdue",
   // Process Audit (admin-only)
   PROCESS_AUDIT: "/process-audit",
 } as const;
@@ -125,6 +127,8 @@ function Dashboard() {
         return "View renewals with Closed Won status";
       case ROUTES.PRODUCT_RENEWALS_CLOSED_LOST:
         return "View renewals with Closed Lost status";
+      case ROUTES.PRODUCT_RENEWALS_OVERDUE:
+        return "Renewals past their close date that have not been closed won or lost";
       case ROUTES.PROCESS_AUDIT:
         return "Stale R-6 actions (>5 months overdue) for process review";
       default:
@@ -296,6 +300,9 @@ function Dashboard() {
             <NavLink to={ROUTES.PRODUCT_RENEWALS_CLOSED_LOST}>
               Closed Lost
             </NavLink>
+            <NavLink to={ROUTES.PRODUCT_RENEWALS_OVERDUE}>
+              Overdue
+            </NavLink>
           </nav>
         )}
 
@@ -340,6 +347,7 @@ function Dashboard() {
           <Route path="/product/renewals/quarterly" element={<QuarterlyRenewalView />} />
           <Route path="/product/renewals/closed-won" element={<ClosedWonView />} />
           <Route path="/product/renewals/closed-lost" element={<ClosedLostView />} />
+          <Route path="/product/renewals/overdue" element={<OverdueRenewalsView />} />
 
           {/* Process Audit Route (admin-only) */}
           <Route path="/process-audit" element={<ProcessAuditView />} />
