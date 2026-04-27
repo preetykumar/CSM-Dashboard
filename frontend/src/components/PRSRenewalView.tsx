@@ -10,8 +10,6 @@ import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
 import { SortHeader } from './renewal/SortHeader';
 import { EmailComposer } from './renewal/EmailComposer';
-import { OverdueBanner } from './renewal/OverdueBanner';
-import { useOverdueAlerts } from '../hooks/useOverdueAlerts';
 
 interface PRSPortfolio {
   prsName: string;
@@ -241,7 +239,6 @@ export function PRSRenewalView() {
   const currentUserEmail = user?.email?.toLowerCase() || '';
   const userName = user?.name || user?.email?.split('@')[0] || 'PRS User';
 
-  const { overdueItems } = useOverdueAlerts(opportunities);
 
   useEffect(() => {
     async function loadOpportunities() {
@@ -327,7 +324,6 @@ export function PRSRenewalView() {
 
   return (
     <div className="prs-view">
-      <OverdueBanner overdueItems={overdueItems} />
 
       {isAdmin && (
         <div className="admin-banner">

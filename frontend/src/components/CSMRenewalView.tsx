@@ -8,8 +8,6 @@ import { WorkflowEngine, getStageBadgeVariant, isClosedLost, isClosedWon } from 
 import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
 import { SortHeader } from './renewal/SortHeader';
-import { OverdueBanner } from './renewal/OverdueBanner';
-import { useOverdueAlerts } from '../hooks/useOverdueAlerts';
 
 interface CSMRenewalPortfolio {
   csmName: string;
@@ -191,7 +189,6 @@ export function CSMRenewalView() {
   const [showNeedsActionModal, setShowNeedsActionModal] = useState(false);
 
   const currentUserEmail = user?.email?.toLowerCase() || '';
-  const { overdueItems } = useOverdueAlerts(opportunities);
 
   useEffect(() => {
     async function loadOpportunities() {
@@ -259,7 +256,6 @@ export function CSMRenewalView() {
 
   return (
     <div className="prs-view">
-      <OverdueBanner overdueItems={overdueItems} />
       {isAdmin && (
         <div className="admin-banner">
           <span className="admin-badge">Admin View</span>

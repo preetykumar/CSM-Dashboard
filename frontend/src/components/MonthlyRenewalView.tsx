@@ -7,8 +7,6 @@ import { WorkflowEngine, getStageBadgeVariant, isClosedLost, isClosedWon } from 
 import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
 import { SortHeader } from './renewal/SortHeader';
-import { OverdueBanner } from './renewal/OverdueBanner';
-import { useOverdueAlerts } from '../hooks/useOverdueAlerts';
 
 interface MonthlyRenewalGroup {
   monthKey: string;
@@ -173,7 +171,6 @@ export function MonthlyRenewalView() {
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
   const [showAtRiskModal, setShowAtRiskModal] = useState(false);
 
-  const { overdueItems } = useOverdueAlerts(opportunities);
 
   useEffect(() => {
     async function loadOpportunities() {
@@ -240,7 +237,6 @@ export function MonthlyRenewalView() {
 
   return (
     <div className="prs-view">
-      <OverdueBanner overdueItems={overdueItems} />
 
       <div className="renewal-stats-grid">
         <div className={`renewal-stat-card clickable ${filter === 'all' ? 'active-filter' : ''}`} onClick={() => setFilter('all')} style={{ cursor: 'pointer' }}><div className="renewal-stat-content"><div className="renewal-stat-icon slate"><FileText size={20} /></div><div><p className="renewal-stat-value">{opportunities.length}</p><p className="renewal-stat-label">Total Renewals</p></div></div></div>

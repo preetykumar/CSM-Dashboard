@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 interface TodoItem {
   id: string;
   text: string;
+  notes: string;
   completed: boolean;
   createdAt: string;
 }
@@ -27,6 +28,7 @@ export function PersonalTodoWidget() {
   const [newText, setNewText] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const editRef = useRef<HTMLInputElement>(null);
 
@@ -45,7 +47,7 @@ export function PersonalTodoWidget() {
     if (!text) return;
     setTodos((prev) => [
       ...prev,
-      { id: `todo-${Date.now()}`, text, completed: false, createdAt: new Date().toISOString() },
+      { id: `todo-${Date.now()}`, text, notes: "", completed: false, createdAt: new Date().toISOString() },
     ]);
     setNewText("");
     inputRef.current?.focus();
@@ -76,6 +78,12 @@ export function PersonalTodoWidget() {
     }
     setEditingId(null);
     setEditText("");
+  };
+
+  const updateNotes = (id: string, notes: string) => {
+    setTodos((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, notes } : t))
+    );
   };
 
   const clearCompleted = () => {
@@ -117,32 +125,46 @@ export function PersonalTodoWidget() {
       ) : (
         <ul className="todo-list" role="list">
           {activeTodos.map((todo) => (
-            <li key={todo.id} className="todo-item">
-              <label className="todo-checkbox-label">
-                <input
-                  type="checkbox"
-                  checked={false}
-                  onChange={() => toggleTodo(todo.id)}
-                  aria-label={`Mark "${todo.text}" as complete`}
+            <li key={todo.id} className={`todo-item ${expandedId === todo.id ? "expanded" : ""}`}>
+              <div className="todo-item-row">
+                <label className="todo-checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={false}
+                    onChange={() => toggleTodo(todo.id)}
+                    aria-label={`Mark "${todo.text}" as complete`}
+                  />
+                  <span className="todo-checkmark" />
+                </label>
+                {editingId === todo.id ? (
+                  <input
+                    ref={editRef}
+                    type="text"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditingId(null); }}
+                    onBlur={saveEdit}
+                    className="todo-edit-input"
+                  />
+                ) : (
+                  <span className="todo-text" onDoubleClick={() => startEdit(todo)}>{todo.text}</span>
+                )}
+                <button className="todo-notes-toggle" onClick={() => setExpandedId(expandedId === todo.id ? null : todo.id)} aria-label="Toggle notes" title={todo.notes ? "View notes" : "Add notes"}>
+                  {todo.notes ? "\u270E" : "+"}
+                </button>
+                <button className="todo-delete-btn" onClick={() => deleteTodo(todo.id)} aria-label={`Delete "${todo.text}"`}>
+                  &times;
+                </button>
+              </div>
+              {expandedId === todo.id && (
+                <textarea
+                  className="todo-notes-input"
+                  value={todo.notes}
+                  onChange={(e) => updateNotes(todo.id, e.target.value)}
+                  placeholder="Add notes..."
+                  rows={2}
                 />
-                <span className="todo-checkmark" />
-              </label>
-              {editingId === todo.id ? (
-                <input
-                  ref={editRef}
-                  type="text"
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") saveEdit(); if (e.key === "Escape") setEditingId(null); }}
-                  onBlur={saveEdit}
-                  className="todo-edit-input"
-                />
-              ) : (
-                <span className="todo-text" onDoubleClick={() => startEdit(todo)}>{todo.text}</span>
               )}
-              <button className="todo-delete-btn" onClick={() => deleteTodo(todo.id)} aria-label={`Delete "${todo.text}"`}>
-                &times;
-              </button>
             </li>
           ))}
           {completedTodos.map((todo) => (

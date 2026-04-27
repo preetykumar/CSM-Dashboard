@@ -5,9 +5,6 @@ import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
 import { getStageBadgeVariant, isClosedLost, isClosedWon } from '../services/workflow-engine';
 import { SortHeader as SharedSortHeader } from './renewal/SortHeader';
-import { OverdueBanner } from './renewal/OverdueBanner';
-import { useOverdueAlerts } from '../hooks/useOverdueAlerts';
-import type { Opportunity as SharedOpportunity } from '../types/renewal';
 
 // TypeScript interfaces
 
@@ -733,26 +730,6 @@ export default function RenewalAgent() {
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'renewalDate', direction: 'asc' });
   const [daysAhead, setDaysAhead] = useState<number>(60);
 
-  // Convert local opportunities to shared format for overdue detection
-  const sharedOpportunities = useMemo(() => {
-    return state.opportunities.map((opp): SharedOpportunity => ({
-      id: opp.id,
-      opportunityName: opp.opportunityName,
-      companyName: opp.companyName,
-      accountId: opp.accountId,
-      productName: opp.productName,
-      renewalDate: opp.renewalDate,
-      amount: opp.amount,
-      stage: opp.stage,
-      ownerName: opp.ae || '',
-      ownerEmail: '',
-      contactName: opp.contactName,
-      contactEmail: opp.contactEmail,
-    }));
-  }, [state.opportunities]);
-
-  const { overdueItems } = useOverdueAlerts(sharedOpportunities);
-
   // Fetch renewal opportunities from API
   useEffect(() => {
     async function loadOpportunities() {
@@ -901,7 +878,6 @@ export default function RenewalAgent() {
 
       <main className="renewal-main">
         {/* Overdue Banner */}
-        <OverdueBanner overdueItems={overdueItems} />
 
         {/* Stats */}
         <DashboardStats opportunities={state.opportunities} />
