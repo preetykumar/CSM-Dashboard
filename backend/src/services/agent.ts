@@ -68,7 +68,10 @@ export class AgentService {
 
   // System prompt for the CSM Agent
   private getSystemPrompt(context: ConversationContext): string {
+    const today = new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     return `You are a helpful AI assistant for Customer Success Managers (CSMs) and Product Renewal Specialists (PRS) at Deque Systems. You help manage customer relationships by providing insights about support tickets, product usage analytics, and renewal opportunities.
+
+Today's date is ${today}. Always use this as the reference for "this month", "current month", "upcoming", etc.
 
 You have access to tools that can query:
 - Zendesk support tickets (bugs, feature requests, status, priority, etc.)
@@ -910,14 +913,32 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
 
     const toolsUsed: string[] = [];
 
-    // Call Claude with tool use loop
-    let response = await this.anthropic.messages.create({
-      model: this.model,
-      max_tokens: this.maxTokens,
-      system: this.getSystemPrompt(context),
-      tools: this.getTools() as Anthropic.Tool[],
-      messages,
-    });
+    // Call Claude with tool use loop (with retry on rate limit)
+    const callClaude = async (msgs: Anthropic.MessageParam[]) => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          return await this.anthropic.messages.create({
+            model: this.model,
+            max_tokens: this.maxTokens,
+            system: this.getSystemPrompt(context),
+            tools: this.getTools() as Anthropic.Tool[],
+            messages: msgs,
+          });
+        } catch (err: any) {
+          const status = err?.status || err?.error?.status;
+          if ((status === 429 || status === 529) && attempt < 2) {
+            const delay = (attempt + 1) * 5000; // 5s, 10s
+            console.warn(`Claude API rate limited (${status}), retrying in ${delay / 1000}s...`);
+            await new Promise((r) => setTimeout(r, delay));
+            continue;
+          }
+          throw err;
+        }
+      }
+      throw new Error("Claude API failed after retries");
+    };
+
+    let response = await callClaude(messages);
 
     // Handle tool use in a loop
     while (response.stop_reason === "tool_use") {
@@ -962,13 +983,7 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
       messages.push({ role: "assistant", content: response.content });
       messages.push({ role: "user", content: toolResults });
 
-      response = await this.anthropic.messages.create({
-        model: this.model,
-        max_tokens: this.maxTokens,
-        system: this.getSystemPrompt(context),
-        tools: this.getTools() as Anthropic.Tool[],
-        messages,
-      });
+      response = await callClaude(messages);
     }
 
     // Extract final text response
