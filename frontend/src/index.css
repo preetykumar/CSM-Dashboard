@@ -5600,6 +5600,90 @@ header .hint {
   font-weight: 500;
 }
 
+/* Product Usage View (aggregate) */
+.product-usage-view {
+  padding: 1rem 0;
+}
+
+.product-usage-view-header {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.product-usage-view-header h2 {
+  margin: 0;
+}
+
+.product-usage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.product-usage-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: white;
+}
+
+.product-usage-card.expanded {
+  border-color: #cbd5e1;
+}
+
+.product-usage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  background: #f8fafc;
+}
+
+.product-usage-header:hover {
+  background: #f1f5f9;
+}
+
+.product-usage-header:focus-visible {
+  outline: 2px solid #667eea;
+  outline-offset: -2px;
+}
+
+.product-usage-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.product-usage-name {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.product-usage-headline {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.product-metric-badge {
+  font-size: 0.82rem;
+  color: #1e293b;
+  font-weight: 500;
+}
+
+.product-metric-badge.secondary {
+  color: #64748b;
+}
+
+.product-usage-body {
+  padding: 0.5rem 1.25rem 1.25rem;
+  border-top: 1px solid #e2e8f0;
+}
+
 /* Health Trend Arrows */
 .health-trend-arrow {
   display: inline-block;

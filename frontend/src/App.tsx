@@ -21,6 +21,7 @@ import { ProcessAuditView } from "./components/ProcessAuditView";
 import { ComingSoonPlaceholder } from "./components/ComingSoonPlaceholder";
 import { HomePage } from "./components/HomePage";
 import { HealthView } from "./components/HealthView";
+import { ProductUsageView } from "./components/ProductUsageView";
 import { useAuth } from "./contexts/AuthContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import { ToastProvider } from "./components/renewal/ToastProvider";
@@ -113,7 +114,7 @@ function Dashboard() {
       case ROUTES.PRODUCT_SUPPORT:
         return "View tickets grouped by product, request type, and issue subtype";
       case ROUTES.PRODUCT_USAGE:
-        return "Product usage analytics (coming soon)";
+        return "Aggregate usage metrics across all customers by product";
       case ROUTES.PRODUCT_RENEWALS_UPCOMING:
         return "View all upcoming renewal opportunities across accounts";
       case ROUTES.PRODUCT_RENEWALS_MONTHLY:
@@ -268,8 +269,8 @@ function Dashboard() {
             <NavLink to={ROUTES.PRODUCT_SUPPORT} end>
               Support Tickets
             </NavLink>
-            <NavLink to={ROUTES.PRODUCT_USAGE} className="coming-soon-tab">
-              Usage Data <span className="tab-badge-soon">Soon</span>
+            <NavLink to={ROUTES.PRODUCT_USAGE}>
+              Usage Data
             </NavLink>
             <NavLink to={ROUTES.PRODUCT_RENEWALS_UPCOMING}>
               Renewals
@@ -333,7 +334,7 @@ function Dashboard() {
 
           {/* Product Routes */}
           <Route path="/product/support" element={<ProductView />} />
-          <Route path="/product/usage" element={<ComingSoonPlaceholder title="Product Usage Analytics" description="View product usage metrics aggregated by product." />} />
+          <Route path="/product/usage" element={<ProductUsageView />} />
           <Route path="/product/renewals/upcoming" element={<RenewalAgent />} />
           <Route path="/product/renewals/monthly" element={<MonthlyRenewalView />} />
           <Route path="/product/renewals/quarterly" element={<QuarterlyRenewalView />} />

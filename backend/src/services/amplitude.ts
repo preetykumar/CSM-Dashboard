@@ -2458,4 +2458,50 @@ export class AmplitudeService {
     amplitudeCache.set(cacheKey, result);
     return result;
   }
+
+  /**
+   * Global: fetch event count across ALL orgs for 3 months (no org filter).
+   * Used for aggregate product-level views.
+   */
+  async getMonthlyEventMetricGlobal(
+    eventType: string,
+    metric: "uniques" | "totals" = "totals"
+  ): Promise<{ current: number; previous: number; twoAgo: number; labels: [string, string, string] }> {
+    const cacheKey = `meg:${this.projectId}:${eventType}:${metric}`;
+    const cached = amplitudeCache.get<{ current: number; previous: number; twoAgo: number; labels: [string, string, string] }>(cacheKey);
+    if (cached) return cached;
+
+    const months = [
+      this.getMonthDateRange(0),
+      this.getMonthDateRange(-1),
+      this.getMonthDateRange(-2),
+    ];
+
+    const fetchOne = async (start: Date, end: Date): Promise<number> => {
+      try {
+        const e = JSON.stringify({ event_type: eventType });
+        const response = await this.request<EventSegmentationResponse>("/events/segmentation", {
+          e,
+          start: this.formatDate(start),
+          end: this.formatDate(end),
+          m: metric,
+        });
+        const series = response.data?.series?.[0] || [];
+        return series.reduce((sum, val) => sum + (val || 0), 0);
+      } catch {
+        return 0;
+      }
+    };
+
+    const [current, previous, twoAgo] = await Promise.all(
+      months.map((m) => fetchOne(m.start, m.end))
+    );
+
+    const result = {
+      current, previous, twoAgo,
+      labels: [months[0].label, months[1].label, months[2].label] as [string, string, string],
+    };
+    amplitudeCache.set(cacheKey, result);
+    return result;
+  }
 }

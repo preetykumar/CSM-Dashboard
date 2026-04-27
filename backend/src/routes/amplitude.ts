@@ -1014,5 +1014,49 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
     }
   ));
 
+  // GET /api/amplitude/aggregate — global usage per product (no org filter)
+  router.get("/aggregate", cachedHandler(
+    () => "amp:aggregate:all",
+    async () => {
+      const productResults = await Promise.allSettled(
+        Object.entries(PRODUCT_EVENTS).map(async ([slug, config]) => {
+          const entry = services.get(slug);
+          if (!entry) return { slug, error: "Product not configured" };
+
+          const eventResults = await Promise.allSettled(
+            config.events.map(async ({ event, label, metric }) => {
+              const data = await entry.service.getMonthlyEventMetricGlobal(event, metric);
+              return { event, label, metric, ...data };
+            })
+          );
+
+          return {
+            slug,
+            displayName: PRODUCT_DISPLAY_NAMES[slug] || slug,
+            events: eventResults.map((r, i) => {
+              if (r.status === "fulfilled") return r.value;
+              return {
+                event: config.events[i].event,
+                label: config.events[i].label,
+                metric: config.events[i].metric,
+                current: 0, previous: 0, twoAgo: 0,
+                labels: ["", "", ""],
+                error: r.reason?.message || "Failed",
+              };
+            }),
+          };
+        })
+      );
+
+      const results: Record<string, any> = {};
+      for (const r of productResults) {
+        if (r.status === "fulfilled" && r.value && "slug" in r.value) {
+          results[r.value.slug] = r.value;
+        }
+      }
+      return { products: results };
+    }
+  ));
+
   return router;
 }

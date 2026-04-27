@@ -968,6 +968,12 @@ export interface UnifiedUsageResponse {
   products: Record<string, UnifiedProductMetrics>;
 }
 
+export async function fetchAggregateUsageMetrics(): Promise<UnifiedUsageResponse> {
+  const res = await fetch(`${API_BASE}/amplitude/aggregate`, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch aggregate usage metrics");
+  return res.json();
+}
+
 export async function fetchUnifiedUsageMetrics(orgIdentifier: string, monitorDomain?: string, accountName?: string): Promise<UnifiedUsageResponse> {
   const queryParts: string[] = [];
   if (monitorDomain) queryParts.push(`monitorDomain=${encodeURIComponent(monitorDomain)}`);
