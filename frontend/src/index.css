@@ -205,6 +205,22 @@ header p {
   color: rgba(255, 255, 255, 0.8);
 }
 
+.summary-card-assignments {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.assignment-badge {
+  font-size: 0.78rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
+}
+
 .summary-card-header .health-manual-badge {
   background: rgba(255, 255, 255, 0.25);
   color: white;

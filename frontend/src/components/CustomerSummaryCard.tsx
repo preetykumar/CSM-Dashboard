@@ -149,6 +149,12 @@ export function CustomerSummaryCard({ summary, subtitle, onClick, onStatusClick,
           <CustomerHealthCard accountName={organization.salesforce_account_name || organization.name} accountId={organization.salesforce_account_id} compact />
           <div className="total-tickets">{ticketStats.total} total tickets</div>
         </div>
+        {(organization.csm_name || organization.owner_name) && (
+          <div className="summary-card-assignments">
+            {organization.csm_name && <span className="assignment-badge csm-badge">CSM: {organization.csm_name}</span>}
+            {organization.owner_name && <span className="assignment-badge ae-badge">AE: {organization.owner_name}</span>}
+          </div>
+        )}
       </div>
 
       <div className="summary-card-body">

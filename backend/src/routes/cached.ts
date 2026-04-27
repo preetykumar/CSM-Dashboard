@@ -132,6 +132,16 @@ export function createCachedRoutes(db: IDatabaseService): Router {
       const orgs = await db.getOrganizations();
       const allTickets = await db.getAllTickets();
 
+      // Build CSM lookup by org ID
+      const csmAssignments = await db.getCSMAssignments();
+      const orgToCsm = new Map<number, string>();
+      const orgToAe = new Map<number, string>();
+      for (const a of csmAssignments) {
+        if (a.zendesk_org_id) {
+          orgToCsm.set(a.zendesk_org_id, a.csm_name);
+        }
+      }
+
       // Group tickets by organization_id
       const ticketsByOrg = new Map<number, CachedTicket[]>();
       for (const ticket of allTickets) {
@@ -197,6 +207,7 @@ export function createCachedRoutes(db: IDatabaseService): Router {
             domain_names: JSON.parse(org.domain_names || "[]"),
             salesforce_account_name: org.salesforce_account_name || undefined,
             sf_ultimate_parent_name: org.sf_ultimate_parent_name || undefined,
+            csm_name: orgToCsm.get(org.id) || undefined,
             created_at: org.created_at,
             updated_at: org.updated_at,
           },

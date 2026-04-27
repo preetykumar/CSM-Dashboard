@@ -26,6 +26,8 @@ export interface Organization {
   domain_names?: string[];
   salesforce_account_id?: string; // SF Account ID for API lookups
   salesforce_account_name?: string; // SF Account Name for display
+  csm_name?: string; // Customer Success Manager
+  owner_name?: string; // Account Owner / AE
   sf_ultimate_parent_name?: string; // Ultimate parent account from SF hierarchy
   created_at: string;
   updated_at: string;

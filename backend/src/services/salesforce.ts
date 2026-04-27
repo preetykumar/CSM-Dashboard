@@ -97,6 +97,7 @@ export interface CSMAssignment {
   csmId: string;
   csmName: string;
   csmEmail: string;
+  ownerName?: string; // Account Owner (AE)
 }
 
 export interface PMAssignment {
@@ -449,7 +450,8 @@ export class SalesforceService {
     // Query accounts with CSM assignment using the Customer_Success_Manager_csm__c field
     try {
       const accounts = await this.query<SFAccount>(`
-        SELECT Id, Name, Customer_Success_Manager_csm__c, Customer_Success_Manager_csm__r.Id,
+        SELECT Id, Name, OwnerId, Owner.Name,
+               Customer_Success_Manager_csm__c, Customer_Success_Manager_csm__r.Id,
                Customer_Success_Manager_csm__r.Name, Customer_Success_Manager_csm__r.Email
         FROM Account
         WHERE Customer_Success_Manager_csm__c != null
@@ -463,6 +465,7 @@ export class SalesforceService {
         csmId: account.Customer_Success_Manager_csm__r?.Id || account.Customer_Success_Manager_csm__c || "",
         csmName: account.Customer_Success_Manager_csm__r?.Name || "",
         csmEmail: account.Customer_Success_Manager_csm__r?.Email || "",
+        ownerName: (account as any).Owner?.Name || "",
       }));
 
       // Collect known CSM emails for EM fallback matching
