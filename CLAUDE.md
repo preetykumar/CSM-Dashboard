@@ -85,13 +85,20 @@ cd frontend && npm run build
 ## Git Remotes
 
 The repository is pushed to two GitHub remotes:
-- **origin** → `https://github.com/preetykumar/CSM-Dashboard.git` (personal repo)
+- **origin** → `https://github.com/preetykumar/CSM-Dashboard.git` (personal repo, triggers Cloud Build → Cloud Run)
 - **dequelabs** → `https://github.com/dequelabs/CustomerTeamPortal.git` (org repo)
 
-The default upstream tracking branch is `dequelabs/main`. To push to both:
+**ALWAYS push to BOTH remotes after every commit on main.** Push to `origin` first (it triggers production deploy), then push to `dequelabs`:
 ```bash
-git push dequelabs main   # org repo (default)
-git push origin main      # personal repo
+git push origin main      # personal repo (triggers production deploy)
+git push dequelabs main   # org repo
+```
+
+**Note:** `dequelabs/main` is protected by a branch rule requiring pull requests — direct `git push dequelabs main` will be rejected with `GH013: Repository rule violations`. When that happens, open a PR instead:
+```bash
+# Create a sync branch from current main and open a PR against dequelabs
+git push dequelabs main:sync-from-origin-$(date +%Y%m%d)
+gh pr create --repo dequelabs/CustomerTeamPortal --base main --head sync-from-origin-YYYYMMDD --title "Sync from origin" --body "Mirrors latest commits from preetykumar/CSM-Dashboard:main"
 ```
 
 ---
