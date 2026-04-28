@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { AlertTriangle, CheckCircle, Clock, FileText, User as UserIcon, DollarSign, X, Search, ChevronRight } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, FileText, User as UserIcon, DollarSign, X, Search, ChevronRight, XCircle } from 'lucide-react';
 import { fetchRenewalOpportunities } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Opportunity, RequiredAction, SortConfig, SortField } from '../types/renewal';
@@ -10,6 +10,7 @@ import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
 import { SortHeader } from './renewal/SortHeader';
 import { EmailComposer } from './renewal/EmailComposer';
+import { useChurnedAccounts } from '../hooks/useChurnedAccounts';
 
 interface PRSPortfolio {
   prsName: string;
@@ -234,10 +235,12 @@ export function PRSRenewalView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedPRS, setExpandedPRS] = useState<string | null>(null);
   const [showNeedsActionModal, setShowNeedsActionModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'active' | 'overdue'>('active');
+  const [activeTab, setActiveTab] = useState<'active' | 'overdue' | 'churn'>('active');
   const [overdueOpportunities, setOverdueOpportunities] = useState<Opportunity[]>([]);
   const [overdueLoading, setOverdueLoading] = useState(false);
   const [expandedStage, setExpandedStage] = useState<string | null>(null);
+  const [expandedQuarter, setExpandedQuarter] = useState<string | null>(null);
+  const churnData = useChurnedAccounts();
 
   const currentUserEmail = user?.email?.toLowerCase() || '';
   const userName = user?.name || user?.email?.split('@')[0] || 'PRS User';
@@ -348,6 +351,34 @@ export function PRSRenewalView() {
     return { totalCount, totalValue, accounts };
   }, [overdueOpportunities]);
 
+  const churnQuarterGroups = useMemo(() => {
+    const filtered = churnData.opportunities.filter(opp =>
+      opp.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      opp.opportunityName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      opp.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (opp.prsName || '').toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    return churnData.quarters.map(quarter => {
+      const opps = filtered.filter(opp =>
+        opp.renewalDate >= quarter.startISO && opp.renewalDate <= quarter.endISO
+      ).sort((a, b) => new Date(b.renewalDate).getTime() - new Date(a.renewalDate).getTime());
+      return {
+        key: `${quarter.year}-Q${quarter.quarter}`,
+        label: quarter.label,
+        opps,
+        count: opps.length,
+        totalValue: opps.reduce((sum, o) => sum + (o.amount || 0), 0),
+      };
+    }).reverse();
+  }, [churnData.opportunities, churnData.quarters, searchQuery]);
+
+  const churnStats = useMemo(() => {
+    const totalCount = churnData.opportunities.length;
+    const totalValue = churnData.opportunities.reduce((sum, o) => sum + (o.amount || 0), 0);
+    const accounts = new Set(churnData.opportunities.map(o => o.accountId)).size;
+    return { totalCount, totalValue, accounts };
+  }, [churnData.opportunities]);
+
   const handleDraftEmail = useCallback((opp: Opportunity, action: RequiredAction) => {
     setSelectedOpportunity(opp);
     const templateKey = getTemplateForAction(action.type);
@@ -413,9 +444,135 @@ export function PRSRenewalView() {
             <span className="prs-tab-count overdue">{overdueStats.totalCount}</span>
           )}
         </button>
+        <button
+          role="tab"
+          aria-selected={activeTab === 'churn'}
+          className={`prs-tab ${activeTab === 'churn' ? 'active' : ''}`}
+          onClick={() => setActiveTab('churn')}
+        >
+          <XCircle size={16} /> Churn (last 2Q)
+          {churnStats.totalCount > 0 && (
+            <span className="prs-tab-count overdue">{churnStats.totalCount}</span>
+          )}
+        </button>
       </div>
 
-      {activeTab === 'overdue' ? (
+      {activeTab === 'churn' ? (
+        <>
+          {churnData.loading ? (
+            <div className="usage-loading-spinner"><div className="spinner" /><span className="spinner-text">Loading churn data...</span></div>
+          ) : churnData.error ? (
+            <div className="error">{churnData.error}</div>
+          ) : (
+            <>
+              <div className="renewal-stats-grid">
+                <div className="renewal-stat-card at-risk">
+                  <div className="renewal-stat-content">
+                    <div className="renewal-stat-icon red"><XCircle size={20} /></div>
+                    <div>
+                      <p className="renewal-stat-value">{churnStats.totalCount}</p>
+                      <p className="renewal-stat-label">Churned Renewals</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="renewal-stat-card">
+                  <div className="renewal-stat-content">
+                    <div className="renewal-stat-icon blue"><UserIcon size={20} /></div>
+                    <div>
+                      <p className="renewal-stat-value">{churnStats.accounts}</p>
+                      <p className="renewal-stat-label">Accounts</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="renewal-stat-card">
+                  <div className="renewal-stat-content">
+                    <div className="renewal-stat-icon orange"><DollarSign size={20} /></div>
+                    <div>
+                      <p className="renewal-stat-value">{formatCurrency(churnStats.totalValue)}</p>
+                      <p className="renewal-stat-label">Total Lost Value</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="renewal-card">
+                <div className="renewal-filter-bar">
+                  <div className="renewal-search-wrapper">
+                    <Search size={16} className="renewal-search-icon" />
+                    <input type="text" placeholder="Search churn by account, opportunity, product, or PRS..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="renewal-search-input" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="overdue-stage-list">
+                {churnQuarterGroups.every(g => g.count === 0) ? (
+                  <div className="renewal-empty">
+                    <CheckCircle size={48} className="renewal-empty-icon success" />
+                    <p>No churn in the last 2 quarters.</p>
+                  </div>
+                ) : (
+                  churnQuarterGroups.filter(g => g.count > 0).map(({ key, label, opps, count, totalValue }) => {
+                    const isExpanded = expandedQuarter === key;
+                    return (
+                      <div key={key} className={`overdue-stage-card ${isExpanded ? 'expanded' : ''}`}>
+                        <div
+                          className="overdue-stage-header"
+                          onClick={() => setExpandedQuarter(isExpanded ? null : key)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedQuarter(isExpanded ? null : key); } }}
+                          aria-expanded={isExpanded}
+                        >
+                          <div className="overdue-stage-info">
+                            <ChevronRight className={`prs-chevron ${isExpanded ? 'expanded' : ''}`} size={18} />
+                            <Badge variant="danger">{label}</Badge>
+                            <span className="overdue-stage-stats">
+                              {count} churn{count !== 1 ? 's' : ''} &middot; {formatCurrency(totalValue)} lost
+                            </span>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="overdue-stage-body">
+                            <table className="renewal-table">
+                              <thead>
+                                <tr>
+                                  <th>#</th>
+                                  <th>Account</th>
+                                  <th>Opportunity</th>
+                                  <th>Product</th>
+                                  <th>PRS</th>
+                                  <th>CSM</th>
+                                  <th>Lost Value</th>
+                                  <th>Close Date</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {opps.map((opp, idx) => (
+                                  <tr key={opp.id} className="renewal-opp-row">
+                                    <td className="row-number-cell">{idx + 1}</td>
+                                    <td className="renewal-account-cell">{opp.companyName}</td>
+                                    <td>{opp.opportunityName}</td>
+                                    <td>{opp.productName}</td>
+                                    <td>{opp.prsName || 'Unassigned'}</td>
+                                    <td>{opp.csmName || 'Unassigned'}</td>
+                                    <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
+                                    <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
+        </>
+      ) : activeTab === 'overdue' ? (
         <>
           {overdueLoading ? (
             <div className="usage-loading-spinner"><div className="spinner" /><span className="spinner-text">Loading overdue renewals...</span></div>

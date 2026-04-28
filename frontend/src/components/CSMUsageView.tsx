@@ -29,6 +29,7 @@ import {
 import { Pagination, usePagination } from "./Pagination";
 import { UnifiedUsageSection } from "./UnifiedUsageSection";
 import { CustomerHealthCard } from "./CustomerHealthCard";
+import { useChurnedAccounts } from "../hooks/useChurnedAccounts";
 import type { CSMPortfolio, Organization } from "../types";
 
 // Amplitude product slugs
@@ -168,10 +169,12 @@ interface ProductData {
   error?: string;
 }
 
-// Consolidate customers within a portfolio by SF account name, filtered to only those with subscriptions
+// Consolidate customers within a portfolio by SF account name. Keeps accounts that either have an
+// active subscription or are flagged as churned (so CSMs can review churned customers' past usage).
 function consolidateCustomers(
   customers: { organization: Organization }[],
-  subscriptionFilter?: Set<string>
+  subscriptionFilter?: Set<string>,
+  churnedNames?: Set<string>
 ): ConsolidatedCustomer[] {
   const accountMap = new Map<string, Organization[]>();
 
@@ -187,9 +190,11 @@ function consolidateCustomers(
     .map(([accountName, organizations]) => ({ accountName, organizations }))
     .sort((a, b) => a.accountName.localeCompare(b.accountName));
 
-  // Filter to only accounts with subscriptions if filter is provided
   if (subscriptionFilter && subscriptionFilter.size > 0) {
-    accounts = accounts.filter((account) => subscriptionFilter.has(account.accountName));
+    accounts = accounts.filter((account) =>
+      subscriptionFilter.has(account.accountName) ||
+      (churnedNames?.has(account.accountName.toLowerCase()) ?? false)
+    );
   }
 
   return accounts;
@@ -686,6 +691,7 @@ function ProductSection({
 }
 
 export function CSMUsageView() {
+  const { churnedAccountNames } = useChurnedAccounts();
   const [portfolios, setPortfolios] = useState<CSMPortfolio[]>([]);
   const [products, setProducts] = useState<AmplitudeProduct[]>([]);
   const [accountsWithSubscriptions, setAccountsWithSubscriptions] = useState<Set<string>>(new Set());
@@ -1000,7 +1006,7 @@ export function CSMUsageView() {
       <div className="csm-list">
         {paginatedPortfolios.map((portfolio) => {
           const isCSMExpanded = expandedCSM === portfolio.csm.email;
-          const consolidatedCustomers = consolidateCustomers(portfolio.customers, accountsWithSubscriptions);
+          const consolidatedCustomers = consolidateCustomers(portfolio.customers, accountsWithSubscriptions, churnedAccountNames);
 
           return (
             <div key={portfolio.csm.email} className={`csm-card ${isCSMExpanded ? "expanded" : ""}`}>
@@ -1068,6 +1074,9 @@ export function CSMUsageView() {
                               <span className="customer-name">{customer.accountName}</span>
                               {customer.organizations.length > 1 && (
                                 <span className="org-count">({customer.organizations.length} orgs)</span>
+                              )}
+                              {churnedAccountNames.has(customer.accountName.toLowerCase()) && (
+                                <span className="churned-badge" title="Lost a renewal in the last 2 quarters">Churned</span>
                               )}
                             </div>
 

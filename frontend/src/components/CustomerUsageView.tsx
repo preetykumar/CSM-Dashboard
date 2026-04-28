@@ -29,6 +29,7 @@ import {
 import { Pagination, usePagination } from "./Pagination";
 import { UnifiedUsageSection } from "./UnifiedUsageSection";
 import { CustomerHealthCard } from "./CustomerHealthCard";
+import { useChurnedAccounts } from "../hooks/useChurnedAccounts";
 import type { Organization } from "../types";
 
 // Amplitude product slugs
@@ -687,6 +688,7 @@ function ProductSection({
 }
 
 export function CustomerUsageView() {
+  const { churnedAccountNames } = useChurnedAccounts();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [products, setProducts] = useState<AmplitudeProduct[]>([]);
   const [accountsWithSubscriptions, setAccountsWithSubscriptions] = useState<Set<string>>(new Set());
@@ -724,12 +726,16 @@ export function CustomerUsageView() {
     loadData();
   }, []);
 
-  // Consolidate organizations by SF account name, filtered to only those with subscriptions
+  // Consolidate organizations by SF account name. Keep accounts with active subscriptions OR
+  // churned in the last 2 quarters (so users can review churned customers' past usage).
   const consolidatedAccounts = useMemo(() => {
     const allAccounts = consolidateOrganizations(organizations);
     if (accountsWithSubscriptions.size === 0) return [];
-    return allAccounts.filter((account) => accountsWithSubscriptions.has(account.accountName));
-  }, [organizations, accountsWithSubscriptions]);
+    return allAccounts.filter((account) =>
+      accountsWithSubscriptions.has(account.accountName) ||
+      churnedAccountNames.has(account.accountName.toLowerCase())
+    );
+  }, [organizations, accountsWithSubscriptions, churnedAccountNames]);
 
   // Filter consolidated accounts by search
   const filteredAccounts = useMemo(() => {
@@ -1050,6 +1056,9 @@ export function CustomerUsageView() {
                   <span className="customer-name">{account.accountName}</span>
                   {account.organizations.length > 1 && (
                     <span className="org-count">({account.organizations.length} orgs)</span>
+                  )}
+                  {churnedAccountNames.has(account.accountName.toLowerCase()) && (
+                    <span className="churned-badge" title="Lost a renewal in the last 2 quarters">Churned</span>
                   )}
                   <span className="expand-hint">
                     {isExpanded ? "Click to collapse" : "Click to view usage"}

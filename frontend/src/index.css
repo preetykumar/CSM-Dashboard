@@ -5833,6 +5833,21 @@ header .hint {
   border-radius: 999px;
 }
 
+.churned-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 0.5rem;
+  padding: 0.125rem 0.5rem;
+  background: #fee2e2;
+  color: #b91c1c;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: 1px solid #fecaca;
+}
+
 .renewal-subtitle {
   color: #64748b;
   font-size: 0.9rem;
