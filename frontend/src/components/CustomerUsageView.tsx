@@ -743,7 +743,10 @@ export function CustomerUsageView() {
     const query = searchQuery.toLowerCase();
     return consolidatedAccounts.filter((account) =>
       account.accountName.toLowerCase().includes(query) ||
-      account.organizations.some((org) => org.name.toLowerCase().includes(query))
+      account.organizations.some((org) =>
+        org.name.toLowerCase().includes(query) ||
+        (org.domain_names || []).some((d) => d.toLowerCase().includes(query))
+      )
     );
   }, [consolidatedAccounts, searchQuery]);
 
