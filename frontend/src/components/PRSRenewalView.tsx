@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { AlertTriangle, CheckCircle, FileText, User as UserIcon, DollarSign, X, Search, ChevronRight } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Clock, FileText, User as UserIcon, DollarSign, X, Search, ChevronRight } from 'lucide-react';
 import { fetchRenewalOpportunities } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Opportunity, RequiredAction, SortConfig, SortField } from '../types/renewal';
@@ -144,7 +144,7 @@ const PRSCard: React.FC<PRSCardProps> = ({
                 const primaryAction = actions[0];
                 const isUrgent = actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
                 return (
-                  <tr key={opp.id} className={`renewal-opp-row ${isUrgent ? 'urgent' : ''} ${opp.atRisk ? 'at-risk' : ''}`}>
+                  <tr key={opp.id} className={`renewal-opp-row ${isUrgent ? 'urgent' : ''}`}>
                     <td className="row-number-cell" data-label="#">{idx + 1}</td>
                     <td className="renewal-account-cell" data-label="Account">{opp.companyName}</td>
                     <td data-label="AE">{opp.ownerName || '-'}</td>
@@ -233,8 +233,11 @@ export function PRSRenewalView() {
   const [filter, setFilter] = useState<'all' | 'urgent'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedPRS, setExpandedPRS] = useState<string | null>(null);
-  const [showAtRiskModal, setShowAtRiskModal] = useState(false);
   const [showNeedsActionModal, setShowNeedsActionModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'active' | 'overdue'>('active');
+  const [overdueOpportunities, setOverdueOpportunities] = useState<Opportunity[]>([]);
+  const [overdueLoading, setOverdueLoading] = useState(false);
+  const [expandedStage, setExpandedStage] = useState<string | null>(null);
 
   const currentUserEmail = user?.email?.toLowerCase() || '';
   const userName = user?.name || user?.email?.split('@')[0] || 'PRS User';
@@ -257,6 +260,30 @@ export function PRSRenewalView() {
     }
     loadOpportunities();
   }, [daysAhead]);
+
+  useEffect(() => {
+    if (activeTab !== 'overdue' || overdueOpportunities.length > 0) return;
+    async function loadOverdue() {
+      try {
+        setOverdueLoading(true);
+        const response = await fetchRenewalOpportunities(365);
+        const today = new Date().toISOString().split('T')[0];
+        const opps = response.opportunities
+          .map(transformApiOpportunity)
+          .filter(opp =>
+            opp.renewalDate < today &&
+            !isClosedLost(opp.stage) &&
+            !isClosedWon(opp.stage)
+          );
+        setOverdueOpportunities(opps);
+      } catch (err) {
+        console.error('Failed to fetch overdue renewals:', err);
+      } finally {
+        setOverdueLoading(false);
+      }
+    }
+    loadOverdue();
+  }, [activeTab, overdueOpportunities.length]);
 
   const handleSort = (field: SortField) => {
     setSortConfig(prev => {
@@ -284,6 +311,43 @@ export function PRSRenewalView() {
     return groupByPRS(filtered);
   }, [opportunities, searchQuery, filter]);
 
+  const overdueStageGroups = useMemo(() => {
+    const filtered = overdueOpportunities.filter(opp =>
+      opp.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      opp.opportunityName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      opp.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (opp.prsName || '').toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    const groups = new Map<string, Opportunity[]>();
+    for (const opp of filtered) {
+      const key = opp.stage || 'Unknown';
+      const existing = groups.get(key) || [];
+      existing.push(opp);
+      groups.set(key, existing);
+    }
+    // Stage display order — earlier stages = more concerning when overdue
+    const stageOrder = ['Discovery', 'Qualification', 'Proposal/Price Quote', 'Negotiation/Review', 'Closed Won', 'Closed Lost'];
+    const orderIndex = (s: string) => {
+      const idx = stageOrder.findIndex(t => s.toLowerCase().includes(t.toLowerCase()));
+      return idx === -1 ? 99 : idx;
+    };
+    return Array.from(groups.entries())
+      .map(([stage, opps]) => ({
+        stage,
+        opps: opps.sort((a, b) => new Date(a.renewalDate).getTime() - new Date(b.renewalDate).getTime()),
+        count: opps.length,
+        totalValue: opps.reduce((sum, o) => sum + (o.amount || 0), 0),
+      }))
+      .sort((a, b) => orderIndex(a.stage) - orderIndex(b.stage));
+  }, [overdueOpportunities, searchQuery]);
+
+  const overdueStats = useMemo(() => {
+    const totalCount = overdueOpportunities.length;
+    const totalValue = overdueOpportunities.reduce((sum, o) => sum + (o.amount || 0), 0);
+    const accounts = new Set(overdueOpportunities.map(o => o.accountId)).size;
+    return { totalCount, totalValue, accounts };
+  }, [overdueOpportunities]);
+
   const handleDraftEmail = useCallback((opp: Opportunity, action: RequiredAction) => {
     setSelectedOpportunity(opp);
     const templateKey = getTemplateForAction(action.type);
@@ -291,18 +355,14 @@ export function PRSRenewalView() {
     setShowEmailComposer(true);
   }, []);
 
-  const { totalValue, urgentCount, uniqueAccounts, atRiskOpportunities, atRiskCount, atRiskValue, needsActionOpportunities } = useMemo(() => {
+  const { totalValue, urgentCount, uniqueAccounts, needsActionOpportunities } = useMemo(() => {
     const total = opportunities.reduce((sum, opp) => sum + (opp.amount || 0), 0);
     const needsAction = opportunities.filter(opp => WorkflowEngine.getRequiredActions(opp).length > 0);
     const accounts = new Set(opportunities.map(opp => opp.accountId)).size;
-    const atRiskOpps = opportunities.filter(opp => opp.atRisk === true);
     return {
       totalValue: total,
       urgentCount: needsAction.length,
       uniqueAccounts: accounts,
-      atRiskOpportunities: atRiskOpps,
-      atRiskCount: atRiskOpps.length,
-      atRiskValue: atRiskOpps.reduce((sum, opp) => sum + (opp.amount || 0), 0),
       needsActionOpportunities: needsAction,
     };
   }, [opportunities]);
@@ -332,6 +392,158 @@ export function PRSRenewalView() {
         </div>
       )}
 
+      <div className="prs-tab-bar" role="tablist" aria-label="Renewal Specialist views">
+        <button
+          role="tab"
+          aria-selected={activeTab === 'active'}
+          className={`prs-tab ${activeTab === 'active' ? 'active' : ''}`}
+          onClick={() => setActiveTab('active')}
+        >
+          <FileText size={16} /> Active Renewals
+          <span className="prs-tab-count">{opportunities.length}</span>
+        </button>
+        <button
+          role="tab"
+          aria-selected={activeTab === 'overdue'}
+          className={`prs-tab ${activeTab === 'overdue' ? 'active' : ''} ${overdueStats.totalCount > 0 ? 'has-alert' : ''}`}
+          onClick={() => setActiveTab('overdue')}
+        >
+          <Clock size={16} /> Overdue
+          {overdueStats.totalCount > 0 && (
+            <span className="prs-tab-count overdue">{overdueStats.totalCount}</span>
+          )}
+        </button>
+      </div>
+
+      {activeTab === 'overdue' ? (
+        <>
+          {overdueLoading ? (
+            <div className="usage-loading-spinner"><div className="spinner" /><span className="spinner-text">Loading overdue renewals...</span></div>
+          ) : (
+            <>
+              <div className="renewal-stats-grid">
+                <div className="renewal-stat-card at-risk">
+                  <div className="renewal-stat-content">
+                    <div className="renewal-stat-icon red"><Clock size={20} /></div>
+                    <div>
+                      <p className="renewal-stat-value">{overdueStats.totalCount}</p>
+                      <p className="renewal-stat-label">Overdue Renewals</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="renewal-stat-card">
+                  <div className="renewal-stat-content">
+                    <div className="renewal-stat-icon blue"><UserIcon size={20} /></div>
+                    <div>
+                      <p className="renewal-stat-value">{overdueStats.accounts}</p>
+                      <p className="renewal-stat-label">Accounts</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="renewal-stat-card">
+                  <div className="renewal-stat-content">
+                    <div className="renewal-stat-icon orange"><DollarSign size={20} /></div>
+                    <div>
+                      <p className="renewal-stat-value">{formatCurrency(overdueStats.totalValue)}</p>
+                      <p className="renewal-stat-label">Total Value at Risk</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="renewal-card">
+                <div className="renewal-filter-bar">
+                  <div className="renewal-search-wrapper">
+                    <Search size={16} className="renewal-search-icon" />
+                    <input type="text" placeholder="Search overdue by account, opportunity, product, or PRS..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="renewal-search-input" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="overdue-stage-list">
+                {overdueStageGroups.length === 0 ? (
+                  <div className="renewal-empty">
+                    <CheckCircle size={48} className="renewal-empty-icon success" />
+                    <p>No overdue renewals.</p>
+                  </div>
+                ) : (
+                  overdueStageGroups.map(({ stage, opps, count, totalValue }) => {
+                    const isExpanded = expandedStage === stage;
+                    return (
+                      <div key={stage} className={`overdue-stage-card ${isExpanded ? 'expanded' : ''}`}>
+                        <div
+                          className="overdue-stage-header"
+                          onClick={() => setExpandedStage(isExpanded ? null : stage)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedStage(isExpanded ? null : stage); } }}
+                          aria-expanded={isExpanded}
+                        >
+                          <div className="overdue-stage-info">
+                            <ChevronRight className={`prs-chevron ${isExpanded ? 'expanded' : ''}`} size={18} />
+                            <Badge variant={getStageBadgeVariant(stage)}>{stage}</Badge>
+                            <span className="overdue-stage-stats">
+                              {count} renewal{count !== 1 ? 's' : ''} &middot; {formatCurrency(totalValue)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {isExpanded && (
+                          <div className="overdue-stage-body">
+                            <table className="renewal-table">
+                              <thead>
+                                <tr>
+                                  <th>#</th>
+                                  <th>Account</th>
+                                  <th>Opportunity</th>
+                                  <th>Product</th>
+                                  <th>PRS</th>
+                                  <th>CSM</th>
+                                  <th>Amount</th>
+                                  <th>Renewal Date</th>
+                                  <th>Days Overdue</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {opps.map((opp, idx) => {
+                                  const daysOverdue = Math.floor((Date.now() - new Date(opp.renewalDate).getTime()) / (1000 * 60 * 60 * 24));
+                                  return (
+                                    <tr key={opp.id} className="renewal-opp-row">
+                                      <td className="row-number-cell">{idx + 1}</td>
+                                      <td className="renewal-account-cell">{opp.companyName}</td>
+                                      <td>{opp.opportunityName}</td>
+                                      <td>{opp.productName}</td>
+                                      <td>{opp.prsName || 'Unassigned'}</td>
+                                      <td>{opp.csmName || 'Unassigned'}</td>
+                                      <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
+                                      <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                                      <td><span className={`overdue-days ${daysOverdue > 30 ? 'critical' : daysOverdue > 14 ? 'warning' : ''}`}>{daysOverdue}d</span></td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </>
+          )}
+
+          {showEmailComposer && selectedOpportunity && (
+            <EmailComposer
+              template={currentTemplateKey ? RENEWAL_EMAIL_TEMPLATES[currentTemplateKey] : null}
+              opportunity={selectedOpportunity}
+              prsName={userName}
+              onClose={() => { setShowEmailComposer(false); setCurrentTemplateKey(null); setSelectedOpportunity(null); }}
+            />
+          )}
+        </>
+      ) : (
+      <>
       <div className="renewal-stats-grid">
         <div className={`renewal-stat-card clickable ${filter === 'all' ? 'active-filter' : ''}`} onClick={() => setFilter('all')} style={{ cursor: 'pointer' }}>
           <div className="renewal-stat-content">
@@ -370,20 +582,6 @@ export function PRSRenewalView() {
             <div>
               <p className="renewal-stat-value">{urgentCount}</p>
               <p className="renewal-stat-label">Needs Action</p>
-            </div>
-          </div>
-        </div>
-        <div
-          className={`renewal-stat-card clickable ${atRiskCount > 0 ? 'at-risk' : ''}`}
-          onClick={() => atRiskCount > 0 && setShowAtRiskModal(true)}
-          style={{ cursor: atRiskCount > 0 ? 'pointer' : 'default' }}
-        >
-          <div className="renewal-stat-content">
-            <div className="renewal-stat-icon orange"><AlertTriangle size={20} /></div>
-            <div>
-              <p className="renewal-stat-value">{atRiskCount}</p>
-              <p className="renewal-stat-label">At Risk</p>
-              {atRiskCount > 0 && <p className="renewal-stat-subtext">{formatCurrency(atRiskValue)} value</p>}
             </div>
           </div>
         </div>
@@ -447,62 +645,6 @@ export function PRSRenewalView() {
         />
       )}
 
-      {showAtRiskModal && (
-        <div className="renewal-email-modal">
-          <div className="renewal-email-content at-risk-modal">
-            <div className="renewal-email-header">
-              <h3 className="renewal-email-title">
-                <AlertTriangle size={20} className="at-risk-icon" />
-                Renewals at Risk ({atRiskCount})
-              </h3>
-              <button onClick={() => setShowAtRiskModal(false)} className="renewal-close-btn"><X size={20} /></button>
-            </div>
-            <div className="at-risk-summary">
-              <span className="at-risk-total-value">Total Value at Risk: {formatCurrency(atRiskValue)}</span>
-            </div>
-            <div className="at-risk-body">
-              <table className="renewal-table at-risk-table">
-                <thead>
-                  <tr>
-                    <th>Account</th><th>Opportunity</th><th>Product</th><th>PRS</th>
-                    <th>Risk Reason</th><th>Leadership Risk Status</th>
-                    <th>Amount</th><th>Renewal Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {atRiskOpportunities.map(opp => (
-                    <tr key={opp.id} className="renewal-opp-row at-risk">
-                      <td className="renewal-account-cell" data-label="Account">{opp.companyName}</td>
-                      <td data-label="Opportunity">{opp.opportunityName}</td>
-                      <td data-label="Product">{opp.productName}</td>
-                      <td data-label="PRS">{opp.prsName || 'Unassigned'}</td>
-                      <td data-label="Risk Reason">
-                        {opp.atRisk && opp.leadershipRiskStatus ? (
-                          <><Badge variant="danger">At Risk</Badge>{' '}<Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>{opp.leadershipRiskStatus}</Badge></>
-                        ) : opp.leadershipRiskStatus ? (
-                          <Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>{opp.leadershipRiskStatus}</Badge>
-                        ) : (
-                          <Badge variant="danger">At Risk</Badge>
-                        )}
-                      </td>
-                      <td data-label="Leadership Risk Status">{opp.leadershipRiskStatus || '-'}</td>
-                      <td className="renewal-amount-cell" data-label="Amount">{formatCurrency(opp.amount || 0)}</td>
-                      <td data-label="Renewal Date">{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {atRiskOpportunities.length === 0 && (
-                <div className="renewal-empty"><CheckCircle size={48} className="renewal-empty-icon success" /><p>No renewals currently at risk</p></div>
-              )}
-            </div>
-            <div className="renewal-email-footer">
-              <button className="renewal-btn secondary" onClick={() => setShowAtRiskModal(false)}>Close</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showNeedsActionModal && (
         <div className="renewal-email-modal">
           <div className="renewal-email-content at-risk-modal">
@@ -552,6 +694,8 @@ export function PRSRenewalView() {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

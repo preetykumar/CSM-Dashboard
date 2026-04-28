@@ -161,7 +161,12 @@ export function HomePage() {
         {/* Left column: todo list */}
         <div className="home-col-main">
           {role && role !== "field-engineers" ? (
-            <TodoList role={role} userEmail={effectiveEmail} />
+            <TodoList
+              role={role}
+              userEmail={effectiveEmail}
+              isAdmin={isAdmin}
+              isViewingAsOther={Boolean(viewAsEmail)}
+            />
           ) : role === "field-engineers" ? (
             <div className="coming-soon-panel">
               <p>Field Engineer task dashboard coming soon.</p>

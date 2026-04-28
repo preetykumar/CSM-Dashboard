@@ -15,12 +15,13 @@ type TimeRange = "today" | "week" | "month";
 
 interface TodoItem {
   id: string;
-  category: "tickets" | "renewals" | "overdue-actions" | "github" | "usage";
+  category: "tickets" | "renewals" | "overdue-renewals" | "overdue-actions" | "github" | "usage";
   priority: "high" | "medium" | "low";
   title: string;
   subtitle?: string;
   detail?: string;
   link?: string;
+  stage?: string;
 }
 
 function daysFromNow(dateStr: string): number {
@@ -41,6 +42,7 @@ function ticketNeedsAttention(ticket: any, daysThreshold: number): boolean {
 const CATEGORY_LABELS: Record<TodoItem["category"], string> = {
   tickets: "Tickets needing attention",
   renewals: "Upcoming renewals",
+  "overdue-renewals": "Overdue renewals",
   "overdue-actions": "Overdue renewal actions",
   github: "Open GitHub items",
   usage: "Low product usage",
@@ -49,6 +51,7 @@ const CATEGORY_LABELS: Record<TodoItem["category"], string> = {
 const CATEGORY_ICONS: Record<TodoItem["category"], string> = {
   tickets: "🎫",
   renewals: "🔄",
+  "overdue-renewals": "⏰",
   "overdue-actions": "⚠️",
   github: "⚡",
   usage: "📉",
@@ -57,15 +60,17 @@ const CATEGORY_ICONS: Record<TodoItem["category"], string> = {
 interface TodoListProps {
   role: UserRole;
   userEmail: string;
+  isAdmin?: boolean;
+  isViewingAsOther?: boolean;
 }
 
-export function TodoList({ role, userEmail }: TodoListProps) {
+export function TodoList({ role, userEmail, isAdmin = false, isViewingAsOther = false }: TodoListProps) {
   const navigate = useNavigate();
   const [timeRange, setTimeRange] = useState<TimeRange>("week");
   const [loading, setLoading] = useState(true);
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(["tickets", "renewals", "overdue-actions"])
+    new Set(["overdue-renewals", "tickets", "renewals", "overdue-actions"])
   );
 
   useEffect(() => {
@@ -95,10 +100,44 @@ export function TodoList({ role, userEmail }: TodoListProps) {
   }
 
   async function loadCSMTodos(items: TodoItem[]) {
-    const [portfoliosResp, renewalsResp] = await Promise.allSettled([
+    const showAllForAdmin = isAdmin && !isViewingAsOther;
+
+    const [portfoliosResp, renewalsResp, overdueResp] = await Promise.allSettled([
       fetchCSMPortfolios(),
       fetchRenewalOpportunities(90),
+      fetchRenewalOpportunities(365),
     ]);
+
+    // Overdue renewals — past close date, not closed won/lost
+    if (overdueResp.status === "fulfilled") {
+      const today = new Date().toISOString().split("T")[0];
+      const allOverdue = overdueResp.value.opportunities.filter((o) => {
+        const stage = (o.stageName || "").toLowerCase();
+        return o.renewalDate < today && !stage.includes("closed won") && !stage.includes("closed lost");
+      });
+
+      const myOverdue = showAllForAdmin
+        ? allOverdue
+        : allOverdue.filter((o) => o.csmEmail?.toLowerCase() === userEmail.toLowerCase());
+
+      const sorted = myOverdue.sort((a, b) => a.renewalDate.localeCompare(b.renewalDate));
+      const limit = showAllForAdmin ? 50 : 15;
+      for (const opp of sorted.slice(0, limit)) {
+        const daysOverdue = Math.floor((Date.now() - new Date(opp.renewalDate).getTime()) / (1000 * 60 * 60 * 24));
+        const amount = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(opp.amount);
+        const csmLabel = showAllForAdmin && opp.csmName ? ` · CSM: ${opp.csmName}` : "";
+        items.push({
+          id: `overdue-renewal-${opp.id}`,
+          category: "overdue-renewals",
+          priority: daysOverdue > 30 ? "high" : daysOverdue > 14 ? "medium" : "low",
+          title: opp.accountName,
+          subtitle: `${daysOverdue}d overdue · ${amount}${csmLabel}`,
+          detail: opp.name,
+          link: "/csm/renewals",
+          stage: opp.stageName || "Unknown",
+        });
+      }
+    }
 
     // Find this CSM's portfolio (csm.email on the portfolio object)
     if (portfoliosResp.status === "fulfilled") {
@@ -185,9 +224,9 @@ export function TodoList({ role, userEmail }: TodoListProps) {
           items.push({
             id: `renewal-${opp.id}`,
             category: "renewals",
-            priority: opp.atRisk ? "high" : days <= 30 ? "medium" : "low",
+            priority: days <= 30 ? "medium" : "low",
             title: opp.accountName,
-            subtitle: `Renews in ${days}d · ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(opp.amount)}${opp.atRisk ? " · ⚠ At Risk" : ""}`,
+            subtitle: `Renews in ${days}d · ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(opp.amount)}`,
             link: "/csm/renewals",
           });
         }
@@ -248,9 +287,49 @@ export function TodoList({ role, userEmail }: TodoListProps) {
 
   async function loadRenewalSpecialistTodos(items: TodoItem[]) {
     try {
-      const renewalsResp = await fetchRenewalOpportunities(90);
-      const opps = renewalsResp.opportunities;
-      const myRenewals = opps.filter((o) => o.prsEmail?.toLowerCase() === userEmail.toLowerCase());
+      const showAllForAdmin = isAdmin && !isViewingAsOther;
+
+      const [renewalsResp, overdueResp] = await Promise.allSettled([
+        fetchRenewalOpportunities(90),
+        fetchRenewalOpportunities(365),
+      ]);
+
+      // Overdue renewals — past close date, not closed won/lost
+      if (overdueResp.status === "fulfilled") {
+        const today = new Date().toISOString().split("T")[0];
+        const allOverdue = overdueResp.value.opportunities.filter((o) => {
+          const stage = (o.stageName || "").toLowerCase();
+          return o.renewalDate < today && !stage.includes("closed won") && !stage.includes("closed lost");
+        });
+
+        const myOverdue = showAllForAdmin
+          ? allOverdue
+          : allOverdue.filter((o) => o.prsEmail?.toLowerCase() === userEmail.toLowerCase());
+
+        const sorted = myOverdue.sort((a, b) => a.renewalDate.localeCompare(b.renewalDate));
+        const limit = showAllForAdmin ? 50 : 15;
+        for (const opp of sorted.slice(0, limit)) {
+          const daysOverdue = Math.floor((Date.now() - new Date(opp.renewalDate).getTime()) / (1000 * 60 * 60 * 24));
+          const amount = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(opp.amount);
+          const prsLabel = showAllForAdmin && opp.prsName ? ` · PRS: ${opp.prsName}` : "";
+          items.push({
+            id: `overdue-renewal-${opp.id}`,
+            category: "overdue-renewals",
+            priority: daysOverdue > 30 ? "high" : daysOverdue > 14 ? "medium" : "low",
+            title: opp.accountName,
+            subtitle: `${daysOverdue}d overdue · ${amount}${prsLabel}`,
+            detail: opp.name,
+            link: "/renewal-specialist",
+            stage: opp.stageName || "Unknown",
+          });
+        }
+      }
+
+      if (renewalsResp.status !== "fulfilled") return;
+      const opps = renewalsResp.value.opportunities;
+      const myRenewals = showAllForAdmin
+        ? opps
+        : opps.filter((o) => o.prsEmail?.toLowerCase() === userEmail.toLowerCase());
 
       for (const opp of myRenewals.slice(0, 15)) {
         const days = daysFromNow(opp.renewalDate);
@@ -258,9 +337,9 @@ export function TodoList({ role, userEmail }: TodoListProps) {
           items.push({
             id: `renewal-${opp.id}`,
             category: "renewals",
-            priority: opp.atRisk ? "high" : days <= 30 ? "medium" : "low",
+            priority: days <= 30 ? "medium" : "low",
             title: opp.accountName,
-            subtitle: `Renews in ${days}d · ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(opp.amount)}${opp.atRisk ? " · ⚠ At Risk" : ""}`,
+            subtitle: `Renews in ${days}d · ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(opp.amount)}`,
             link: "/renewal-specialist",
           });
         }
@@ -300,7 +379,7 @@ export function TodoList({ role, userEmail }: TodoListProps) {
 
   const categories = useMemo(() => {
     const cats = new Map<TodoItem["category"], TodoItem[]>();
-    const order: TodoItem["category"][] = ["tickets", "renewals", "overdue-actions", "github", "usage"];
+    const order: TodoItem["category"][] = ["overdue-renewals", "tickets", "renewals", "overdue-actions", "github", "usage"];
     for (const cat of order) {
       const items = filteredTodos.filter((t) => t.category === cat);
       if (items.length > 0) cats.set(cat, items);
@@ -317,10 +396,15 @@ export function TodoList({ role, userEmail }: TodoListProps) {
     });
   };
 
+  const showAllForAdmin = isAdmin && !isViewingAsOther;
+
   return (
     <section className="home-todo" aria-labelledby="todo-title">
       <div className="todo-header">
-        <h3 id="todo-title">My Tasks</h3>
+        <h3 id="todo-title">
+          {showAllForAdmin ? "All Tasks" : "My Tasks"}
+          {showAllForAdmin && <span className="todo-admin-badge">Admin · all users</span>}
+        </h3>
         <div className="todo-range-tabs" role="tablist" aria-label="Time range">
           {(["today", "week", "month"] as TimeRange[]).map((r) => (
             <button
@@ -357,36 +441,104 @@ export function TodoList({ role, userEmail }: TodoListProps) {
           </button>
 
           {expandedCategories.has(cat) && (
-            <ul className="todo-items" role="list">
-              {items.map((item) => (
-                <li key={item.id} className={`todo-item priority-${item.priority}`}>
-                  {item.link ? (
-                    <button
-                      className="todo-item-btn"
-                      onClick={() => {
-                        if (item.link?.startsWith("http")) {
-                          window.open(item.link, "_blank", "noopener");
-                        } else if (item.link) {
-                          navigate(item.link);
-                        }
-                      }}
-                    >
-                      <span className="todo-item-title">{item.title}</span>
-                      {item.subtitle && <span className="todo-item-subtitle">{item.subtitle}</span>}
-                      {item.detail && <span className="todo-item-detail">{item.detail}</span>}
-                    </button>
-                  ) : (
-                    <div className="todo-item-static">
-                      <span className="todo-item-title">{item.title}</span>
-                      {item.subtitle && <span className="todo-item-subtitle">{item.subtitle}</span>}
+            cat === "overdue-renewals" ? (
+              <div className="todo-stage-groups">
+                {groupItemsByStage(items).map(({ stage, items: stageItems }) => (
+                  <div key={stage} className="todo-stage-group">
+                    <div className="todo-stage-header">
+                      <span className="todo-stage-name">{stage}</span>
+                      <span className="todo-stage-count">{stageItems.length}</span>
                     </div>
-                  )}
-                </li>
-              ))}
-            </ul>
+                    <ul className="todo-items" role="list">
+                      {stageItems.map((item) => (
+                        <li key={item.id} className={`todo-item priority-${item.priority}`}>
+                          {item.link ? (
+                            <button
+                              className="todo-item-btn"
+                              onClick={() => {
+                                if (item.link?.startsWith("http")) {
+                                  window.open(item.link, "_blank", "noopener");
+                                } else if (item.link) {
+                                  navigate(item.link);
+                                }
+                              }}
+                            >
+                              <span className="todo-item-title">{item.title}</span>
+                              {item.subtitle && <span className="todo-item-subtitle">{item.subtitle}</span>}
+                              {item.detail && <span className="todo-item-detail">{item.detail}</span>}
+                            </button>
+                          ) : (
+                            <div className="todo-item-static">
+                              <span className="todo-item-title">{item.title}</span>
+                              {item.subtitle && <span className="todo-item-subtitle">{item.subtitle}</span>}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <ul className="todo-items" role="list">
+                {items.map((item) => (
+                  <li key={item.id} className={`todo-item priority-${item.priority}`}>
+                    {item.link ? (
+                      <button
+                        className="todo-item-btn"
+                        onClick={() => {
+                          if (item.link?.startsWith("http")) {
+                            window.open(item.link, "_blank", "noopener");
+                          } else if (item.link) {
+                            navigate(item.link);
+                          }
+                        }}
+                      >
+                        <span className="todo-item-title">{item.title}</span>
+                        {item.subtitle && <span className="todo-item-subtitle">{item.subtitle}</span>}
+                        {item.detail && <span className="todo-item-detail">{item.detail}</span>}
+                      </button>
+                    ) : (
+                      <div className="todo-item-static">
+                        <span className="todo-item-title">{item.title}</span>
+                        {item.subtitle && <span className="todo-item-subtitle">{item.subtitle}</span>}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )
           )}
         </div>
       ))}
     </section>
   );
+}
+
+const STAGE_ORDER = [
+  "discovery",
+  "qualification",
+  "proposal",
+  "negotiation",
+  "closed won",
+  "closed lost",
+];
+
+function stageOrderIndex(stage: string): number {
+  const lower = stage.toLowerCase();
+  const idx = STAGE_ORDER.findIndex((s) => lower.includes(s));
+  return idx === -1 ? 99 : idx;
+}
+
+function groupItemsByStage(items: TodoItem[]): Array<{ stage: string; items: TodoItem[] }> {
+  const groups = new Map<string, TodoItem[]>();
+  for (const item of items) {
+    const stage = item.stage || "Unknown";
+    const existing = groups.get(stage) || [];
+    existing.push(item);
+    groups.set(stage, existing);
+  }
+  return Array.from(groups.entries())
+    .map(([stage, items]) => ({ stage, items }))
+    .sort((a, b) => stageOrderIndex(a.stage) - stageOrderIndex(b.stage));
 }
