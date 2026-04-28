@@ -94,12 +94,15 @@ git push origin main      # personal repo (triggers production deploy)
 git push dequelabs main   # org repo
 ```
 
-**Note:** `dequelabs/main` is protected by a branch rule requiring pull requests — direct `git push dequelabs main` will be rejected with `GH013: Repository rule violations`. When that happens, open a PR instead:
+**Note:** `dequelabs/main` is protected by a branch rule requiring pull requests — direct `git push dequelabs main` will be rejected with `GH013: Repository rule violations`. When that happens, push a sync branch and open a PR via the URL GitHub returns (the `gh` CLI is NOT installed on this machine):
 ```bash
-# Create a sync branch from current main and open a PR against dequelabs
+# Push a sync branch (GitHub will print the PR URL in the output)
 git push dequelabs main:sync-from-origin-$(date +%Y%m%d)
-gh pr create --repo dequelabs/CustomerTeamPortal --base main --head sync-from-origin-YYYYMMDD --title "Sync from origin" --body "Mirrors latest commits from preetykumar/CSM-Dashboard:main"
+# Output includes: "Create a pull request for 'sync-from-origin-YYYYMMDD' on GitHub by visiting:
+#                   https://github.com/dequelabs/CustomerTeamPortal/pull/new/sync-from-origin-YYYYMMDD"
+# Share that URL with the user — they open and merge the PR via the web UI.
 ```
+If a sync branch already exists from an earlier sync today, append `-N` to the suffix (e.g. `-2`) so the new push doesn't fast-forward the older branch.
 
 ---
 
