@@ -5,8 +5,7 @@ import type { Opportunity, SortConfig, SortField } from '../types/renewal';
 import { transformApiOpportunity } from '../types/renewal';
 import { isClosedWon } from '../services/workflow-engine';
 import { formatCurrency } from '../utils/format';
-import { Badge } from './renewal/Badge';
-import { SortHeader } from './renewal/SortHeader';
+import { OpportunityCard } from './renewal/OpportunityCard';
 
 export const ClosedWonView: React.FC = () => {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -15,6 +14,7 @@ export const ClosedWonView: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [daysAhead, setDaysAhead] = useState(365);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'renewalDate', direction: 'asc' });
+  const [expandedOppId, setExpandedOppId] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -64,13 +64,6 @@ export const ClosedWonView: React.FC = () => {
 
   const totalWonValue = useMemo(() => opportunities.reduce((sum, opp) => sum + opp.amount, 0), [opportunities]);
 
-  function handleSort(field: SortField) {
-    setSortConfig(prev => ({
-      field,
-      direction: prev.field === field ? (prev.direction === 'asc' ? 'desc' : prev.direction === 'desc' ? null : 'asc') : 'asc'
-    }));
-  }
-
   if (loading) {
     return <div className="renewal-loading"><div className="loading-spinner" /><p>Loading closed won renewals...</p></div>;
   }
@@ -80,7 +73,6 @@ export const ClosedWonView: React.FC = () => {
 
   return (
     <div className="renewal-view">
-      {/* Header */}
       <div className="renewal-filter-bar">
         <div className="renewal-search-wrapper">
           <Search size={16} className="renewal-search-icon" />
@@ -92,6 +84,19 @@ export const ClosedWonView: React.FC = () => {
             className="renewal-search-input"
           />
         </div>
+        <div className="renewal-sort-control">
+          <label htmlFor="closed-won-sort-field" className="renewal-sort-label">Sort by</label>
+          <select id="closed-won-sort-field" className="renewal-sort-select" value={sortConfig.field} onChange={(e) => setSortConfig({ field: e.target.value as SortField, direction: 'asc' })}>
+            <option value="renewalDate">Renewal Date</option>
+            <option value="companyName">Account</option>
+            <option value="amount">Amount</option>
+            <option value="opportunityName">Opportunity</option>
+            <option value="productName">Product</option>
+          </select>
+          <button type="button" className="renewal-sort-direction" onClick={() => setSortConfig(prev => ({ ...prev, direction: prev.direction === 'desc' ? 'asc' : 'desc' }))} aria-label={`Toggle sort direction, currently ${sortConfig.direction || 'asc'}`}>
+            {sortConfig.direction === 'desc' ? '↓' : '↑'}
+          </button>
+        </div>
         <div className="renewal-filter-buttons">
           <label>Lookahead:</label>
           <select value={daysAhead} onChange={e => setDaysAhead(Number(e.target.value))} className="renewal-search-input" style={{ width: 'auto', paddingLeft: '12px' }}>
@@ -102,7 +107,6 @@ export const ClosedWonView: React.FC = () => {
         </div>
       </div>
 
-      {/* Summary Stats */}
       <div className="renewal-stats-grid">
         <div className="renewal-stat-card">
           <div className="renewal-stat-content">
@@ -130,37 +134,17 @@ export const ClosedWonView: React.FC = () => {
           <p>No closed won renewals found in the selected time range.</p>
         </div>
       ) : (
-        <div className="renewal-table-container">
-          <table className="renewal-table">
-            <thead>
-              <tr>
-                <SortHeader field="companyName" label="Account" sortConfig={sortConfig} onSort={handleSort} />
-                <SortHeader field="ownerName" label="AE" sortConfig={sortConfig} onSort={handleSort} />
-                <SortHeader field="opportunityName" label="Opp Name" sortConfig={sortConfig} onSort={handleSort} />
-                <SortHeader field="productName" label="Product" sortConfig={sortConfig} onSort={handleSort} />
-                <th>CSM</th>
-                <th>PRS</th>
-                <th>Stage</th>
-                <SortHeader field="amount" label="Total Price" sortConfig={sortConfig} onSort={handleSort} />
-                <SortHeader field="renewalDate" label="Renewal Date" sortConfig={sortConfig} onSort={handleSort} />
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map(opp => (
-                <tr key={opp.id}>
-                  <td className="renewal-cell-account">{opp.companyName}</td>
-                  <td>{opp.ownerName || '-'}</td>
-                  <td className="renewal-cell-opp-name">{opp.opportunityName}</td>
-                  <td>{opp.productName}</td>
-                  <td>{opp.csmName || '-'}</td>
-                  <td>{opp.prsName || '-'}</td>
-                  <td><Badge variant="success">{opp.stage}</Badge></td>
-                  <td className="renewal-cell-amount">{formatCurrency(opp.amount)}</td>
-                  <td className="renewal-cell-date">{new Date(opp.renewalDate).toLocaleDateString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="renewal-opp-list">
+          {sorted.map((opp, idx) => (
+            <OpportunityCard
+              key={opp.id}
+              opp={opp}
+              index={idx}
+              expanded={expandedOppId === opp.id}
+              onToggle={() => setExpandedOppId(expandedOppId === opp.id ? null : opp.id)}
+              mode="closed-won"
+            />
+          ))}
         </div>
       )}
     </div>

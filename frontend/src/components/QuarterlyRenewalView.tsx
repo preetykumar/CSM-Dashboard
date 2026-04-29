@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { AlertTriangle, CheckCircle, FileText, Calendar, DollarSign, Search, ChevronRight, Shield } from 'lucide-react';
+import { AlertTriangle, FileText, Calendar, DollarSign, Search, ChevronRight, Shield } from 'lucide-react';
 import { fetchRenewalOpportunities } from '../services/api';
 import type { Opportunity, SortConfig, SortField } from '../types/renewal';
 import { transformApiOpportunity } from '../types/renewal';
-import { WorkflowEngine, isInvoicedOrDone, getStageBadgeVariant, isClosedLost, isClosedWon } from '../services/workflow-engine';
+import { WorkflowEngine, isInvoicedOrDone, isClosedLost, isClosedWon } from '../services/workflow-engine';
 import { formatCurrency } from '../utils/format';
-import { Badge } from './renewal/Badge';
-import { SortHeader } from './renewal/SortHeader';
+import { OpportunityCard } from './renewal/OpportunityCard';
 
 interface QuarterlyRenewalGroup {
   quarterKey: string;
@@ -72,10 +71,10 @@ interface QuarterCardProps {
   expanded: boolean;
   onToggle: () => void;
   sortConfig: SortConfig;
-  onSort: (field: SortField) => void;
 }
 
-const QuarterCard: React.FC<QuarterCardProps> = ({ group, expanded, onToggle, sortConfig, onSort }) => {
+const QuarterCard: React.FC<QuarterCardProps> = ({ group, expanded, onToggle, sortConfig }) => {
+  const [expandedOppId, setExpandedOppId] = useState<string | null>(null);
   const sortedOpportunities = useMemo(() => {
     if (!sortConfig.direction) return group.opportunities;
     return [...group.opportunities].sort((a, b) => {
@@ -145,68 +144,17 @@ const QuarterCard: React.FC<QuarterCardProps> = ({ group, expanded, onToggle, so
       </div>
       {expanded && (
         <div className="prs-card-content">
-          <table className="renewal-table">
-            <thead>
-              <tr>
-                <th className="row-number-header">#</th>
-                <SortHeader label="Account" field="companyName" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="AE" field="ownerName" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Opportunity Name" field="opportunityName" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Product Name" field="productName" sortConfig={sortConfig} onSort={onSort} />
-                <th>CSM</th>
-                <SortHeader label="Stage" field="stage" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Renewal Status" field="renewalStatus" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Accounting Status" field="accountingRenewalStatus" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="PO Required" field="poRequired" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Total Price" field="amount" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Renewal Date" field="renewalDate" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Action Needed" field="action" sortConfig={sortConfig} onSort={onSort} />
-                <th>Leadership Notes</th>
-
-                <th>Risk Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedOpportunities.map((opp, idx) => {
-                const actions = WorkflowEngine.getRequiredActions(opp);
-                const primaryAction = actions[0];
-                const isUrgent = actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
-                return (
-                  <tr key={opp.id} className={`renewal-opp-row ${isUrgent ? 'urgent' : ''}`}>
-                    <td className="row-number-cell">{idx + 1}</td>
-                    <td className="renewal-account-cell">{opp.companyName}</td>
-                    <td>{opp.ownerName || '-'}</td>
-                    <td>{opp.opportunityName}</td>
-                    <td>{opp.productName}</td>
-                    <td>{opp.csmName || 'Unassigned'}</td>
-                    <td><Badge variant={getStageBadgeVariant(opp.stage)}>{opp.stage}</Badge></td>
-                    <td>{opp.renewalStatus ? <Badge variant={opp.renewalStatus.toLowerCase().includes('complete') ? 'success' : opp.renewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.renewalStatus}</Badge> : '-'}</td>
-                    <td>{opp.accountingRenewalStatus ? <Badge variant={opp.accountingRenewalStatus.toLowerCase().includes('complete') ? 'success' : opp.accountingRenewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>{opp.accountingRenewalStatus}</Badge> : '-'}</td>
-                    <td>
-                      {opp.poRequired ? (
-                        <div className="po-status">
-                          <Badge variant={opp.poReceivedDate ? 'success' : 'warning'}>{opp.poReceivedDate ? 'Received' : 'Required'}</Badge>
-                          {opp.poReceivedDate && <span className="po-date">{new Date(opp.poReceivedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                        </div>
-                      ) : <span className="po-not-required">Not Required</span>}
-                    </td>
-                    <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
-                    <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                    <td>
-                      {primaryAction ? (
-                        <div className="renewal-action-cell">
-                          <span className={`renewal-action-text ${primaryAction.priority}`}>{isUrgent && <AlertTriangle size={14} />}{primaryAction.description}</span>
-                        </div>
-                      ) : <span className="renewal-no-action"><CheckCircle size={14} /> No action needed</span>}
-                    </td>
-                    <td className="renewal-notes-cell">{opp.leadershipNotes || '-'}</td>
-
-                    <td>{opp.leadershipRiskStatus ? <Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>{opp.leadershipRiskStatus}</Badge> : '-'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="renewal-opp-list">
+            {sortedOpportunities.map((opp, idx) => (
+              <OpportunityCard
+                key={opp.id}
+                opp={opp}
+                index={idx}
+                expanded={expandedOppId === opp.id}
+                onToggle={() => setExpandedOppId(expandedOppId === opp.id ? null : opp.id)}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -241,17 +189,6 @@ export function QuarterlyRenewalView() {
     }
     loadOpportunities();
   }, [daysAhead]);
-
-  const handleSort = (field: SortField) => {
-    setSortConfig(prev => {
-      if (prev.field === field) {
-        if (prev.direction === 'asc') return { field, direction: 'desc' };
-        if (prev.direction === 'desc') return { field, direction: null };
-        return { field, direction: 'asc' };
-      }
-      return { field, direction: 'asc' };
-    });
-  };
 
   const quarterlyGroups = useMemo(() => {
     let filtered = opportunities.filter(opp => {
@@ -308,6 +245,19 @@ export function QuarterlyRenewalView() {
             <span className="renewal-days-label">Next</span>
             {[90, 180, 365].map(days => (<button key={days} onClick={() => setDaysAhead(days)} className={`renewal-days-btn ${daysAhead === days ? 'active' : ''}`}>{days === 365 ? '1 year' : `${days} days`}</button>))}
           </div>
+          <div className="renewal-sort-control">
+            <label htmlFor="quarterly-sort-field" className="renewal-sort-label">Sort by</label>
+            <select id="quarterly-sort-field" className="renewal-sort-select" value={sortConfig.field} onChange={(e) => setSortConfig({ field: e.target.value as SortField, direction: 'asc' })}>
+              <option value="renewalDate">Renewal Date</option>
+              <option value="companyName">Account</option>
+              <option value="amount">Amount</option>
+              <option value="stage">Stage</option>
+              <option value="action">Action Priority</option>
+            </select>
+            <button type="button" className="renewal-sort-direction" onClick={() => setSortConfig(prev => ({ ...prev, direction: prev.direction === 'desc' ? 'asc' : 'desc' }))} aria-label={`Toggle sort direction, currently ${sortConfig.direction || 'asc'}`}>
+              {sortConfig.direction === 'desc' ? '↓' : '↑'}
+            </button>
+          </div>
           <div className="renewal-filter-buttons">
             <button onClick={() => setFilter('all')} className={`renewal-filter-btn ${filter === 'all' ? 'active' : ''}`}>All ({opportunities.length})</button>
             <button onClick={() => setFilter('urgent')} className={`renewal-filter-btn urgent ${filter === 'urgent' ? 'active' : ''}`}>Needs Action ({urgentCount})</button>
@@ -317,7 +267,7 @@ export function QuarterlyRenewalView() {
 
       <div className="prs-list">
         {quarterlyGroups.map(group => (
-          <QuarterCard key={group.quarterKey} group={group} expanded={expandedQuarter === group.quarterKey} onToggle={() => setExpandedQuarter(expandedQuarter === group.quarterKey ? null : group.quarterKey)} sortConfig={sortConfig} onSort={handleSort} />
+          <QuarterCard key={group.quarterKey} group={group} expanded={expandedQuarter === group.quarterKey} onToggle={() => setExpandedQuarter(expandedQuarter === group.quarterKey ? null : group.quarterKey)} sortConfig={sortConfig} />
         ))}
         {quarterlyGroups.length === 0 && (<div className="renewal-empty"><FileText size={48} className="renewal-empty-icon" /><p>No renewal opportunities found</p></div>)}
       </div>

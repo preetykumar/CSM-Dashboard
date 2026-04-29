@@ -9,6 +9,7 @@ import { RENEWAL_EMAIL_TEMPLATES, getTemplateForAction } from '../services/email
 import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
 import { EmailComposer } from './renewal/EmailComposer';
+import { OpportunityCard } from './renewal/OpportunityCard';
 import { useChurnedAccounts } from '../hooks/useChurnedAccounts';
 
 interface PRSPortfolio {
@@ -40,142 +41,6 @@ function groupByPRS(opportunities: Opportunity[]): PRSPortfolio[] {
     })
     .sort((a, b) => a.prsName.localeCompare(b.prsName));
 }
-
-// Single opportunity rendered as a collapsible card. Replaces the wide,
-// right-aligned table row so renewal data reads as account-first cards.
-interface OpportunityCardProps {
-  opp: Opportunity;
-  index: number;
-  expanded: boolean;
-  onToggle: () => void;
-  onDraftEmail: (opp: Opportunity, action: RequiredAction) => void;
-}
-
-const OpportunityCard: React.FC<OpportunityCardProps> = ({ opp, index, expanded, onToggle, onDraftEmail }) => {
-  const actions = WorkflowEngine.getRequiredActions(opp);
-  const primaryAction = actions[0];
-  const isUrgent = actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
-  const renewalDateLabel = new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-  return (
-    <div className={`renewal-opp-card ${expanded ? 'expanded' : ''} ${isUrgent ? 'urgent' : ''}`}>
-      <div
-        className="renewal-opp-header"
-        onClick={onToggle}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
-        aria-expanded={expanded}
-      >
-        <div className="renewal-opp-header-main">
-          <ChevronRight className={`prs-chevron ${expanded ? 'expanded' : ''}`} size={18} />
-          <span className="renewal-opp-index">{index + 1}</span>
-          <div className="renewal-opp-account">
-            <span className="renewal-opp-account-name">{opp.companyName}</span>
-            <div className="renewal-opp-meta">
-              <Badge variant={getStageBadgeVariant(opp.stage)}>{opp.stage}</Badge>
-              {primaryAction ? (
-                <span className={`renewal-action-text ${primaryAction.priority}`}>
-                  {isUrgent && <AlertTriangle size={12} />}
-                  {primaryAction.description}
-                </span>
-              ) : (
-                <span className="renewal-no-action"><CheckCircle size={12} /> No action needed</span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="renewal-opp-header-right">
-          <span className="renewal-opp-amount">{formatCurrency(opp.amount || 0)}</span>
-          <span className="renewal-opp-date">{renewalDateLabel}</span>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="renewal-opp-body">
-          <dl className="renewal-opp-fields">
-            <div className="renewal-opp-field">
-              <dt>AE</dt>
-              <dd>{opp.ownerName || '-'}</dd>
-            </div>
-            <div className="renewal-opp-field renewal-opp-field-wide">
-              <dt>Opportunity</dt>
-              <dd>{opp.opportunityName}</dd>
-            </div>
-            <div className="renewal-opp-field">
-              <dt>Product</dt>
-              <dd>{opp.productName}</dd>
-            </div>
-            <div className="renewal-opp-field">
-              <dt>Renewal Status</dt>
-              <dd>
-                {opp.renewalStatus ? (
-                  <Badge variant={opp.renewalStatus.toLowerCase().includes('complete') ? 'success' : opp.renewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>
-                    {opp.renewalStatus}
-                  </Badge>
-                ) : '-'}
-              </dd>
-            </div>
-            <div className="renewal-opp-field">
-              <dt>Accounting Status</dt>
-              <dd>
-                {opp.accountingRenewalStatus ? (
-                  <Badge variant={opp.accountingRenewalStatus.toLowerCase().includes('complete') ? 'success' : opp.accountingRenewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>
-                    {opp.accountingRenewalStatus}
-                  </Badge>
-                ) : '-'}
-              </dd>
-            </div>
-            <div className="renewal-opp-field">
-              <dt>PO Required</dt>
-              <dd>
-                {opp.poRequired ? (
-                  <div className="po-status">
-                    <Badge variant={opp.poReceivedDate ? 'success' : 'warning'}>
-                      {opp.poReceivedDate ? 'Received' : 'Required'}
-                    </Badge>
-                    {opp.poReceivedDate && (
-                      <span className="po-date">
-                        {new Date(opp.poReceivedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </span>
-                    )}
-                  </div>
-                ) : (
-                  <span className="po-not-required">Not Required</span>
-                )}
-              </dd>
-            </div>
-            <div className="renewal-opp-field">
-              <dt>Risk Status</dt>
-              <dd>
-                {opp.leadershipRiskStatus ? (
-                  <Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>
-                    {opp.leadershipRiskStatus}
-                  </Badge>
-                ) : '-'}
-              </dd>
-            </div>
-          </dl>
-
-          {opp.leadershipNotes && (
-            <div className="renewal-opp-notes">
-              <strong>Leadership Notes:</strong>
-              <p>{opp.leadershipNotes}</p>
-            </div>
-          )}
-
-          {primaryAction && (
-            <div className="renewal-opp-actions">
-              <button className="renewal-btn primary sm" onClick={() => onDraftEmail(opp, primaryAction)}>
-                Draft Email
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
 
 // PRS Card component
 interface PRSCardProps {
@@ -294,6 +159,8 @@ export function PRSRenewalView() {
   const [overdueLoading, setOverdueLoading] = useState(false);
   const [expandedStage, setExpandedStage] = useState<string | null>(null);
   const [expandedQuarter, setExpandedQuarter] = useState<string | null>(null);
+  const [expandedOverdueOpp, setExpandedOverdueOpp] = useState<string | null>(null);
+  const [expandedChurnOpp, setExpandedChurnOpp] = useState<string | null>(null);
   const churnData = useChurnedAccounts();
 
   const currentUserEmail = user?.email?.toLowerCase() || '';
@@ -577,34 +444,18 @@ export function PRSRenewalView() {
 
                         {isExpanded && (
                           <div className="overdue-stage-body">
-                            <table className="renewal-table">
-                              <thead>
-                                <tr>
-                                  <th>#</th>
-                                  <th>Account</th>
-                                  <th>Opportunity</th>
-                                  <th>Product</th>
-                                  <th>PRS</th>
-                                  <th>CSM</th>
-                                  <th>Lost Value</th>
-                                  <th>Close Date</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {opps.map((opp, idx) => (
-                                  <tr key={opp.id} className="renewal-opp-row">
-                                    <td className="row-number-cell">{idx + 1}</td>
-                                    <td className="renewal-account-cell">{opp.companyName}</td>
-                                    <td>{opp.opportunityName}</td>
-                                    <td>{opp.productName}</td>
-                                    <td>{opp.prsName || 'Unassigned'}</td>
-                                    <td>{opp.csmName || 'Unassigned'}</td>
-                                    <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
-                                    <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                            <div className="renewal-opp-list">
+                              {opps.map((opp, idx) => (
+                                <OpportunityCard
+                                  key={opp.id}
+                                  opp={opp}
+                                  index={idx}
+                                  expanded={expandedChurnOpp === opp.id}
+                                  onToggle={() => setExpandedChurnOpp(expandedChurnOpp === opp.id ? null : opp.id)}
+                                  mode="closed-lost"
+                                />
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -690,39 +541,18 @@ export function PRSRenewalView() {
 
                         {isExpanded && (
                           <div className="overdue-stage-body">
-                            <table className="renewal-table">
-                              <thead>
-                                <tr>
-                                  <th>#</th>
-                                  <th>Account</th>
-                                  <th>Opportunity</th>
-                                  <th>Product</th>
-                                  <th>PRS</th>
-                                  <th>CSM</th>
-                                  <th>Amount</th>
-                                  <th>Renewal Date</th>
-                                  <th>Days Overdue</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {opps.map((opp, idx) => {
-                                  const daysOverdue = Math.floor((Date.now() - new Date(opp.renewalDate).getTime()) / (1000 * 60 * 60 * 24));
-                                  return (
-                                    <tr key={opp.id} className="renewal-opp-row">
-                                      <td className="row-number-cell">{idx + 1}</td>
-                                      <td className="renewal-account-cell">{opp.companyName}</td>
-                                      <td>{opp.opportunityName}</td>
-                                      <td>{opp.productName}</td>
-                                      <td>{opp.prsName || 'Unassigned'}</td>
-                                      <td>{opp.csmName || 'Unassigned'}</td>
-                                      <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
-                                      <td>{new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                                      <td><span className={`overdue-days ${daysOverdue > 30 ? 'critical' : daysOverdue > 14 ? 'warning' : ''}`}>{daysOverdue}d</span></td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
+                            <div className="renewal-opp-list">
+                              {opps.map((opp, idx) => (
+                                <OpportunityCard
+                                  key={opp.id}
+                                  opp={opp}
+                                  index={idx}
+                                  expanded={expandedOverdueOpp === opp.id}
+                                  onToggle={() => setExpandedOverdueOpp(expandedOverdueOpp === opp.id ? null : opp.id)}
+                                  mode="overdue"
+                                />
+                              ))}
+                            </div>
                           </div>
                         )}
                       </div>

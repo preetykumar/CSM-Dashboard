@@ -10090,6 +10090,23 @@ header .hint {
   border-left-color: #ef4444;
 }
 
+.renewal-opp-card.lost {
+  border-left: 3px solid #b91c1c;
+}
+
+.renewal-opp-card.won {
+  border-left: 3px solid #16a34a;
+}
+
+.renewal-opp-name-inline {
+  color: #64748b;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 360px;
+}
+
 .renewal-opp-header {
   display: flex;
   align-items: center;
