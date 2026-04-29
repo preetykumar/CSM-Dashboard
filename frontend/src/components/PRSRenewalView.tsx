@@ -8,7 +8,6 @@ import { WorkflowEngine, getStageBadgeVariant, isClosedLost, isClosedWon } from 
 import { RENEWAL_EMAIL_TEMPLATES, getTemplateForAction } from '../services/email-templates';
 import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
-import { SortHeader } from './renewal/SortHeader';
 import { EmailComposer } from './renewal/EmailComposer';
 import { useChurnedAccounts } from '../hooks/useChurnedAccounts';
 
@@ -42,6 +41,142 @@ function groupByPRS(opportunities: Opportunity[]): PRSPortfolio[] {
     .sort((a, b) => a.prsName.localeCompare(b.prsName));
 }
 
+// Single opportunity rendered as a collapsible card. Replaces the wide,
+// right-aligned table row so renewal data reads as account-first cards.
+interface OpportunityCardProps {
+  opp: Opportunity;
+  index: number;
+  expanded: boolean;
+  onToggle: () => void;
+  onDraftEmail: (opp: Opportunity, action: RequiredAction) => void;
+}
+
+const OpportunityCard: React.FC<OpportunityCardProps> = ({ opp, index, expanded, onToggle, onDraftEmail }) => {
+  const actions = WorkflowEngine.getRequiredActions(opp);
+  const primaryAction = actions[0];
+  const isUrgent = actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
+  const renewalDateLabel = new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  return (
+    <div className={`renewal-opp-card ${expanded ? 'expanded' : ''} ${isUrgent ? 'urgent' : ''}`}>
+      <div
+        className="renewal-opp-header"
+        onClick={onToggle}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+        aria-expanded={expanded}
+      >
+        <div className="renewal-opp-header-main">
+          <ChevronRight className={`prs-chevron ${expanded ? 'expanded' : ''}`} size={18} />
+          <span className="renewal-opp-index">{index + 1}</span>
+          <div className="renewal-opp-account">
+            <span className="renewal-opp-account-name">{opp.companyName}</span>
+            <div className="renewal-opp-meta">
+              <Badge variant={getStageBadgeVariant(opp.stage)}>{opp.stage}</Badge>
+              {primaryAction ? (
+                <span className={`renewal-action-text ${primaryAction.priority}`}>
+                  {isUrgent && <AlertTriangle size={12} />}
+                  {primaryAction.description}
+                </span>
+              ) : (
+                <span className="renewal-no-action"><CheckCircle size={12} /> No action needed</span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="renewal-opp-header-right">
+          <span className="renewal-opp-amount">{formatCurrency(opp.amount || 0)}</span>
+          <span className="renewal-opp-date">{renewalDateLabel}</span>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="renewal-opp-body">
+          <dl className="renewal-opp-fields">
+            <div className="renewal-opp-field">
+              <dt>AE</dt>
+              <dd>{opp.ownerName || '-'}</dd>
+            </div>
+            <div className="renewal-opp-field renewal-opp-field-wide">
+              <dt>Opportunity</dt>
+              <dd>{opp.opportunityName}</dd>
+            </div>
+            <div className="renewal-opp-field">
+              <dt>Product</dt>
+              <dd>{opp.productName}</dd>
+            </div>
+            <div className="renewal-opp-field">
+              <dt>Renewal Status</dt>
+              <dd>
+                {opp.renewalStatus ? (
+                  <Badge variant={opp.renewalStatus.toLowerCase().includes('complete') ? 'success' : opp.renewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>
+                    {opp.renewalStatus}
+                  </Badge>
+                ) : '-'}
+              </dd>
+            </div>
+            <div className="renewal-opp-field">
+              <dt>Accounting Status</dt>
+              <dd>
+                {opp.accountingRenewalStatus ? (
+                  <Badge variant={opp.accountingRenewalStatus.toLowerCase().includes('complete') ? 'success' : opp.accountingRenewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>
+                    {opp.accountingRenewalStatus}
+                  </Badge>
+                ) : '-'}
+              </dd>
+            </div>
+            <div className="renewal-opp-field">
+              <dt>PO Required</dt>
+              <dd>
+                {opp.poRequired ? (
+                  <div className="po-status">
+                    <Badge variant={opp.poReceivedDate ? 'success' : 'warning'}>
+                      {opp.poReceivedDate ? 'Received' : 'Required'}
+                    </Badge>
+                    {opp.poReceivedDate && (
+                      <span className="po-date">
+                        {new Date(opp.poReceivedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="po-not-required">Not Required</span>
+                )}
+              </dd>
+            </div>
+            <div className="renewal-opp-field">
+              <dt>Risk Status</dt>
+              <dd>
+                {opp.leadershipRiskStatus ? (
+                  <Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>
+                    {opp.leadershipRiskStatus}
+                  </Badge>
+                ) : '-'}
+              </dd>
+            </div>
+          </dl>
+
+          {opp.leadershipNotes && (
+            <div className="renewal-opp-notes">
+              <strong>Leadership Notes:</strong>
+              <p>{opp.leadershipNotes}</p>
+            </div>
+          )}
+
+          {primaryAction && (
+            <div className="renewal-opp-actions">
+              <button className="renewal-btn primary sm" onClick={() => onDraftEmail(opp, primaryAction)}>
+                Draft Email
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // PRS Card component
 interface PRSCardProps {
   portfolio: PRSPortfolio;
@@ -50,12 +185,13 @@ interface PRSCardProps {
   isCurrentUser: boolean;
   onDraftEmail: (opp: Opportunity, action: RequiredAction) => void;
   sortConfig: SortConfig;
-  onSort: (field: SortField) => void;
 }
 
 const PRSCard: React.FC<PRSCardProps> = ({
-  portfolio, expanded, onToggle, isCurrentUser, onDraftEmail, sortConfig, onSort
+  portfolio, expanded, onToggle, isCurrentUser, onDraftEmail, sortConfig
 }) => {
+  const [expandedOppId, setExpandedOppId] = useState<string | null>(null);
+
   const sortedOpportunities = useMemo(() => {
     if (!sortConfig.direction) return portfolio.opportunities;
     return [...portfolio.opportunities].sort((a, b) => {
@@ -119,100 +255,18 @@ const PRSCard: React.FC<PRSCardProps> = ({
 
       {expanded && (
         <div className="prs-card-content">
-          <table className="renewal-table">
-            <thead>
-              <tr>
-                <th className="row-number-header">#</th>
-                <SortHeader label="Account" field="companyName" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="AE" field="ownerName" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Opportunity Name" field="opportunityName" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Product Name" field="productName" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Stage" field="stage" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Renewal Status" field="renewalStatus" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Accounting Status" field="accountingRenewalStatus" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="PO Required" field="poRequired" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Total Price" field="amount" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Renewal Date" field="renewalDate" sortConfig={sortConfig} onSort={onSort} />
-                <SortHeader label="Action Needed" field="action" sortConfig={sortConfig} onSort={onSort} />
-                <th>Leadership Notes</th>
-
-                <th>Risk Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedOpportunities.map((opp, idx) => {
-                const actions = WorkflowEngine.getRequiredActions(opp);
-                const primaryAction = actions[0];
-                const isUrgent = actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
-                return (
-                  <tr key={opp.id} className={`renewal-opp-row ${isUrgent ? 'urgent' : ''}`}>
-                    <td className="row-number-cell" data-label="#">{idx + 1}</td>
-                    <td className="renewal-account-cell" data-label="Account">{opp.companyName}</td>
-                    <td data-label="AE">{opp.ownerName || '-'}</td>
-                    <td data-label="Opportunity">{opp.opportunityName}</td>
-                    <td data-label="Product">{opp.productName}</td>
-                    <td data-label="Stage">
-                      <Badge variant={getStageBadgeVariant(opp.stage)}>
-                        {opp.stage}
-                      </Badge>
-                    </td>
-                    <td data-label="Renewal Status">
-                      {opp.renewalStatus ? (
-                        <Badge variant={opp.renewalStatus.toLowerCase().includes('complete') ? 'success' : opp.renewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>
-                          {opp.renewalStatus}
-                        </Badge>
-                      ) : '-'}
-                    </td>
-                    <td data-label="Accounting Status">
-                      {opp.accountingRenewalStatus ? (
-                        <Badge variant={opp.accountingRenewalStatus.toLowerCase().includes('complete') ? 'success' : opp.accountingRenewalStatus.toLowerCase().includes('pending') ? 'warning' : 'default'}>
-                          {opp.accountingRenewalStatus}
-                        </Badge>
-                      ) : '-'}
-                    </td>
-                    <td data-label="PO Required">
-                      {opp.poRequired ? (
-                        <div className="po-status">
-                          <Badge variant={opp.poReceivedDate ? 'success' : 'warning'}>
-                            {opp.poReceivedDate ? 'Received' : 'Required'}
-                          </Badge>
-                          {opp.poReceivedDate && (
-                            <span className="po-date">
-                              {new Date(opp.poReceivedDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="po-not-required">Not Required</span>
-                      )}
-                    </td>
-                    <td className="renewal-amount-cell" data-label="Total Price">{formatCurrency(opp.amount || 0)}</td>
-                    <td data-label="Renewal Date">
-                      {new Date(opp.renewalDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </td>
-                    <td data-label="Action Needed">
-                      {primaryAction ? (
-                        <div className="renewal-action-cell">
-                          <span className={`renewal-action-text ${primaryAction.priority}`}>
-                            {isUrgent && <AlertTriangle size={14} />}
-                            {primaryAction.description}
-                          </span>
-                          <button className="renewal-btn secondary sm" onClick={() => onDraftEmail(opp, primaryAction)}>
-                            Draft Email
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="renewal-no-action"><CheckCircle size={14} /> No action needed</span>
-                      )}
-                    </td>
-                    <td className="renewal-notes-cell" data-label="Leadership Notes">{opp.leadershipNotes || '-'}</td>
-
-                    <td data-label="Risk Status">{opp.leadershipRiskStatus ? <Badge variant={opp.leadershipRiskStatus.toLowerCase().includes('resolved') ? 'success' : opp.leadershipRiskStatus.toLowerCase().includes('monitor') ? 'warning' : 'danger'}>{opp.leadershipRiskStatus}</Badge> : '-'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="renewal-opp-list">
+            {sortedOpportunities.map((opp, idx) => (
+              <OpportunityCard
+                key={opp.id}
+                opp={opp}
+                index={idx}
+                expanded={expandedOppId === opp.id}
+                onToggle={() => setExpandedOppId(expandedOppId === opp.id ? null : opp.id)}
+                onDraftEmail={onDraftEmail}
+              />
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -287,17 +341,6 @@ export function PRSRenewalView() {
     }
     loadOverdue();
   }, [activeTab, overdueOpportunities.length]);
-
-  const handleSort = (field: SortField) => {
-    setSortConfig(prev => {
-      if (prev.field === field) {
-        if (prev.direction === 'asc') return { field, direction: 'desc' };
-        if (prev.direction === 'desc') return { field, direction: null };
-        return { field, direction: 'asc' };
-      }
-      return { field, direction: 'asc' };
-    });
-  };
 
   const prsPortfolios = useMemo(() => {
     let filtered = opportunities.filter(opp => {
@@ -758,6 +801,32 @@ export function PRSRenewalView() {
               </button>
             ))}
           </div>
+          <div className="renewal-sort-control">
+            <label htmlFor="prs-sort-field" className="renewal-sort-label">Sort by</label>
+            <select
+              id="prs-sort-field"
+              className="renewal-sort-select"
+              value={sortConfig.field}
+              onChange={(e) => setSortConfig({ field: e.target.value as SortField, direction: 'asc' })}
+            >
+              <option value="renewalDate">Renewal Date</option>
+              <option value="companyName">Account</option>
+              <option value="amount">Amount</option>
+              <option value="stage">Stage</option>
+              <option value="action">Action Priority</option>
+              <option value="opportunityName">Opportunity</option>
+              <option value="productName">Product</option>
+            </select>
+            <button
+              type="button"
+              className="renewal-sort-direction"
+              onClick={() => setSortConfig(prev => ({ ...prev, direction: prev.direction === 'desc' ? 'asc' : 'desc' }))}
+              title={sortConfig.direction === 'desc' ? 'Descending — click to switch to ascending' : 'Ascending — click to switch to descending'}
+              aria-label={`Toggle sort direction, currently ${sortConfig.direction || 'asc'}`}
+            >
+              {sortConfig.direction === 'desc' ? '↓' : '↑'}
+            </button>
+          </div>
           <div className="renewal-filter-buttons">
             <button onClick={() => setFilter('all')} className={`renewal-filter-btn ${filter === 'all' ? 'active' : ''}`}>
               All ({opportunities.length})
@@ -781,7 +850,6 @@ export function PRSRenewalView() {
               isCurrentUser={isCurrentUser}
               onDraftEmail={handleDraftEmail}
               sortConfig={sortConfig}
-              onSort={handleSort}
             />
           );
         })}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { Search } from "lucide-react";
 import {
   fetchCSMPortfolios,
   fetchAmplitudeProducts,
@@ -706,6 +707,7 @@ export function CSMUsageView() {
   const [expandedSubProducts, setExpandedSubProducts] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Load initial data
   useEffect(() => {
@@ -902,7 +904,29 @@ export function CSMUsageView() {
     return [...portfolios].sort((a, b) => a.csm.name.localeCompare(b.csm.name));
   }, [portfolios]);
 
-  const paginatedPortfolios = usePagination(sortedPortfolios, pageSize, currentPage);
+  // Filter portfolios by search query — match against any consolidated customer's
+  // SF account name, Zendesk org name, or domain (so "ihg" finds InterContinental Hotels Group).
+  const filteredPortfolios = useMemo(() => {
+    if (!searchQuery.trim()) return sortedPortfolios;
+    const q = searchQuery.toLowerCase();
+    return sortedPortfolios.filter((portfolio) => {
+      const consolidated = consolidateCustomers(portfolio.customers, accountsWithSubscriptions, churnedAccountNames);
+      return consolidated.some((account) =>
+        account.accountName.toLowerCase().includes(q) ||
+        account.organizations.some((org) =>
+          org.name.toLowerCase().includes(q) ||
+          (org.domain_names || []).some((d) => d.toLowerCase().includes(q))
+        )
+      );
+    });
+  }, [sortedPortfolios, searchQuery, accountsWithSubscriptions, churnedAccountNames]);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
+
+  const paginatedPortfolios = usePagination(filteredPortfolios, pageSize, currentPage);
 
   // Get list of products with usage analytics - must be before early returns
   const analyticsProductNames = useMemo(() => {
@@ -995,8 +1019,22 @@ export function CSMUsageView() {
           <span className="admin-info">Viewing all {portfolios.length} CSM portfolios</span>
         </div>
       )}
+      <div className="renewal-card">
+        <div className="renewal-filter-bar">
+          <div className="renewal-search-wrapper">
+            <Search size={16} className="renewal-search-icon" />
+            <input
+              type="text"
+              placeholder="Search by account, org, or domain (e.g. 'ihg')…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="renewal-search-input"
+            />
+          </div>
+        </div>
+      </div>
       <Pagination
-        totalItems={portfolios.length}
+        totalItems={filteredPortfolios.length}
         pageSize={pageSize}
         currentPage={currentPage}
         onPageChange={setCurrentPage}
@@ -1005,8 +1043,22 @@ export function CSMUsageView() {
 
       <div className="csm-list">
         {paginatedPortfolios.map((portfolio) => {
-          const isCSMExpanded = expandedCSM === portfolio.csm.email;
-          const consolidatedCustomers = consolidateCustomers(portfolio.customers, accountsWithSubscriptions, churnedAccountNames);
+          const allConsolidated = consolidateCustomers(portfolio.customers, accountsWithSubscriptions, churnedAccountNames);
+          const q = searchQuery.trim().toLowerCase();
+          const hasSearch = q.length > 0;
+          const consolidatedCustomers = hasSearch
+            ? allConsolidated.filter((account) =>
+                account.accountName.toLowerCase().includes(q) ||
+                account.organizations.some((org) =>
+                  org.name.toLowerCase().includes(q) ||
+                  (org.domain_names || []).some((d) => d.toLowerCase().includes(q))
+                )
+              )
+            : allConsolidated;
+          // Auto-expand CSM cards while a search is active — every visible
+          // portfolio is a match, so collapsing them would hide the result
+          // the user is searching for.
+          const isCSMExpanded = hasSearch || expandedCSM === portfolio.csm.email;
 
           return (
             <div key={portfolio.csm.email} className={`csm-card ${isCSMExpanded ? "expanded" : ""}`}>

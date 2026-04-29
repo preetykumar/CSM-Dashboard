@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchRenewalOpportunities } from "../services/api";
 import { transformApiOpportunity, type Opportunity } from "../types/renewal";
-import { isClosedLost } from "../services/workflow-engine";
+import { isClosedLost, isClosedWon } from "../services/workflow-engine";
 
 export interface QuarterRange {
   year: number;
@@ -63,12 +63,29 @@ export function useChurnedAccounts(): UseChurnedAccountsResult {
         const transformed = response.opportunities.map(transformApiOpportunity);
         const earliest = quarters[0].startISO;
         const latest = quarters[quarters.length - 1].endISO;
-        const churn = transformed.filter(
-          (opp) =>
-            isClosedLost(opp.stage) &&
-            opp.renewalDate >= earliest &&
-            opp.renewalDate <= latest
-        );
+
+        // Account is churned only if it has a Closed Lost renewal in the
+        // last-2-quarters window AND no Closed Won renewal anywhere in the
+        // fetched data (which spans 2026-01-01 onward + 365 days). This nets
+        // out cases like a "DevTools for Web Increase" expansion that closed
+        // lost while the core renewal closed won shortly after.
+        const wonAccountIds = new Set<string>();
+        const wonAccountNames = new Set<string>();
+        for (const opp of transformed) {
+          if (isClosedWon(opp.stage)) {
+            if (opp.accountId) wonAccountIds.add(opp.accountId);
+            if (opp.companyName) wonAccountNames.add(opp.companyName.toLowerCase());
+          }
+        }
+
+        const churn = transformed.filter((opp) => {
+          if (!isClosedLost(opp.stage)) return false;
+          if (opp.renewalDate < earliest || opp.renewalDate > latest) return false;
+          const renewedById = opp.accountId && wonAccountIds.has(opp.accountId);
+          const renewedByName =
+            opp.companyName && wonAccountNames.has(opp.companyName.toLowerCase());
+          return !renewedById && !renewedByName;
+        });
         if (!cancelled) setOpportunities(churn);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load churn data");
