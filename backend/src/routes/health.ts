@@ -321,11 +321,26 @@ function buildHealthResponse(
 
 // ─── Adoption ─────────────────────────────────────────────────────────────────
 
+// Free / no-cost products — shown in usage views but excluded from health
+// score so a customer's adoption isn't measured against products they didn't pay for.
+const FREE_PRODUCTS = new Set([
+  "axe-mcp-server",
+  "axe-devtools-reporter",
+  "axe-devtools-linter",
+  "axe-devtools-cli",
+  "axe-api",
+]);
+
 function computeAdoptionSignals(subscriptions: any[]): HealthSignal[] {
   const signals: HealthSignal[] = [];
 
-  if (subscriptions.length === 0) {
-    signals.push({ signal: "red", label: "Seat Activation", detail: "No active subscriptions found" });
+  // Filter out free products before scoring — they still appear in usage views.
+  const paidSubscriptions = subscriptions.filter(
+    (s: any) => !FREE_PRODUCTS.has((s.productType || "").toLowerCase())
+  );
+
+  if (paidSubscriptions.length === 0) {
+    signals.push({ signal: "red", label: "Seat Activation", detail: "No active paid subscriptions found" });
     return signals;
   }
 
@@ -335,18 +350,16 @@ function computeAdoptionSignals(subscriptions: any[]): HealthSignal[] {
     "axe-devtools-html": "DevTools HTML",
     "axe-devtools-watcher": "DevTools Watcher",
     "axe-devtools-mobile": "DevTools Mobile",
-    "axe-devtools-cli": "DevTools CLI",
-    "axe-devtools-reporter": "DevTools Reporter",
     "deque-university": "Deque University",
     "dequeu": "Deque University",
     "axe-assistant-slack": "Axe Assistant (Slack)",
     "axe-assistant-teams": "Axe Assistant (Teams)",
   };
   // Products that don't use seats — excluded from seat activation
-  const NON_SEAT_PRODUCTS = new Set(["axe-monitor", "axe-monitor-pro", "axe-devtools-linter"]);
+  const NON_SEAT_PRODUCTS = new Set(["axe-monitor", "axe-monitor-pro"]);
 
   // Show seat activation per product individually
-  for (const sub of subscriptions) {
+  for (const sub of paidSubscriptions) {
     const pt = (sub.productType || "").toLowerCase();
     if (NON_SEAT_PRODUCTS.has(pt)) continue;
     if (!sub.licenseCount || sub.licenseCount <= 0) continue;
@@ -359,12 +372,12 @@ function computeAdoptionSignals(subscriptions: any[]): HealthSignal[] {
     signals.push({ signal, label: `${label} Seats`, detail: `${pct}% (${sub.assignedSeats || 0}/${sub.licenseCount})` });
   }
 
-  const productTypes = new Set(subscriptions.map((s: any) => s.productType?.toLowerCase()));
+  const productTypes = new Set(paidSubscriptions.map((s: any) => s.productType?.toLowerCase()));
   const productCount = productTypes.size;
   let breadthSignal: Signal = "green";
   if (productCount <= 1) breadthSignal = "red";
   else if (productCount === 2) breadthSignal = "yellow";
-  signals.push({ signal: breadthSignal, label: "Product Breadth", detail: `${productCount} product${productCount !== 1 ? "s" : ""} licensed` });
+  signals.push({ signal: breadthSignal, label: "Product Breadth", detail: `${productCount} paid product${productCount !== 1 ? "s" : ""} licensed` });
 
   return signals;
 }
