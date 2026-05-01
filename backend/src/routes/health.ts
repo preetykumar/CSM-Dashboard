@@ -321,22 +321,31 @@ function buildHealthResponse(
 
 // ─── Adoption ─────────────────────────────────────────────────────────────────
 
-// Free / no-cost products — shown in usage views but excluded from health
-// score so a customer's adoption isn't measured against products they didn't pay for.
-const FREE_PRODUCTS = new Set([
+// Products excluded from the health score — shown in usage views, but not
+// counted toward adoption signals. Two reasons:
+//   1) Free / no-cost products: adoption shouldn't be measured against
+//      products the customer didn't pay for.
+//   2) Jira integrations: accessories to a paid product, not standalone
+//      adoption indicators.
+const HEALTH_EXCLUDED_PRODUCTS = new Set([
+  // Free
   "axe-mcp-server",
   "axe-devtools-reporter",
   "axe-devtools-linter",
   "axe-devtools-cli",
   "axe-api",
+  // Jira integrations
+  "jira-cloud",
+  "jira-server",
+  "jira-data-center",
 ]);
 
 function computeAdoptionSignals(subscriptions: any[]): HealthSignal[] {
   const signals: HealthSignal[] = [];
 
-  // Filter out free products before scoring — they still appear in usage views.
+  // Filter out excluded products before scoring — they still appear in usage views.
   const paidSubscriptions = subscriptions.filter(
-    (s: any) => !FREE_PRODUCTS.has((s.productType || "").toLowerCase())
+    (s: any) => !HEALTH_EXCLUDED_PRODUCTS.has((s.productType || "").toLowerCase())
   );
 
   if (paidSubscriptions.length === 0) {
