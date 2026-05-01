@@ -125,13 +125,16 @@ export function TodoList({ role, userEmail, isAdmin = false, isViewingAsOther = 
       for (const opp of sorted.slice(0, limit)) {
         const daysOverdue = Math.floor((Date.now() - new Date(opp.renewalDate).getTime()) / (1000 * 60 * 60 * 24));
         const amount = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(opp.amount);
-        const csmLabel = showAllForAdmin && opp.csmName ? ` · CSM: ${opp.csmName}` : "";
+        const ownerLabels: string[] = [];
+        if (showAllForAdmin && opp.csmName) ownerLabels.push(`CSM: ${opp.csmName}`);
+        if (showAllForAdmin && opp.ownerName) ownerLabels.push(`AE: ${opp.ownerName}`);
+        const ownerSuffix = ownerLabels.length ? ` · ${ownerLabels.join(" · ")}` : "";
         items.push({
           id: `overdue-renewal-${opp.id}`,
           category: "overdue-renewals",
           priority: daysOverdue > 30 ? "high" : daysOverdue > 14 ? "medium" : "low",
           title: opp.accountName,
-          subtitle: `${daysOverdue}d overdue · ${amount}${csmLabel}`,
+          subtitle: `${daysOverdue}d overdue · ${amount}${ownerSuffix}`,
           detail: opp.name,
           link: "/csm/renewals",
           stage: opp.stageName || "Unknown",
@@ -311,13 +314,17 @@ export function TodoList({ role, userEmail, isAdmin = false, isViewingAsOther = 
         for (const opp of sorted.slice(0, limit)) {
           const daysOverdue = Math.floor((Date.now() - new Date(opp.renewalDate).getTime()) / (1000 * 60 * 60 * 24));
           const amount = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(opp.amount);
-          const prsLabel = showAllForAdmin && opp.prsName ? ` · PRS: ${opp.prsName}` : "";
+          const ownerLabels: string[] = [];
+          if (showAllForAdmin && opp.prsName) ownerLabels.push(`PRS: ${opp.prsName}`);
+          if (showAllForAdmin && opp.csmName) ownerLabels.push(`CSM: ${opp.csmName}`);
+          if (showAllForAdmin && opp.ownerName) ownerLabels.push(`AE: ${opp.ownerName}`);
+          const ownerSuffix = ownerLabels.length ? ` · ${ownerLabels.join(" · ")}` : "";
           items.push({
             id: `overdue-renewal-${opp.id}`,
             category: "overdue-renewals",
             priority: daysOverdue > 30 ? "high" : daysOverdue > 14 ? "medium" : "low",
             title: opp.accountName,
-            subtitle: `${daysOverdue}d overdue · ${amount}${prsLabel}`,
+            subtitle: `${daysOverdue}d overdue · ${amount}${ownerSuffix}`,
             detail: opp.name,
             link: "/renewal-specialist",
             stage: opp.stageName || "Unknown",
@@ -334,12 +341,17 @@ export function TodoList({ role, userEmail, isAdmin = false, isViewingAsOther = 
       for (const opp of myRenewals.slice(0, 15)) {
         const days = daysFromNow(opp.renewalDate);
         if (days >= 0 && days <= 90) {
+          const amount = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(opp.amount);
+          const ownerLabels: string[] = [];
+          if (showAllForAdmin && opp.csmName) ownerLabels.push(`CSM: ${opp.csmName}`);
+          if (showAllForAdmin && opp.ownerName) ownerLabels.push(`AE: ${opp.ownerName}`);
+          const ownerSuffix = ownerLabels.length ? ` · ${ownerLabels.join(" · ")}` : "";
           items.push({
             id: `renewal-${opp.id}`,
             category: "renewals",
             priority: days <= 30 ? "medium" : "low",
             title: opp.accountName,
-            subtitle: `Renews in ${days}d · ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(opp.amount)}`,
+            subtitle: `Renews in ${days}d · ${amount}${ownerSuffix}`,
             link: "/renewal-specialist",
           });
         }
@@ -349,12 +361,16 @@ export function TodoList({ role, userEmail, isAdmin = false, isViewingAsOther = 
       for (const opp of transformed) {
         const overdue = WorkflowEngine.getOverdueActions(opp);
         for (const item of overdue.slice(0, 5)) {
+          const ownerLabels: string[] = [];
+          if (showAllForAdmin && opp.csmName) ownerLabels.push(`CSM: ${opp.csmName}`);
+          if (showAllForAdmin && opp.ownerName) ownerLabels.push(`AE: ${opp.ownerName}`);
+          const ownerSuffix = ownerLabels.length ? ` · ${ownerLabels.join(" · ")}` : "";
           items.push({
             id: `r6-${opp.id}-${item.milestone}`,
             category: "overdue-actions",
             priority: item.daysPastDue > 30 ? "high" : "medium",
             title: item.opportunity.companyName,
-            subtitle: `${item.milestone} · ${item.daysPastDue}d overdue`,
+            subtitle: `${item.milestone} · ${item.daysPastDue}d overdue${ownerSuffix}`,
             detail: item.action.description,
             link: "/renewal-specialist",
           });
