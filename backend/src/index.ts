@@ -503,11 +503,17 @@ async function startServer() {
     // Static files and SPA fallback must be registered AFTER all API routes
     app.use(express.static(publicPath));
     app.get("*", (req, res) => {
-      if (!req.path.startsWith("/api")) {
-        res.sendFile(path.join(publicPath, "index.html"));
-      } else {
-        res.status(404).json({ error: "API endpoint not found" });
+      if (req.path.startsWith("/api")) {
+        return res.status(404).json({ error: "API endpoint not found" });
       }
+      // Static assets that miss express.static (e.g. a stale client asking
+      // for an old hashed bundle) must return 404 — not the SPA shell.
+      // Otherwise the browser receives HTML for an expected module and
+      // throws a MIME-type error.
+      if (/\.(js|mjs|css|map|json|ico|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|otf|eot|wasm)$/i.test(req.path)) {
+        return res.status(404).send("Not found");
+      }
+      res.sendFile(path.join(publicPath, "index.html"));
     });
 
     app.listen(PORT, async () => {
