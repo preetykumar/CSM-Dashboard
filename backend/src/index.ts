@@ -500,8 +500,24 @@ async function startServer() {
       app.use("/api/agent", optionalAuth, createAgentRoutes(agent));
     }
 
-    // Static files and SPA fallback must be registered AFTER all API routes
-    app.use(express.static(publicPath));
+    // Static files and SPA fallback must be registered AFTER all API routes.
+    //
+    // Cache strategy:
+    //   /assets/* — Vite-hashed, content-addressed, safe to cache forever
+    //   anything else (e.g. /index.html) — must NEVER be cached, otherwise
+    //     browsers serve a stale shell whose asset hashes no longer exist
+    //     after a deploy and you get MIME-type errors / 404s on refresh.
+    app.use(
+      express.static(publicPath, {
+        setHeaders: (res, filePath) => {
+          if (/[\\/]assets[\\/]/.test(filePath)) {
+            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+          } else {
+            res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+          }
+        },
+      })
+    );
     app.get("*", (req, res) => {
       if (req.path.startsWith("/api")) {
         return res.status(404).json({ error: "API endpoint not found" });
@@ -513,6 +529,7 @@ async function startServer() {
       if (/\.(js|mjs|css|map|json|ico|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|otf|eot|wasm)$/i.test(req.path)) {
         return res.status(404).send("Not found");
       }
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
       res.sendFile(path.join(publicPath, "index.html"));
     });
 
