@@ -27,7 +27,8 @@ async function expandOrgIdsByParentName(
   db: IDatabaseService,
   orgIds: number[],
   allOrgs?: Awaited<ReturnType<IDatabaseService["getOrganizations"]>>,
-  csmEmail?: string
+  csmEmail?: string,
+  preloadedAssignments?: Awaited<ReturnType<IDatabaseService["getCSMAssignments"]>>
 ): Promise<number[]> {
   const orgs = allOrgs || (await db.getOrganizations());
 
@@ -53,7 +54,7 @@ async function expandOrgIdsByParentName(
   // Build a map of org ID -> assigned CSM email for filtering
   const orgCsmMap = new Map<number, string>();
   if (csmEmail) {
-    const allAssignments = await db.getCSMAssignments();
+    const allAssignments = preloadedAssignments || (await db.getCSMAssignments());
     for (const a of allAssignments) {
       if (a.zendesk_org_id) {
         orgCsmMap.set(a.zendesk_org_id, a.csm_email);
@@ -97,6 +98,50 @@ async function expandOrgIdsByParentName(
   }
 
   return Array.from(expandedSet);
+}
+
+// Compute ticket stats and priority breakdown from an in-memory ticket array.
+// Replaces per-org getTicketStats/getPriorityBreakdown DB calls so portfolio
+// endpoints can do one bulk fetch instead of N+1 queries.
+//
+// openOnlyPriority preserves the existing CSM vs PM behavior:
+//   CSM endpoint counts priority across ALL tickets (false)
+//   PM endpoint counts priority across OPEN tickets only (true)
+function statsFromTickets(
+  tickets: CachedTicket[],
+  openOnlyPriority: boolean
+): {
+  ticketStats: { total: number; new: number; open: number; pending: number; hold: number; solved: number; closed: number };
+  priorityBreakdown: { urgent: number; high: number; normal: number; low: number };
+  featureRequests: number;
+  problemReports: number;
+  escalations: number;
+} {
+  const ticketStats = { total: 0, new: 0, open: 0, pending: 0, hold: 0, solved: 0, closed: 0 };
+  const priorityBreakdown = { urgent: 0, high: 0, normal: 0, low: 0 };
+  let featureRequests = 0;
+  let problemReports = 0;
+  let escalations = 0;
+
+  for (const t of tickets) {
+    ticketStats.total++;
+    const status = t.status as keyof typeof ticketStats;
+    if (status in ticketStats && status !== "total") ticketStats[status]++;
+
+    if (t.ticket_type === "feature") featureRequests++;
+    else if (t.ticket_type === "bug") problemReports++;
+
+    const isOpen = !["solved", "closed"].includes(t.status);
+    if (t.is_escalated && isOpen) escalations++;
+
+    if (!openOnlyPriority || isOpen) {
+      const priority = (t.priority || "normal") as keyof typeof priorityBreakdown;
+      if (priority in priorityBreakdown) priorityBreakdown[priority]++;
+      else priorityBreakdown.normal++;
+    }
+  }
+
+  return { ticketStats, priorityBreakdown, featureRequests, problemReports, escalations };
 }
 
 export function createCachedRoutes(db: IDatabaseService): Router {
@@ -787,11 +832,26 @@ export function createCachedRoutes(db: IDatabaseService): Router {
         csmPortfolios = await db.getCSMPortfolios();
       }
 
-      // Pre-fetch all orgs for parent name expansion (shared across all portfolios)
-      const allOrgs = await db.getOrganizations();
+      // Bulk fetch everything we'll need across portfolios in parallel —
+      // replaces ~1300 sequential per-org DB queries with 3 bulk queries.
+      const [allOrgs, allCsmAssignments, allTickets] = await Promise.all([
+        db.getOrganizations(),
+        db.getCSMAssignments(),
+        db.getAllTickets(),
+      ]);
 
-      // Build org ID -> SF Account ID lookup from all CSM assignments
-      const allCsmAssignments = await db.getCSMAssignments();
+      // Build in-memory indexes used in the inner loop
+      const orgsById = new Map<number, typeof allOrgs[number]>();
+      for (const o of allOrgs) orgsById.set(o.id, o);
+
+      const ticketsByOrgId = new Map<number, CachedTicket[]>();
+      for (const t of allTickets) {
+        if (t.organization_id == null) continue;
+        const arr = ticketsByOrgId.get(t.organization_id) || [];
+        arr.push(t);
+        ticketsByOrgId.set(t.organization_id, arr);
+      }
+
       const orgToSfAccountId = new Map<number, string>();
       const orgToSfAccountName = new Map<number, string>();
       for (const a of allCsmAssignments) {
@@ -806,41 +866,21 @@ export function createCachedRoutes(db: IDatabaseService): Router {
       for (const portfolio of csmPortfolios) {
         // Expand org_ids to include sibling orgs sharing the same parent account
         // Only include siblings/children with the same CSM or no CSM assigned
-        const expandedOrgIds = await expandOrgIdsByParentName(db, portfolio.org_ids, allOrgs, portfolio.csm_email);
+        const expandedOrgIds = await expandOrgIdsByParentName(
+          db, portfolio.org_ids, allOrgs, portfolio.csm_email, allCsmAssignments
+        );
 
         const customers: CSMCustomerSummary[] = [];
         let totalTickets = 0;
         let openTickets = 0;
 
         for (const orgId of expandedOrgIds) {
-          const org = await db.getOrganization(orgId);
+          const org = orgsById.get(orgId);
           if (!org) continue;
 
-          const tickets = await db.getTicketsByOrganization(orgId);
-          const ticketStats = await db.getTicketStats(orgId);
-
-          // Count feature requests, problem reports, and priority breakdown
-          let featureRequests = 0;
-          let problemReports = 0;
-          let escalations = 0;
-          const priorityBreakdown = { urgent: 0, high: 0, normal: 0, low: 0 };
-
-          for (const t of tickets) {
-            if (t.ticket_type === "feature") featureRequests++;
-            else if (t.ticket_type === "bug") problemReports++;
-
-            // Count escalations (only open/active tickets)
-            if (t.is_escalated && !["solved", "closed"].includes(t.status)) {
-              escalations++;
-            }
-
-            // Count by priority
-            const priority = t.priority || "normal";
-            if (priority === "urgent") priorityBreakdown.urgent++;
-            else if (priority === "high") priorityBreakdown.high++;
-            else if (priority === "low") priorityBreakdown.low++;
-            else priorityBreakdown.normal++;
-          }
+          const tickets = ticketsByOrgId.get(orgId) || [];
+          const { ticketStats, priorityBreakdown, featureRequests, problemReports, escalations } =
+            statsFromTickets(tickets, false);
 
           totalTickets += ticketStats.total;
           openTickets += ticketStats.new + ticketStats.open + ticketStats.pending;
@@ -906,20 +946,17 @@ export function createCachedRoutes(db: IDatabaseService): Router {
       // For admins: find orgs with tickets but no CSM assignment
       let unassignedAccounts: CSMCustomerSummary[] | undefined;
       if (userIsAdmin) {
-        const allAssignments = await db.getCSMAssignments();
-        const assignedOrgIds = new Set(allAssignments.filter(a => a.zendesk_org_id).map(a => a.zendesk_org_id));
-        const allTickets = await db.getAllTickets();
-        const orgsWithTickets = new Set(allTickets.map(t => t.organization_id).filter(Boolean));
+        const assignedOrgIds = new Set(allCsmAssignments.filter(a => a.zendesk_org_id).map(a => a.zendesk_org_id));
+        const orgsWithTickets = new Set(Array.from(ticketsByOrgId.keys()));
         const unassignedOrgIds = [...orgsWithTickets].filter(id => !assignedOrgIds.has(id));
 
         unassignedAccounts = [];
         for (const orgId of unassignedOrgIds) {
-          const org = allOrgs.find(o => o.id === orgId);
+          const org = orgsById.get(orgId);
           if (!org) continue;
-          const tickets = await db.getTicketsByOrganization(orgId);
+          const tickets = ticketsByOrgId.get(orgId) || [];
           if (tickets.length === 0) continue;
-          const ticketStats = await db.getTicketStats(orgId);
-          const priorityBreakdown = await db.getPriorityBreakdown(orgId);
+          const { ticketStats, priorityBreakdown } = statsFromTickets(tickets, false);
 
           unassignedAccounts.push({
             organization: {
@@ -991,8 +1028,22 @@ export function createCachedRoutes(db: IDatabaseService): Router {
         pmPortfolios = await db.getPMPortfolios();
       }
 
-      // Pre-fetch all orgs for parent name expansion (shared across all portfolios)
-      const allOrgsForPM = await db.getOrganizations();
+      // Bulk fetch shared across all portfolios — same N+1 elimination as CSM endpoint
+      const [allOrgsForPM, allTicketsForPM] = await Promise.all([
+        db.getOrganizations(),
+        db.getAllTickets(),
+      ]);
+
+      const orgsByIdForPM = new Map<number, typeof allOrgsForPM[number]>();
+      for (const o of allOrgsForPM) orgsByIdForPM.set(o.id, o);
+
+      const ticketsByOrgIdForPM = new Map<number, CachedTicket[]>();
+      for (const t of allTicketsForPM) {
+        if (t.organization_id == null) continue;
+        const arr = ticketsByOrgIdForPM.get(t.organization_id) || [];
+        arr.push(t);
+        ticketsByOrgIdForPM.set(t.organization_id, arr);
+      }
 
       const portfolios: PMPortfolio[] = [];
 
@@ -1005,36 +1056,12 @@ export function createCachedRoutes(db: IDatabaseService): Router {
         let openTickets = 0;
 
         for (const orgId of expandedOrgIds) {
-          const org = await db.getOrganization(orgId);
+          const org = orgsByIdForPM.get(orgId);
           if (!org) continue;
 
-          const tickets = await db.getTicketsByOrganization(orgId);
-          const ticketStats = await db.getTicketStats(orgId);
-
-          // Count feature requests, problem reports, and priority breakdown
-          let featureRequests = 0;
-          let problemReports = 0;
-          let escalations = 0;
-          const priorityBreakdown = { urgent: 0, high: 0, normal: 0, low: 0 };
-
-          for (const t of tickets) {
-            if (t.ticket_type === "feature") featureRequests++;
-            else if (t.ticket_type === "bug") problemReports++;
-
-            // Count escalations (only open/active tickets)
-            if (t.is_escalated && !["solved", "closed"].includes(t.status)) {
-              escalations++;
-            }
-
-            // Count by priority (only open/active tickets)
-            if (!["solved", "closed"].includes(t.status)) {
-              const priority = t.priority || "normal";
-              if (priority === "urgent") priorityBreakdown.urgent++;
-              else if (priority === "high") priorityBreakdown.high++;
-              else if (priority === "low") priorityBreakdown.low++;
-              else priorityBreakdown.normal++;
-            }
-          }
+          const tickets = ticketsByOrgIdForPM.get(orgId) || [];
+          const { ticketStats, priorityBreakdown, featureRequests, problemReports, escalations } =
+            statsFromTickets(tickets, true);
 
           customers.push({
             organization: {
