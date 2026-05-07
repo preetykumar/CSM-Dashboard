@@ -12,6 +12,7 @@ const __dirname = path.dirname(__filename);
 import { ZendeskService } from "./services/zendesk.js";
 import { SalesforceService } from "./services/salesforce.js";
 import { GitHubService } from "./services/github.js";
+import { KantataService } from "./services/kantata.js";
 import { DatabaseService } from "./services/database.js";
 import { DatabaseServicePg } from "./services/database-pg.js";
 import type { IDatabaseService } from "./services/database-interface.js";
@@ -22,6 +23,7 @@ import { createOrganizationRoutes } from "./routes/organizations.js";
 import { createFieldRoutes } from "./routes/fields.js";
 import { createCSMRoutes } from "./routes/csm.js";
 import { createSalesforceRoutes } from "./routes/salesforce.js";
+import { createProjectsRoutes } from "./routes/projects.js";
 import { createSyncRoutes } from "./routes/sync.js";
 import { createCachedRoutes } from "./routes/cached.js";
 import { createAuthRoutes } from "./routes/auth.js";
@@ -31,6 +33,7 @@ import { createAgentRoutes } from "./routes/agent.js";
 import { createUserRoutes } from "./routes/user.js";
 import { createCalendarRoutes } from "./routes/calendar.js";
 import { createAmplitudeRoutes } from "./routes/amplitude.js";
+import { createUsageUsersRoutes } from "./routes/usage-users.js";
 import { createHealthRoutes } from "./routes/health.js";
 
 dotenv.config();
@@ -140,6 +143,18 @@ function loadGitHubConfig() {
   }
 
   return { token, org, projectNumbers };
+}
+
+function loadKantataConfig() {
+  const apiToken = process.env.KANTATA_API_TOKEN;
+  const baseUrl = process.env.KANTATA_API_BASE;
+
+  if (!apiToken) {
+    console.warn("Kantata API token not configured. Active Projects view will be disabled.");
+    return null;
+  }
+
+  return { apiToken, baseUrl };
 }
 
 function loadAnthropicConfig() {
@@ -388,6 +403,9 @@ const salesforce = sfConfig ? new SalesforceService(sfConfig) : null;
 const ghConfig = loadGitHubConfig();
 const github = ghConfig ? new GitHubService(ghConfig) : null;
 
+const kantataConfig = loadKantataConfig();
+const kantata = kantataConfig ? new KantataService(kantataConfig) : null;
+
 // Database will be initialized async in the startup function
 let db!: IDatabaseService;
 let sync!: SyncService;
@@ -465,6 +483,11 @@ if (salesforce) {
   app.use("/api/salesforce", optionalAuth, createSalesforceRoutes(salesforce));
 }
 
+// Active Projects view - merges Kantata projects with SF account team data
+if (kantata && salesforce) {
+  app.use("/api/projects", optionalAuth, createProjectsRoutes(kantata, salesforce));
+}
+
 // Routes that depend on db/sync/agent are registered in startServer() after initialization
 
 // Amplitude usage analytics routes
@@ -480,8 +503,8 @@ async function startServer() {
     // Initialize database (SQLite or PostgreSQL based on environment)
     db = await initializeDatabase();
 
-    // Initialize sync service
-    sync = new SyncService(db, zendesk, salesforce, github);
+    // Initialize sync service (with Amplitude products for nightly user activity sync)
+    sync = new SyncService(db, zendesk, salesforce, github, amplitudeProducts || []);
 
     // Initialize AI Agent with Salesforce integration for renewals
     agent = anthropicConfig ? new AgentService(db, zendesk, anthropicConfig, salesforce, apiBaseUrl) : null;
@@ -496,6 +519,7 @@ async function startServer() {
     if (salesforce) {
       app.use("/api/health", optionalAuth, createHealthRoutes(db, salesforce));
     }
+    app.use("/api/usage/users", optionalAuth, createUsageUsersRoutes(db));
     if (agent) {
       app.use("/api/agent", optionalAuth, createAgentRoutes(agent));
     }

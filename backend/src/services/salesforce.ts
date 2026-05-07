@@ -85,6 +85,42 @@ export interface AccountHierarchyEntry {
   ultimateParentName: string;
 }
 
+export interface AccountTeamUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface AccountTeamRoles {
+  accountId: string;
+  accountName: string;
+  lastActivityDate: string | null;
+  csm: AccountTeamUser | null;
+  tsa: AccountTeamUser | null;
+  ies: AccountTeamUser[]; // up to 3, in order
+  ae: AccountTeamUser | null;
+  sdl: AccountTeamUser | null;
+}
+
+interface SFRefUser {
+  Id: string;
+  Name: string;
+  Email?: string;
+}
+
+interface SFAccountTeamRow {
+  Id: string;
+  Name: string;
+  LastActivityDate?: string | null;
+  Owner?: SFRefUser | null;
+  Customer_Success_Manager_csm__r?: SFRefUser | null;
+  Customer_Success_Manager__r?: SFRefUser | null;
+  Customer_Success_Engineer_CSE1__r?: SFRefUser | null;
+  Customer_Success_Engineer_CSE2__r?: SFRefUser | null;
+  Customer_Success_Engineer_CSE3__r?: SFRefUser | null;
+  Engagement_Manager__r?: SFRefUser | null;
+}
+
 interface SFUser {
   Id: string;
   Name: string;
@@ -578,6 +614,90 @@ export class SalesforceService {
     }
   }
 
+  // Map Opportunity IDs to their AccountId. Used when an upstream system
+  // (e.g. Kantata) only stores an Opportunity reference, but we need the
+  // related Account.
+  async resolveOpportunityAccountIds(oppIds: string[]): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    if (oppIds.length === 0) return result;
+
+    const BATCH = 200;
+    for (let i = 0; i < oppIds.length; i += BATCH) {
+      const batch = oppIds.slice(i, i + BATCH);
+      const idList = batch.map((id) => `'${id}'`).join(",");
+      try {
+        const rows = await this.query<{ Id: string; AccountId: string | null }>(
+          `SELECT Id, AccountId FROM Opportunity WHERE Id IN (${idList})`
+        );
+        for (const row of rows) {
+          if (row.AccountId) result.set(row.Id, row.AccountId);
+        }
+      } catch (error) {
+        console.error("Error resolving opportunity → account batch:", error);
+      }
+    }
+    return result;
+  }
+
+  // Bulk fetch team-role assignments for a list of Account IDs.
+  // Field-name mapping (verified by labels, not API names which are misleading):
+  //   CSM = Customer_Success_Manager_csm__c (label "Customer Success Manager")
+  //   TSA = Customer_Success_Manager__c     (label "Technical Solutions Architect (TSA)")
+  //   IE  = Customer_Success_Engineer_CSE1/2/3__c (labels "Implementation Engineer 1/2/3")
+  //   AE  = Account.Owner (standard)
+  //   SDL = Engagement_Manager__c (label "Engagement Manager 1")
+  // Plus Account.LastActivityDate for "last customer contact".
+  async getAccountTeamRoles(accountIds: string[]): Promise<Map<string, AccountTeamRoles>> {
+    const result = new Map<string, AccountTeamRoles>();
+    if (accountIds.length === 0) return result;
+
+    // SOQL IN clauses are limited to ~10K chars; chunk into batches of 200 IDs.
+    const BATCH = 200;
+    for (let i = 0; i < accountIds.length; i += BATCH) {
+      const batch = accountIds.slice(i, i + BATCH);
+      const idList = batch.map((id) => `'${id}'`).join(",");
+      try {
+        const rows = await this.query<SFAccountTeamRow>(`
+          SELECT Id, Name, LastActivityDate,
+                 Owner.Id, Owner.Name, Owner.Email,
+                 Customer_Success_Manager_csm__r.Id, Customer_Success_Manager_csm__r.Name, Customer_Success_Manager_csm__r.Email,
+                 Customer_Success_Manager__r.Id, Customer_Success_Manager__r.Name, Customer_Success_Manager__r.Email,
+                 Customer_Success_Engineer_CSE1__r.Id, Customer_Success_Engineer_CSE1__r.Name, Customer_Success_Engineer_CSE1__r.Email,
+                 Customer_Success_Engineer_CSE2__r.Id, Customer_Success_Engineer_CSE2__r.Name, Customer_Success_Engineer_CSE2__r.Email,
+                 Customer_Success_Engineer_CSE3__r.Id, Customer_Success_Engineer_CSE3__r.Name, Customer_Success_Engineer_CSE3__r.Email,
+                 Engagement_Manager__r.Id, Engagement_Manager__r.Name, Engagement_Manager__r.Email
+          FROM Account
+          WHERE Id IN (${idList})
+        `);
+
+        const toUser = (u?: { Id: string; Name: string; Email?: string } | null) =>
+          u ? { id: u.Id, name: u.Name, email: u.Email || "" } : null;
+
+        for (const row of rows) {
+          const ies = [row.Customer_Success_Engineer_CSE1__r, row.Customer_Success_Engineer_CSE2__r, row.Customer_Success_Engineer_CSE3__r]
+            .map(toUser)
+            .filter((u): u is NonNullable<ReturnType<typeof toUser>> => u !== null);
+
+          result.set(row.Id, {
+            accountId: row.Id,
+            accountName: row.Name,
+            lastActivityDate: row.LastActivityDate || null,
+            csm: toUser(row.Customer_Success_Manager_csm__r),
+            tsa: toUser(row.Customer_Success_Manager__r),
+            ies,
+            ae: toUser(row.Owner),
+            sdl: toUser(row.Engagement_Manager__r),
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching account team roles batch:", error);
+        // Continue with next batch instead of failing the whole call
+      }
+    }
+
+    return result;
+  }
+
   async getAccountHierarchy(): Promise<AccountHierarchyEntry[]> {
     console.log("Fetching account hierarchy from Salesforce...");
 
@@ -808,6 +928,81 @@ export class SalesforceService {
       console.error("Error fetching accounts with subscriptions:", error);
       throw error;
     }
+  }
+
+  async getAllContactsWithKeycloakId(): Promise<Array<{
+    contactId: string;
+    keycloakId: string;
+    email: string | null;
+    name: string | null;
+    title: string | null;
+    accountId: string | null;
+    accountName: string | null;
+    source: "contact" | "lead";
+  }>> {
+    console.log("Fetching all SF Contacts with axe_keycloak_id__c...");
+    type ContactRow = {
+      Id: string;
+      Name: string | null;
+      Email: string | null;
+      Title: string | null;
+      AccountId: string | null;
+      Account: { Name: string | null } | null;
+      axe_keycloak_id__c: string | null;
+    };
+    const contactRows = await this.queryAll<ContactRow>(`
+      SELECT Id, Name, Email, Title, AccountId, Account.Name, axe_keycloak_id__c
+      FROM Contact
+      WHERE axe_keycloak_id__c != null
+    `);
+    console.log(`Found ${contactRows.length} Contacts with keycloak ID`);
+
+    console.log("Fetching all SF Leads with axe_keycloak_id__c...");
+    type LeadRow = {
+      Id: string;
+      Name: string | null;
+      Email: string | null;
+      Title: string | null;
+      Company: string | null;
+      Account__c: string | null;
+      Account__r: { Name: string | null } | null;
+      axe_keycloak_id__c: string | null;
+    };
+    // Leads link to Account via custom field Account__c (not standard AccountId)
+    const leadRows = await this.queryAll<LeadRow>(`
+      SELECT Id, Name, Email, Title, Company, Account__c, Account__r.Name, axe_keycloak_id__c
+      FROM Lead
+      WHERE axe_keycloak_id__c != null
+    `);
+    console.log(`Found ${leadRows.length} Leads with keycloak ID`);
+
+    const contacts = contactRows
+      .filter((r) => r.axe_keycloak_id__c)
+      .map((r) => ({
+        contactId: r.Id,
+        keycloakId: r.axe_keycloak_id__c as string,
+        email: r.Email,
+        name: r.Name,
+        title: r.Title,
+        accountId: r.AccountId,
+        accountName: r.Account?.Name ?? null,
+        source: "contact" as const,
+      }));
+
+    const leads = leadRows
+      .filter((r) => r.axe_keycloak_id__c)
+      .map((r) => ({
+        contactId: r.Id,
+        keycloakId: r.axe_keycloak_id__c as string,
+        email: r.Email,
+        name: r.Name,
+        title: r.Title,
+        accountId: r.Account__c,
+        accountName: r.Account__r?.Name ?? r.Company ?? null,
+        source: "lead" as const,
+      }));
+
+    return [...contacts, ...leads];
   }
 
   async getPRSAssignments(): Promise<PRSAssignment[]> {

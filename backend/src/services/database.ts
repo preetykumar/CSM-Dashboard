@@ -17,6 +17,8 @@ import type {
   CSMPortfolio,
   PMPortfolio,
   UserPreferences,
+  CachedOrgContact,
+  CachedProductUserActivity,
 } from "./database-interface.js";
 
 // Re-export all interfaces so existing imports from "./database.js" still work
@@ -35,6 +37,8 @@ export type {
   PriorityBreakdown,
   CSMPortfolio,
   PMPortfolio,
+  CachedOrgContact,
+  CachedProductUserActivity,
 };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -194,6 +198,35 @@ export class DatabaseService implements IDatabaseService {
         value TEXT NOT NULL,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
+
+      -- SF Contacts with axe_keycloak_id__c (refreshed nightly)
+      CREATE TABLE IF NOT EXISTS org_contacts (
+        keycloak_id TEXT PRIMARY KEY,
+        contact_id TEXT NOT NULL,
+        email TEXT,
+        name TEXT,
+        title TEXT,
+        account_id TEXT,
+        account_name TEXT,
+        cached_at TEXT DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_org_contacts_account ON org_contacts(account_id);
+      CREATE INDEX IF NOT EXISTS idx_org_contacts_email ON org_contacts(email);
+
+      -- Per-(product, org_key, keycloak_id) activity from Amplitude
+      CREATE TABLE IF NOT EXISTS product_user_activity (
+        product_slug TEXT NOT NULL,
+        org_key TEXT NOT NULL,
+        keycloak_id TEXT NOT NULL,
+        last_seen TEXT,
+        event_count_90d INTEGER DEFAULT 0,
+        cached_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (product_slug, org_key, keycloak_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_pua_product_org ON product_user_activity(product_slug, org_key);
+      CREATE INDEX IF NOT EXISTS idx_pua_keycloak ON product_user_activity(keycloak_id);
     `);
 
     // Migration: Add new columns if they don't exist (for existing databases)
@@ -653,6 +686,29 @@ export class DatabaseService implements IDatabaseService {
     return this.db.prepare("SELECT * FROM account_hierarchy ORDER BY ultimate_parent_name, account_name").all() as CachedAccountHierarchy[];
   }
 
+  async getRelatedAccountIds(accountId: string): Promise<CachedAccountHierarchy[]> {
+    if (!accountId) return [];
+    const row = this.db
+      .prepare("SELECT ultimate_parent_id FROM account_hierarchy WHERE account_id = ?")
+      .get(accountId) as { ultimate_parent_id?: string } | undefined;
+    if (!row?.ultimate_parent_id) {
+      // Account not in hierarchy table — return self only
+      return [{
+        account_id: accountId,
+        account_name: "",
+        parent_id: null,
+        parent_name: null,
+        ultimate_parent_id: accountId,
+        ultimate_parent_name: "",
+      }];
+    }
+    return this.db
+      .prepare(
+        "SELECT * FROM account_hierarchy WHERE ultimate_parent_id = ? ORDER BY account_name"
+      )
+      .all(row.ultimate_parent_id) as CachedAccountHierarchy[];
+  }
+
   async updateOrganizationParentName(zendeskOrgId: number, parentName: string): Promise<void> {
     this.db.prepare("UPDATE organizations SET sf_ultimate_parent_name = ? WHERE id = ?").run(parentName, zendeskOrgId);
   }
@@ -861,6 +917,124 @@ export class DatabaseService implements IDatabaseService {
     `);
     stmt.run(prefs.email, prefs.role || null, prefs.calendly_url || null, prefs.calendly_token || null, new Date().toISOString());
     return Promise.resolve();
+  }
+
+  // ----- Org Contacts -----
+
+  async upsertOrgContacts(contacts: CachedOrgContact[]): Promise<void> {
+    this.db.prepare("DELETE FROM org_contacts").run();
+    const stmt = this.db.prepare(`
+      INSERT INTO org_contacts (keycloak_id, contact_id, email, name, title, account_id, account_name, cached_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+    const tx = this.db.transaction((rows: CachedOrgContact[]) => {
+      for (const c of rows) {
+        stmt.run(c.keycloak_id, c.contact_id, c.email, c.name, c.title, c.account_id, c.account_name);
+      }
+    });
+    tx(contacts);
+  }
+
+  async getOrgContactsByKeycloakIds(keycloakIds: string[]): Promise<Map<string, CachedOrgContact>> {
+    const map = new Map<string, CachedOrgContact>();
+    if (keycloakIds.length === 0) return map;
+    const chunkSize = 500;
+    for (let i = 0; i < keycloakIds.length; i += chunkSize) {
+      const chunk = keycloakIds.slice(i, i + chunkSize);
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = this.db
+        .prepare(`SELECT * FROM org_contacts WHERE keycloak_id IN (${placeholders})`)
+        .all(...chunk) as CachedOrgContact[];
+      for (const r of rows) map.set(r.keycloak_id, r);
+    }
+    return map;
+  }
+
+  async getOrgContactsByAccountIds(accountIds: string[]): Promise<CachedOrgContact[]> {
+    if (accountIds.length === 0) return [];
+    const placeholders = accountIds.map(() => "?").join(",");
+    return this.db
+      .prepare(`SELECT * FROM org_contacts WHERE account_id IN (${placeholders}) ORDER BY name`)
+      .all(...accountIds) as CachedOrgContact[];
+  }
+
+  async countOrgContacts(): Promise<number> {
+    const row = this.db.prepare("SELECT COUNT(*) as n FROM org_contacts").get() as { n: number };
+    return row.n;
+  }
+
+  // ----- Product User Activity -----
+
+  async upsertProductUserActivity(rows: CachedProductUserActivity[]): Promise<void> {
+    if (rows.length === 0) return;
+    const stmt = this.db.prepare(`
+      INSERT INTO product_user_activity (product_slug, org_key, keycloak_id, last_seen, event_count_90d, cached_at)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(product_slug, org_key, keycloak_id) DO UPDATE SET
+        last_seen = excluded.last_seen,
+        event_count_90d = excluded.event_count_90d,
+        cached_at = CURRENT_TIMESTAMP
+    `);
+    const tx = this.db.transaction((items: CachedProductUserActivity[]) => {
+      for (const r of items) {
+        stmt.run(r.product_slug, r.org_key, r.keycloak_id, r.last_seen, r.event_count_90d);
+      }
+    });
+    tx(rows);
+  }
+
+  async deleteProductUserActivityByProduct(productSlug: string): Promise<void> {
+    this.db.prepare("DELETE FROM product_user_activity WHERE product_slug = ?").run(productSlug);
+  }
+
+  async getProductUserActivity(productSlug: string, orgKeys: string[]): Promise<CachedProductUserActivity[]> {
+    if (orgKeys.length === 0) return [];
+    const placeholders = orgKeys.map(() => "?").join(",");
+    return this.db
+      .prepare(
+        `SELECT * FROM product_user_activity
+         WHERE product_slug = ? AND org_key IN (${placeholders})
+         ORDER BY event_count_90d DESC`
+      )
+      .all(productSlug, ...orgKeys) as CachedProductUserActivity[];
+  }
+
+  async getProductUserActivityByKeycloakIds(
+    productSlug: string,
+    keycloakIds: string[]
+  ): Promise<CachedProductUserActivity[]> {
+    if (keycloakIds.length === 0) return [];
+    const out: CachedProductUserActivity[] = [];
+    // Chunk to avoid SQLite parameter limit
+    const CHUNK = 500;
+    for (let i = 0; i < keycloakIds.length; i += CHUNK) {
+      const chunk = keycloakIds.slice(i, i + CHUNK);
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = this.db
+        .prepare(
+          `SELECT product_slug, org_key, keycloak_id,
+                  MAX(last_seen) AS last_seen,
+                  SUM(event_count_90d) AS event_count_90d,
+                  MAX(cached_at) AS cached_at
+           FROM product_user_activity
+           WHERE product_slug = ? AND keycloak_id IN (${placeholders})
+           GROUP BY keycloak_id
+           ORDER BY event_count_90d DESC`
+        )
+        .all(productSlug, ...chunk) as CachedProductUserActivity[];
+      out.push(...rows);
+    }
+    return out;
+  }
+
+  async countProductUserActivity(productSlug?: string): Promise<number> {
+    const sql = productSlug
+      ? "SELECT COUNT(*) as n FROM product_user_activity WHERE product_slug = ?"
+      : "SELECT COUNT(*) as n FROM product_user_activity";
+    const row = (productSlug
+      ? this.db.prepare(sql).get(productSlug)
+      : this.db.prepare(sql).get()) as { n: number };
+    return row.n;
   }
 
   close(): void {

@@ -15,6 +15,8 @@ import type {
   CSMPortfolio,
   PMPortfolio,
   UserPreferences,
+  CachedOrgContact,
+  CachedProductUserActivity,
 } from "./database-interface.js";
 
 // PostgreSQL connection configuration
@@ -205,6 +207,27 @@ export class DatabaseServicePg implements IDatabaseService {
         calendly_token TEXT,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      CREATE TABLE IF NOT EXISTS org_contacts (
+        keycloak_id TEXT PRIMARY KEY,
+        contact_id TEXT NOT NULL,
+        email TEXT,
+        name TEXT,
+        title TEXT,
+        account_id TEXT,
+        account_name TEXT,
+        cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS product_user_activity (
+        product_slug TEXT NOT NULL,
+        org_key TEXT NOT NULL,
+        keycloak_id TEXT NOT NULL,
+        last_seen DATE,
+        event_count_90d INTEGER DEFAULT 0,
+        cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (product_slug, org_key, keycloak_id)
+      );
     `);
 
     // Create indexes
@@ -222,6 +245,10 @@ export class DatabaseServicePg implements IDatabaseService {
       CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(user_email);
       CREATE INDEX IF NOT EXISTS idx_hierarchy_parent ON account_hierarchy(ultimate_parent_id);
       CREATE INDEX IF NOT EXISTS idx_hierarchy_parent_name ON account_hierarchy(ultimate_parent_name);
+      CREATE INDEX IF NOT EXISTS idx_org_contacts_account ON org_contacts(account_id);
+      CREATE INDEX IF NOT EXISTS idx_org_contacts_email ON org_contacts(email);
+      CREATE INDEX IF NOT EXISTS idx_pua_product_org ON product_user_activity(product_slug, org_key);
+      CREATE INDEX IF NOT EXISTS idx_pua_keycloak ON product_user_activity(keycloak_id);
     `);
   }
 
@@ -804,6 +831,30 @@ export class DatabaseServicePg implements IDatabaseService {
     return result.rows as CachedAccountHierarchy[];
   }
 
+  async getRelatedAccountIds(accountId: string): Promise<CachedAccountHierarchy[]> {
+    if (!accountId) return [];
+    const lookup = await this.pool.query(
+      "SELECT ultimate_parent_id FROM account_hierarchy WHERE account_id = $1",
+      [accountId]
+    );
+    if (lookup.rows.length === 0 || !lookup.rows[0].ultimate_parent_id) {
+      return [{
+        account_id: accountId,
+        account_name: "",
+        parent_id: null,
+        parent_name: null,
+        ultimate_parent_id: accountId,
+        ultimate_parent_name: "",
+      }];
+    }
+    const ultimateParentId: string = lookup.rows[0].ultimate_parent_id;
+    const result = await this.pool.query(
+      "SELECT * FROM account_hierarchy WHERE ultimate_parent_id = $1 ORDER BY account_name",
+      [ultimateParentId]
+    );
+    return result.rows as CachedAccountHierarchy[];
+  }
+
   async updateOrganizationParentName(zendeskOrgId: number, parentName: string): Promise<void> {
     await this.pool.query("UPDATE organizations SET sf_ultimate_parent_name = $1 WHERE id = $2", [parentName, zendeskOrgId]);
   }
@@ -1054,6 +1105,132 @@ export class DatabaseServicePg implements IDatabaseService {
          updated_at = CURRENT_TIMESTAMP`,
       [prefs.email, prefs.role || null, prefs.calendly_url || null, prefs.calendly_token || null]
     );
+  }
+
+  // ----- Org Contacts -----
+
+  async upsertOrgContacts(contacts: CachedOrgContact[]): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM org_contacts");
+      for (const c of contacts) {
+        await client.query(
+          `INSERT INTO org_contacts (keycloak_id, contact_id, email, name, title, account_id, account_name, cached_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
+          [c.keycloak_id, c.contact_id, c.email, c.name, c.title, c.account_id, c.account_name]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getOrgContactsByKeycloakIds(keycloakIds: string[]): Promise<Map<string, CachedOrgContact>> {
+    const map = new Map<string, CachedOrgContact>();
+    if (keycloakIds.length === 0) return map;
+    const result = await this.pool.query(
+      "SELECT * FROM org_contacts WHERE keycloak_id = ANY($1::text[])",
+      [keycloakIds]
+    );
+    for (const r of result.rows as CachedOrgContact[]) map.set(r.keycloak_id, r);
+    return map;
+  }
+
+  async getOrgContactsByAccountIds(accountIds: string[]): Promise<CachedOrgContact[]> {
+    if (accountIds.length === 0) return [];
+    const result = await this.pool.query(
+      "SELECT * FROM org_contacts WHERE account_id = ANY($1::text[]) ORDER BY name",
+      [accountIds]
+    );
+    return result.rows as CachedOrgContact[];
+  }
+
+  async countOrgContacts(): Promise<number> {
+    const result = await this.pool.query("SELECT COUNT(*)::int as n FROM org_contacts");
+    return result.rows[0].n;
+  }
+
+  // ----- Product User Activity -----
+
+  async upsertProductUserActivity(rows: CachedProductUserActivity[]): Promise<void> {
+    if (rows.length === 0) return;
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      for (const r of rows) {
+        await client.query(
+          `INSERT INTO product_user_activity (product_slug, org_key, keycloak_id, last_seen, event_count_90d, cached_at)
+           VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+           ON CONFLICT (product_slug, org_key, keycloak_id) DO UPDATE SET
+             last_seen = EXCLUDED.last_seen,
+             event_count_90d = EXCLUDED.event_count_90d,
+             cached_at = CURRENT_TIMESTAMP`,
+          [r.product_slug, r.org_key, r.keycloak_id, r.last_seen, r.event_count_90d]
+        );
+      }
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async deleteProductUserActivityByProduct(productSlug: string): Promise<void> {
+    await this.pool.query("DELETE FROM product_user_activity WHERE product_slug = $1", [productSlug]);
+  }
+
+  async getProductUserActivity(productSlug: string, orgKeys: string[]): Promise<CachedProductUserActivity[]> {
+    if (orgKeys.length === 0) return [];
+    const result = await this.pool.query(
+      `SELECT product_slug, org_key, keycloak_id,
+              TO_CHAR(last_seen, 'YYYY-MM-DD') as last_seen,
+              event_count_90d, cached_at
+       FROM product_user_activity
+       WHERE product_slug = $1 AND org_key = ANY($2::text[])
+       ORDER BY event_count_90d DESC`,
+      [productSlug, orgKeys]
+    );
+    return result.rows as CachedProductUserActivity[];
+  }
+
+  async getProductUserActivityByKeycloakIds(
+    productSlug: string,
+    keycloakIds: string[]
+  ): Promise<CachedProductUserActivity[]> {
+    if (keycloakIds.length === 0) return [];
+    const result = await this.pool.query(
+      `SELECT product_slug,
+              MAX(org_key) AS org_key,
+              keycloak_id,
+              TO_CHAR(MAX(last_seen), 'YYYY-MM-DD') as last_seen,
+              SUM(event_count_90d)::int as event_count_90d,
+              MAX(cached_at) as cached_at
+       FROM product_user_activity
+       WHERE product_slug = $1 AND keycloak_id = ANY($2::text[])
+       GROUP BY product_slug, keycloak_id
+       ORDER BY event_count_90d DESC`,
+      [productSlug, keycloakIds]
+    );
+    return result.rows as CachedProductUserActivity[];
+  }
+
+  async countProductUserActivity(productSlug?: string): Promise<number> {
+    if (productSlug) {
+      const r = await this.pool.query(
+        "SELECT COUNT(*)::int as n FROM product_user_activity WHERE product_slug = $1",
+        [productSlug]
+      );
+      return r.rows[0].n;
+    }
+    const r = await this.pool.query("SELECT COUNT(*)::int as n FROM product_user_activity");
+    return r.rows[0].n;
   }
 
   async close(): Promise<void> {

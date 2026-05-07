@@ -3,6 +3,7 @@ import { SyncButton } from "./components/SyncButton";
 import { SupportCustomersView } from "./components/SupportCustomersView";
 import { CSMPortfolioView } from "./components/CSMPortfolioView";
 import { PMPortfolioView } from "./components/PMPortfolioView";
+import { PMProjectsView } from "./components/PMProjectsView";
 import { ProductView } from "./components/ProductView";
 import { LoginPage } from "./components/LoginPage";
 import { UserMenu } from "./components/UserMenu";
@@ -108,7 +109,7 @@ function Dashboard() {
       case ROUTES.PM_USAGE:
         return "PM usage analytics (coming soon)";
       case ROUTES.PM_PROJECTS:
-        return "Active projects grouped by PM (coming soon)";
+        return "Active implementation projects from Kantata, with team and budget health from Salesforce";
       case ROUTES.RENEWAL_SPECIALIST:
         return "View renewal opportunities grouped by Product Renewal Specialist";
       case ROUTES.FIELD_ENGINEERS:
@@ -243,8 +244,8 @@ function Dashboard() {
             <NavLink to={ROUTES.PM_USAGE} className="coming-soon-tab">
               Usage Data <span className="tab-badge-soon">Soon</span>
             </NavLink>
-            <NavLink to={ROUTES.PM_PROJECTS} className="coming-soon-tab">
-              Active Projects <span className="tab-badge-soon">Soon</span>
+            <NavLink to={ROUTES.PM_PROJECTS}>
+              Active Projects
             </NavLink>
           </nav>
         )}
@@ -325,7 +326,7 @@ function Dashboard() {
           {/* PM Routes */}
           <Route path="/pm/support" element={<PMPortfolioView />} />
           <Route path="/pm/usage" element={<ComingSoonPlaceholder title="PM Usage Analytics" description="View product usage metrics grouped by Project Manager portfolio." />} />
-          <Route path="/pm/projects" element={<ComingSoonPlaceholder title="PM Active Projects" description="View active product implementations and service projects grouped by PM. Data will be sourced from Salesforce." />} />
+          <Route path="/pm/projects" element={<PMProjectsView />} />
 
           {/* Renewal Specialist Route */}
           <Route path="/renewal-specialist" element={<PRSRenewalView />} />

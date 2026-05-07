@@ -1,4 +1,4 @@
-import type { CustomerSummary, DetailedCustomerSummary, Organization, Ticket, CSMPortfolio, CSMCustomerSummary, PMPortfolio, EnhancedCustomerSummary, GitHubDevelopmentStatus } from "../types";
+import type { CustomerSummary, DetailedCustomerSummary, Organization, Ticket, CSMPortfolio, CSMCustomerSummary, PMPortfolio, EnhancedCustomerSummary, GitHubDevelopmentStatus, ActiveProjectsResponse } from "../types";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -287,6 +287,13 @@ export interface SyncStatusItem {
 export interface SyncStatus {
   status: SyncStatusItem[];
   inProgress: boolean;
+}
+
+export async function fetchActiveProjects(opts?: { force?: boolean }): Promise<ActiveProjectsResponse> {
+  const url = `${API_BASE}/projects/active${opts?.force ? "?force=1" : ""}`;
+  const res = await fetch(url, fetchOptions);
+  if (!res.ok) throw new Error("Failed to fetch active projects");
+  return res.json();
 }
 
 export async function fetchSyncStatus(): Promise<SyncStatus> {
@@ -979,8 +986,60 @@ export async function fetchUnifiedUsageMetrics(orgIdentifier: string, monitorDom
   if (monitorDomain) queryParts.push(`monitorDomain=${encodeURIComponent(monitorDomain)}`);
   if (accountName) queryParts.push(`accountName=${encodeURIComponent(accountName)}`);
   const query = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
-  const res = await fetch(`${API_BASE}/amplitude/unified/${encodeURIComponent(orgIdentifier)}${query}`, fetchOptions);
+  // Path param can't be empty — when no Enterprise UUID is known we still want to
+  // fetch usage for products that use SF account name (passed via accountName query).
+  const pathId = orgIdentifier && orgIdentifier.length > 0 ? orgIdentifier : "_";
+  const res = await fetch(`${API_BASE}/amplitude/unified/${encodeURIComponent(pathId)}${query}`, fetchOptions);
   if (!res.ok) throw new Error("Failed to fetch unified usage metrics");
+  return res.json();
+}
+
+// ── Product Users (per-product user list scoped to an SF account) ────────────
+
+export interface ProductUserRow {
+  keycloak_id: string;
+  email: string | null;
+  name: string | null;
+  title: string | null;
+  account_id: string | null;
+  account_name: string | null;
+  last_seen: string | null;
+  event_count_90d: number;
+  matched: boolean;
+}
+
+export interface RelatedAccount {
+  account_id: string;
+  account_name: string;
+}
+
+export interface ProductUsersResponse {
+  productSlug: string;
+  accountId: string;
+  orgKeys: string[];
+  relatedAccountIds?: string[];
+  relatedAccounts?: RelatedAccount[];
+  activeCount: number;
+  inactiveCount: number;
+  totalContactsAtAccount: number;
+  users: ProductUserRow[];
+  warning?: string;
+}
+
+export async function fetchProductUsers(
+  productSlug: string,
+  accountId: string,
+  options: { orgKeys?: string[]; includeInactive?: boolean } = {}
+): Promise<ProductUsersResponse> {
+  const params: string[] = [];
+  for (const k of options.orgKeys || []) params.push(`orgKey=${encodeURIComponent(k)}`);
+  if (options.includeInactive) params.push("includeInactive=1");
+  const query = params.length > 0 ? `?${params.join("&")}` : "";
+  const res = await fetch(
+    `${API_BASE}/usage/users/${encodeURIComponent(productSlug)}/${encodeURIComponent(accountId)}${query}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error("Failed to fetch product users");
   return res.json();
 }
 

@@ -2504,4 +2504,102 @@ export class AmplitudeService {
     amplitudeCache.set(cacheKey, result);
     return result;
   }
+
+  /**
+   * Fetch (user_id × gp:organization) activity for one event over the past N days.
+   * Uses multi-group-by segmentation: one query returns the full user×org cross-tab.
+   *
+   * Returns rows where org_key/user_id are non-empty and event count > 0.
+   * Filters out the synthetic "(none)" Amplitude label.
+   */
+  async getProductUserActivityByEvent(
+    eventType: string,
+    days: number = 90,
+    limit: number = 10000
+  ): Promise<Array<{ keycloakId: string; orgKey: string; lastSeen: string | null; eventCount: number }>> {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - days);
+
+    const url = new URL(`${this.baseUrl}/events/segmentation`);
+    url.searchParams.append("e", JSON.stringify({ event_type: eventType }));
+    url.searchParams.append("start", this.formatDate(startDate));
+    url.searchParams.append("end", this.formatDate(endDate));
+    url.searchParams.append("m", "totals");
+    url.searchParams.append("g", "user_id");
+    url.searchParams.append("g", "gp:organization");
+    url.searchParams.append("i", "1"); // daily so we can derive last_seen
+    url.searchParams.append("limit", String(limit));
+
+    // Reuse the request loop's retry pattern via a small inline implementation.
+    // We can't use this.request() because it doesn't allow repeated 'g' params.
+    const maxRetries = 3;
+    const baseDelayMs = 1000;
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          headers: { Authorization: this.getAuthHeader(), "Content-Type": "application/json" },
+        });
+
+        if (response.ok) {
+          const json = (await response.json()) as EventSegmentationResponse;
+          const labels = json.data?.seriesLabels || [];
+          const series = json.data?.series || [];
+          const xValues = json.data?.xValues || [];
+
+          const rows: Array<{ keycloakId: string; orgKey: string; lastSeen: string | null; eventCount: number }> = [];
+          for (let i = 0; i < labels.length; i++) {
+            const label = String(labels[i] ?? "");
+            // Multi-group label format: "<user_id>; <org_key>"
+            const sep = label.indexOf("; ");
+            if (sep < 0) continue;
+            const keycloakId = label.substring(0, sep).trim();
+            const orgKey = label.substring(sep + 2).trim();
+            if (!keycloakId || keycloakId === "(none)") continue;
+            if (!orgKey || orgKey === "(none)") continue;
+
+            const counts = series[i] || [];
+            let total = 0;
+            let lastIdx = -1;
+            for (let j = 0; j < counts.length; j++) {
+              const v = counts[j] || 0;
+              total += v;
+              if (v > 0) lastIdx = j;
+            }
+            if (total <= 0) continue;
+            rows.push({
+              keycloakId,
+              orgKey,
+              lastSeen: lastIdx >= 0 ? (xValues[lastIdx] || null) : null,
+              eventCount: total,
+            });
+          }
+          return rows;
+        }
+
+        if (response.status === 429) {
+          if (attempt < maxRetries) {
+            await this.sleep(baseDelayMs * Math.pow(2, attempt));
+            continue;
+          }
+          lastError = new Error(`Amplitude rate limit on user-activity query for ${eventType}`);
+        } else {
+          const errorText = await response.text();
+          throw new Error(`Amplitude API error ${response.status}: ${errorText}`);
+        }
+      } catch (error) {
+        if (attempt < maxRetries && error instanceof TypeError) {
+          await this.sleep(baseDelayMs * Math.pow(2, attempt));
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (lastError) throw lastError;
+    throw new Error("Unexpected error fetching product user activity");
+  }
 }

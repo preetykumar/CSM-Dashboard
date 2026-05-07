@@ -156,6 +156,7 @@ export function createCachedRoutes(db: IDatabaseService): Router {
           id: org.id,
           name: org.name,
           domain_names: JSON.parse(org.domain_names || "[]"),
+          salesforce_account_id: org.salesforce_id || undefined,
           salesforce_account_name: org.salesforce_account_name,
           sf_ultimate_parent_name: org.sf_ultimate_parent_name,
           created_at: org.created_at,

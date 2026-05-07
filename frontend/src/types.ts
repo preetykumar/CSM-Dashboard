@@ -206,3 +206,47 @@ export interface GitHubDevelopmentStatus {
 export interface TicketWithGitHub extends Ticket {
   githubStatus?: GitHubDevelopmentStatus[];
 }
+
+// Active Projects (Kantata + SF merge) — used by PMProjectsView
+export interface ActiveProjectTeamUser {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface ActiveProject {
+  id: string;
+  title: string;
+  url: string;
+  accountId: string | null;
+  accountName: string | null;
+  budgetType: string | null;
+  budgetTypeId: string | null;
+  budget: number | null;
+  budgetUsed: number;
+  budgetUnused: number | null;
+  percentOfBudgetUsed: number;
+  startDate: string | null;
+  dueDate: string | null;
+  daysSinceStart: number | null;
+  lastCustomerContact: string | null;
+  team: {
+    csm: ActiveProjectTeamUser | null;
+    tsa: ActiveProjectTeamUser | null;
+    ies: ActiveProjectTeamUser[];
+    ae: ActiveProjectTeamUser | null;
+    sdl: ActiveProjectTeamUser | null;
+  };
+  budgetHealth: "red" | "green";
+  scheduleHealth: "red" | "green";
+  overallHealth: "red" | "green";
+  healthReasons: string[];
+  kantataStatus: { color: string; key: number; message: string } | null;
+}
+
+export interface ActiveProjectsResponse {
+  projects: ActiveProject[];
+  count: number;
+  redCount: number;
+  generatedAt: string;
+}

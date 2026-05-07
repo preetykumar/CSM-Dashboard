@@ -59,3 +59,6 @@ export const amplitudeCache = new MemoryCache(1800);
 
 // Salesforce misc: 30 min TTL (subscriptions, health scores)
 export const salesforceCache = new MemoryCache(1800);
+
+// Kantata: 15 min TTL (project state changes faster than SF/renewals data)
+export const kantataCache = new MemoryCache(900);

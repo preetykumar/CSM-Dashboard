@@ -174,6 +174,10 @@ export interface IDatabaseService {
   upsertAccountHierarchy(entries: CachedAccountHierarchy[]): Promise<void>;
   getAccountHierarchy(): Promise<CachedAccountHierarchy[]>;
   updateOrganizationParentName(zendeskOrgId: number, parentName: string): Promise<void>;
+  // Returns the input account plus every other account in the same hierarchy tree
+  // (parent, siblings, descendants — all sharing an ultimate_parent_id). Falls back to
+  // [{ account_id, account_name: '' }] when the account isn't in the hierarchy table.
+  getRelatedAccountIds(accountId: string): Promise<CachedAccountHierarchy[]>;
 
   // Sync Status
   updateSyncStatus(type: string, status: string, recordCount: number, errorMessage?: string): Promise<void>;
@@ -210,6 +214,23 @@ export interface IDatabaseService {
   getUserPreferences(email: string): Promise<UserPreferences | null>;
   upsertUserPreferences(prefs: Omit<UserPreferences, "updated_at">): Promise<void>;
 
+  // Org Contacts (SF Contact with axe_keycloak_id__c)
+  upsertOrgContacts(contacts: CachedOrgContact[]): Promise<void>;
+  getOrgContactsByKeycloakIds(keycloakIds: string[]): Promise<Map<string, CachedOrgContact>>;
+  getOrgContactsByAccountIds(accountIds: string[]): Promise<CachedOrgContact[]>;
+  countOrgContacts(): Promise<number>;
+
+  // Product User Activity (Amplitude multi-group-by output)
+  upsertProductUserActivity(rows: CachedProductUserActivity[]): Promise<void>;
+  deleteProductUserActivityByProduct(productSlug: string): Promise<void>;
+  getProductUserActivity(productSlug: string, orgKeys: string[]): Promise<CachedProductUserActivity[]>;
+  // Identity-based lookup (fallback when org_key is unknown/abbreviation/etc).
+  // For each keycloak_id with any activity for the product, returns the row with the
+  // most recent last_seen (collapses cross-org duplicates if the same user appears under
+  // multiple org_keys).
+  getProductUserActivityByKeycloakIds(productSlug: string, keycloakIds: string[]): Promise<CachedProductUserActivity[]>;
+  countProductUserActivity(productSlug?: string): Promise<number>;
+
   // Lifecycle
   close(): Promise<void> | void;
 }
@@ -220,4 +241,40 @@ export interface UserPreferences {
   calendly_url: string | null;
   calendly_token: string | null;
   updated_at?: string;
+}
+
+// SF Contact with axe_keycloak_id__c — refreshed nightly from one paginated SOQL query.
+export interface CachedOrgContact {
+  keycloak_id: string;
+  contact_id: string;
+  email: string | null;
+  name: string | null;
+  title: string | null;
+  account_id: string | null;
+  account_name: string | null;
+  cached_at?: string;
+}
+
+// Per-(product, org_key, keycloak_id) activity from Amplitude — refreshed nightly via multi-group-by segmentation.
+// org_key is gp:organization (UUID for products that use UUIDs, name for those that don't).
+export interface CachedProductUserActivity {
+  product_slug: string;
+  org_key: string;
+  keycloak_id: string;
+  last_seen: string | null;     // ISO date 'YYYY-MM-DD'
+  event_count_90d: number;
+  cached_at?: string;
+}
+
+// Joined row for API responses (Contact + Activity).
+export interface ProductUserRow {
+  keycloak_id: string;
+  email: string | null;
+  name: string | null;
+  title: string | null;
+  account_id: string | null;
+  account_name: string | null;
+  last_seen: string | null;
+  event_count_90d: number;
+  matched: boolean;             // true if SF Contact found
 }

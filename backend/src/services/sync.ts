@@ -1,9 +1,49 @@
-import type { IDatabaseService, CachedOrganization, CachedTicket, CachedCSMAssignment, CachedPMAssignment, CachedGitHubLink, CachedAccountHierarchy } from "./database-interface.js";
+import type {
+  IDatabaseService,
+  CachedOrganization,
+  CachedTicket,
+  CachedCSMAssignment,
+  CachedPMAssignment,
+  CachedGitHubLink,
+  CachedAccountHierarchy,
+  CachedOrgContact,
+  CachedProductUserActivity,
+} from "./database-interface.js";
 import { ZendeskService } from "./zendesk.js";
 import { SalesforceService, CSMAssignment, PMAssignment, AccountHierarchyEntry } from "./salesforce.js";
 import { GitHubService } from "./github.js";
+import { AmplitudeService } from "./amplitude.js";
 import type { Organization, Ticket } from "../types/index.js";
 import { renewalsCache, salesforceCache } from "./cache.js";
+
+// Amplitude product configuration (mirrors ProductConfig in routes/amplitude.ts).
+// Passed in from index.ts so sync can fetch user activity nightly.
+export interface AmplitudeProductConfig {
+  name: string;
+  projectId: string;
+  apiKey: string;
+  secretKey: string;
+  orgId: string;
+}
+
+// Per-product event used to compute "active in last 90 days" for the user list.
+// Pick the broadest event per product so we capture as many active users as possible.
+const PRODUCT_USER_ACTIVITY_EVENTS: Record<string, string> = {
+  "axe-account-portal": "login",
+  "axe-devtools-(browser-extension)": "analysis:complete",
+  "developer-hub": "project:create",
+  "axe-devtools-mobile": "scan:create",
+  "axe-assistant": "user:message_sent",
+  "deque-university": "session_start",
+  "axe-monitor": "scan:create:complete",
+  "axe-reports": "usage:chart:load",
+  "axe-linter": "extension:configure",
+  "axe-mcp-server": "axe-mcp-server:analyze",
+};
+
+function productSlug(productName: string): string {
+  return productName.toLowerCase().replace(/\s+/g, "-");
+}
 
 // Helper function to normalize text by removing diacritical marks (accents)
 // e.g., "Nestlé" -> "nestle", "Café" -> "cafe"
@@ -66,21 +106,24 @@ export class SyncService {
   private zendesk: ZendeskService;
   private salesforce: SalesforceService | null;
   private github: GitHubService | null;
+  private amplitudeProducts: AmplitudeProductConfig[];
   private isSyncing = false;
 
   constructor(
     db: IDatabaseService,
     zendesk: ZendeskService,
     salesforce: SalesforceService | null,
-    github: GitHubService | null = null
+    github: GitHubService | null = null,
+    amplitudeProducts: AmplitudeProductConfig[] = []
   ) {
     this.db = db;
     this.zendesk = zendesk;
     this.salesforce = salesforce;
     this.github = github;
+    this.amplitudeProducts = amplitudeProducts;
   }
 
-  async syncAll(): Promise<{ organizations: number; tickets: number; csmAssignments: number; pmAssignments: number; githubLinks: number }> {
+  async syncAll(): Promise<{ organizations: number; tickets: number; csmAssignments: number; pmAssignments: number; githubLinks: number; orgContacts: number; productUserActivity: number }> {
     if (this.isSyncing) {
       throw new Error("Sync already in progress");
     }
@@ -101,7 +144,25 @@ export class SyncService {
       const pmCount = this.salesforce ? await this.syncPMAssignments() : 0;
       const githubCount = this.github ? await this.syncGitHubLinks() : 0;
 
-      console.log(`Sync complete: ${orgCount} orgs, ${ticketCount} tickets, ${csmCount} CSM assignments, ${pmCount} PM assignments, ${githubCount} GitHub links`);
+      // Refresh user-level data (SF Contacts + Amplitude per-product activity)
+      let orgContactCount = 0;
+      let productUserCount = 0;
+      if (this.salesforce) {
+        try {
+          orgContactCount = await this.syncOrgContacts();
+        } catch (err) {
+          console.error("Org contacts sync failed:", err);
+        }
+      }
+      if (this.amplitudeProducts.length > 0) {
+        try {
+          productUserCount = await this.syncProductUsers();
+        } catch (err) {
+          console.error("Product user activity sync failed:", err);
+        }
+      }
+
+      console.log(`Sync complete: ${orgCount} orgs, ${ticketCount} tickets, ${csmCount} CSM assignments, ${pmCount} PM assignments, ${githubCount} GitHub links, ${orgContactCount} contacts, ${productUserCount} product-user rows`);
 
       // Pre-warm caches: invalidate stale data, then pre-fetch renewals
       renewalsCache.clear();
@@ -125,9 +186,111 @@ export class SyncService {
         }
       }
 
-      return { organizations: orgCount, tickets: ticketCount, csmAssignments: csmCount, pmAssignments: pmCount, githubLinks: githubCount };
+      return { organizations: orgCount, tickets: ticketCount, csmAssignments: csmCount, pmAssignments: pmCount, githubLinks: githubCount, orgContacts: orgContactCount, productUserActivity: productUserCount };
     } finally {
       this.isSyncing = false;
+    }
+  }
+
+  /**
+   * Pull all SF Contacts with axe_keycloak_id__c populated and store them.
+   * One paginated SOQL query — covers ~4-5K contacts at time of writing.
+   */
+  async syncOrgContacts(): Promise<number> {
+    if (!this.salesforce) return 0;
+    console.log("Syncing org contacts (SF Contacts with keycloak ID)...");
+    await this.db.updateSyncStatus("org_contacts", "in_progress", 0);
+    try {
+      const contacts = await this.salesforce.getAllContactsWithKeycloakId();
+      // Dedupe by keycloak_id — multiple SF records can share one. Prefer the
+      // record with the most identity fields populated; tie-break to Contact over Lead
+      // (Contact is post-conversion, more authoritative).
+      const score = (c: typeof contacts[number]) =>
+        (c.email ? 2 : 0) + (c.accountId ? 2 : 0) + (c.source === "contact" ? 1 : 0);
+      const byKeycloak = new Map<string, typeof contacts[number]>();
+      let dupeCount = 0;
+      for (const c of contacts) {
+        const existing = byKeycloak.get(c.keycloakId);
+        if (!existing) {
+          byKeycloak.set(c.keycloakId, c);
+        } else {
+          dupeCount++;
+          if (score(c) > score(existing)) byKeycloak.set(c.keycloakId, c);
+        }
+      }
+      if (dupeCount > 0) {
+        console.log(`  Deduped ${dupeCount} records sharing keycloak IDs (${byKeycloak.size} unique)`);
+      }
+      const cached: CachedOrgContact[] = Array.from(byKeycloak.values()).map((c) => ({
+        keycloak_id: c.keycloakId,
+        contact_id: c.contactId,
+        email: c.email,
+        name: c.name,
+        title: c.title,
+        account_id: c.accountId,
+        account_name: c.accountName,
+      }));
+      await this.db.upsertOrgContacts(cached);
+      await this.db.updateSyncStatus("org_contacts", "success", cached.length);
+      console.log(`Synced ${cached.length} org contacts`);
+      return cached.length;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      await this.db.updateSyncStatus("org_contacts", "error", 0, message);
+      throw error;
+    }
+  }
+
+  /**
+   * For each Amplitude product, fetch (user_id × gp:organization) cross-tab
+   * over the last 90 days using multi-group-by segmentation. ~1 call/product.
+   * Replaces the entire product_user_activity table on success.
+   */
+  async syncProductUsers(): Promise<number> {
+    if (this.amplitudeProducts.length === 0) return 0;
+    console.log(`Syncing product user activity across ${this.amplitudeProducts.length} product(s)...`);
+    await this.db.updateSyncStatus("product_user_activity", "in_progress", 0);
+    let totalRows = 0;
+    try {
+      for (const product of this.amplitudeProducts) {
+        const slug = productSlug(product.name);
+        const event = PRODUCT_USER_ACTIVITY_EVENTS[slug];
+        if (!event) {
+          console.log(`  Skipping ${slug}: no activity event defined`);
+          continue;
+        }
+        const service = new AmplitudeService({
+          apiKey: product.apiKey,
+          secretKey: product.secretKey,
+          projectId: product.projectId,
+          orgId: product.orgId,
+        });
+        try {
+          const rows = await service.getProductUserActivityByEvent(event, 90, 10000);
+          await this.db.deleteProductUserActivityByProduct(slug);
+          if (rows.length > 0) {
+            const cached: CachedProductUserActivity[] = rows.map((r) => ({
+              product_slug: slug,
+              org_key: r.orgKey,
+              keycloak_id: r.keycloakId,
+              last_seen: r.lastSeen,
+              event_count_90d: r.eventCount,
+            }));
+            await this.db.upsertProductUserActivity(cached);
+            totalRows += cached.length;
+          }
+          console.log(`  ${slug}: ${rows.length} active user×org rows`);
+        } catch (err) {
+          console.error(`  ${slug} sync failed:`, err instanceof Error ? err.message : err);
+        }
+      }
+      await this.db.updateSyncStatus("product_user_activity", "success", totalRows);
+      console.log(`Product user activity sync complete: ${totalRows} rows total`);
+      return totalRows;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      await this.db.updateSyncStatus("product_user_activity", "error", 0, message);
+      throw error;
     }
   }
 

@@ -99,6 +99,28 @@ export function createSyncRoutes(sync: SyncService): Router {
     }
   });
 
+  // Sync SF Contacts with axe_keycloak_id__c
+  router.post("/org-contacts", async (_req: Request, res: Response) => {
+    try {
+      const count = await sync.syncOrgContacts();
+      res.json({ message: "Org contacts synced", count });
+    } catch (error) {
+      console.error("Error syncing org contacts:", error);
+      res.status(500).json({ error: "Failed to sync org contacts", details: error instanceof Error ? error.message : "Unknown" });
+    }
+  });
+
+  // Sync per-product user activity from Amplitude
+  router.post("/product-users", async (_req: Request, res: Response) => {
+    try {
+      const count = await sync.syncProductUsers();
+      res.json({ message: "Product user activity synced", count });
+    } catch (error) {
+      console.error("Error syncing product users:", error);
+      res.status(500).json({ error: "Failed to sync product users", details: error instanceof Error ? error.message : "Unknown" });
+    }
+  });
+
   // Get sync status
   router.get("/status", async (_req: Request, res: Response) => {
     try {
