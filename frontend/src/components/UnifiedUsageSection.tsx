@@ -168,7 +168,8 @@ function ProductMetricsTable({ product, subsSummary }: { product: UnifiedProduct
   );
 }
 
-type SortKey = "last_seen" | "event_count_90d" | "name" | "email";
+type SortKey = "status" | "last_seen" | "event_count_90d" | "name" | "email";
+type StatusFilter = "active" | "inactive" | "all";
 
 function ProductUsersList({
   productSlug,
@@ -184,10 +185,13 @@ function ProductUsersList({
   const [data, setData] = useState<ProductUsersResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [includeInactive, setIncludeInactive] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [filter, setFilter] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("last_seen");
   const [sortAsc, setSortAsc] = useState(false);
+
+  // Only fetch inactive seats from the backend when the user actually wants to see them
+  const includeInactive = statusFilter !== "active";
 
   useEffect(() => {
     setLoading(true);
@@ -200,8 +204,11 @@ function ProductUsersList({
 
   const filteredSorted = useMemo<ProductUserRow[]>(() => {
     if (!data?.users) return [];
-    const q = filter.trim().toLowerCase();
     let rows = data.users;
+    if (statusFilter === "active") rows = rows.filter((u) => u.event_count_90d > 0);
+    else if (statusFilter === "inactive") rows = rows.filter((u) => u.event_count_90d === 0);
+
+    const q = filter.trim().toLowerCase();
     if (q) {
       rows = rows.filter(
         (u) =>
@@ -215,7 +222,10 @@ function ProductUsersList({
       if (sortKey === "name") cmp = (a.name || "").localeCompare(b.name || "");
       else if (sortKey === "email") cmp = (a.email || "").localeCompare(b.email || "");
       else if (sortKey === "event_count_90d") cmp = a.event_count_90d - b.event_count_90d;
-      else {
+      else if (sortKey === "status") {
+        // Active (>0 events) ranks higher than inactive (0)
+        cmp = (a.event_count_90d > 0 ? 1 : 0) - (b.event_count_90d > 0 ? 1 : 0);
+      } else {
         // last_seen: nulls last when descending, first when ascending
         const aV = a.last_seen || "";
         const bV = b.last_seen || "";
@@ -224,21 +234,31 @@ function ProductUsersList({
       return sortAsc ? cmp : -cmp;
     });
     return sorted;
-  }, [data, filter, sortKey, sortAsc]);
+  }, [data, filter, sortKey, sortAsc, statusFilter]);
+
+  const onSort = (k: SortKey) => {
+    if (sortKey === k) setSortAsc(!sortAsc);
+    else {
+      setSortKey(k);
+      // Strings ascending feels right; metrics/dates/status descending feels right
+      setSortAsc(k === "name" || k === "email");
+    }
+  };
 
   const exportCsv = () => {
     const rows = filteredSorted;
-    const header = ["Name", "Email", "Title", "Last Active", "Events (90d)", "Matched in SF"];
+    const header = ["Status", "Name", "Email", "Title", "Last Active", "Events (90d)", "Matched in SF"];
     const csvRows = [
       header.join(","),
-      ...rows.map((u) =>
-        [u.name, u.email, u.title, u.last_seen, u.event_count_90d, u.matched ? "yes" : "no"]
+      ...rows.map((u) => {
+        const status = u.event_count_90d > 0 ? "Active" : "Inactive";
+        return [status, u.name, u.email, u.title, u.last_seen, u.event_count_90d, u.matched ? "yes" : "no"]
           .map((v) => {
             const s = v == null ? "" : String(v);
             return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
           })
-          .join(",")
-      ),
+          .join(",");
+      }),
     ];
     const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -252,6 +272,9 @@ function ProductUsersList({
   if (loading) return <div className="product-users-loading"><span className="spinner-small" /> Loading users…</div>;
   if (error) return <p className="product-users-error">Failed to load users: {error}</p>;
   if (!data) return null;
+
+  const totalShown = filteredSorted.length;
+  const totalKnown = data.users.length;
 
   return (
     <div className="product-users-section">
@@ -269,6 +292,17 @@ function ProductUsersList({
       </div>
 
       <div className="product-users-controls">
+        <label className="product-users-status-filter">
+          Status
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive (no activity in 90d)</option>
+            <option value="all">All</option>
+          </select>
+        </label>
         <input
           type="text"
           className="product-users-filter"
@@ -276,44 +310,48 @@ function ProductUsersList({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
-        <label className="product-users-checkbox">
-          <input
-            type="checkbox"
-            checked={includeInactive}
-            onChange={(e) => setIncludeInactive(e.target.checked)}
-          />
-          Show inactive seats
-        </label>
-        <button type="button" className="product-users-export" onClick={exportCsv} disabled={filteredSorted.length === 0}>
+        <span className="product-users-count">{totalShown} of {totalKnown}</span>
+        <button type="button" className="product-users-export" onClick={exportCsv} disabled={totalShown === 0}>
           Export CSV
         </button>
       </div>
 
-      {filteredSorted.length === 0 ? (
+      {totalShown === 0 ? (
         <p className="product-users-empty">
-          {data.users.length === 0 ? "No active users in the last 90 days." : "No users match the filter."}
+          {totalKnown === 0
+            ? "No users found for this product at this account."
+            : "No users match the current filters."}
         </p>
       ) : (
         <table className="product-users-table">
           <thead>
             <tr>
-              <SortHeader label="Name" sortKey="name" current={sortKey} asc={sortAsc} onSort={(k) => { if (sortKey === k) setSortAsc(!sortAsc); else { setSortKey(k); setSortAsc(true); } }} />
-              <SortHeader label="Email" sortKey="email" current={sortKey} asc={sortAsc} onSort={(k) => { if (sortKey === k) setSortAsc(!sortAsc); else { setSortKey(k); setSortAsc(true); } }} />
+              <SortHeader label="Status" sortKey="status" current={sortKey} asc={sortAsc} onSort={onSort} />
+              <SortHeader label="Name" sortKey="name" current={sortKey} asc={sortAsc} onSort={onSort} />
+              <SortHeader label="Email" sortKey="email" current={sortKey} asc={sortAsc} onSort={onSort} />
               <th>Title</th>
-              <SortHeader label="Last Active" sortKey="last_seen" current={sortKey} asc={sortAsc} onSort={(k) => { if (sortKey === k) setSortAsc(!sortAsc); else { setSortKey(k); setSortAsc(false); } }} />
-              <SortHeader label="Events (90d)" sortKey="event_count_90d" current={sortKey} asc={sortAsc} onSort={(k) => { if (sortKey === k) setSortAsc(!sortAsc); else { setSortKey(k); setSortAsc(false); } }} />
+              <SortHeader label="Last Active" sortKey="last_seen" current={sortKey} asc={sortAsc} onSort={onSort} />
+              <SortHeader label="Events (90d)" sortKey="event_count_90d" current={sortKey} asc={sortAsc} onSort={onSort} />
             </tr>
           </thead>
           <tbody>
-            {filteredSorted.map((u) => (
-              <tr key={u.keycloak_id} className={u.event_count_90d === 0 ? "product-users-inactive" : ""}>
-                <td>{u.name || (u.matched ? "—" : <em>(no SF contact)</em>)}</td>
-                <td>{u.email ? <a href={`mailto:${u.email}`}>{u.email}</a> : "—"}</td>
-                <td>{u.title || "—"}</td>
-                <td>{u.last_seen || (u.event_count_90d === 0 ? "—" : "—")}</td>
-                <td>{u.event_count_90d.toLocaleString()}</td>
-              </tr>
-            ))}
+            {filteredSorted.map((u) => {
+              const isActive = u.event_count_90d > 0;
+              return (
+                <tr key={u.keycloak_id} className={isActive ? "" : "product-users-inactive"}>
+                  <td>
+                    <span className={`status-badge ${isActive ? "active" : "inactive"}`}>
+                      {isActive ? "Active" : "Inactive"}
+                    </span>
+                  </td>
+                  <td>{u.name || (u.matched ? "—" : <em>(no SF contact)</em>)}</td>
+                  <td>{u.email ? <a href={`mailto:${u.email}`}>{u.email}</a> : "—"}</td>
+                  <td>{u.title || "—"}</td>
+                  <td>{u.last_seen || "—"}</td>
+                  <td>{u.event_count_90d.toLocaleString()}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
