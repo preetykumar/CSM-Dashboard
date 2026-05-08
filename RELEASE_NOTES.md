@@ -1,5 +1,47 @@
 # Post-sales Customer Team Portal - Release Notes
 
+## Version 2.1.0
+
+**Release Date:** May 8, 2026
+
+### PM Active Projects View (Kantata + Salesforce)
+
+**Active Projects:**
+- New **Active Projects** tab under PM view, replacing the "Coming Soon" placeholder
+- Pulls active **Implementation** projects directly from Kantata (formerly Mavenlink) — the SF-side Mavenlink object lacks the project-type and budget detail this view needs, so we hit Kantata's API directly
+- Each project rendered as an expand/collapse card matching the existing renewal-card pattern
+- **Account linkage**: Kantata's "SF Salesforce ID" custom field stores Lightning URLs pointing to the originating Opportunity; we extract the ID, resolve Opportunity → Account in bulk, then enrich
+
+**Team & contact data (from Salesforce Account):**
+- CSM, TSA (Technical Solutions Architect), Implementation Engineers (1–3), AE (Account Owner), Service Delivery Lead (Engagement Manager 1)
+- Last customer contact pulled from `Account.LastActivityDate`
+- Field-name to label mapping handled internally (SF labels and API names diverge, e.g. `Customer_Success_Manager__c` is actually labeled "TSA")
+
+**Health rules (project flagged RED if either fires):**
+- **Budget**: project marked over-budget by Kantata (`over_budget` flag set)
+- **Schedule**: project started >90 days ago and has no end date set
+- Hover over the RED pill to see the specific reason. Red projects sort to the top.
+
+**Filters & search:**
+- Search across project title, account, and any team member name
+- "RED only" toggle to focus on at-risk projects
+- Budget-type filter (True T&M, FF Plan, FF/T&M Nav, Other)
+- Sort by Health, Account, Project, Budget, Used Budget, Start Date, or Last Contact
+
+**Stats:**
+- Active Implementations count
+- RED count (any reason), Over Budget count, Stale Schedule count
+
+**PM Tab Cleanup:**
+- Removed "Usage Data (coming soon)" tab from PM view — was a placeholder with no concrete plan
+
+**Performance:**
+- Kantata data cached server-side for 15 minutes (cold fetch ~16s due to API pagination through ~1,150 active workspaces; warm fetch is instant)
+- Bulk SF queries: Opportunity → Account resolution and team-role lookup batched at 200 IDs per query
+- Refresh button bypasses the cache for on-demand updates
+
+---
+
 ## Version 2.0.0
 
 **Release Date:** April 26, 2026
