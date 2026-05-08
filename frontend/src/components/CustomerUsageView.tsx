@@ -130,7 +130,7 @@ export function CustomerUsageView() {
     });
 
     try {
-      const sfAccountId = account.organizations[0]?.salesforce_account_id;
+      const sfAccountId = account.organizations.find(o => o.salesforce_account_id)?.salesforce_account_id;
       const subscriptionResult = sfAccountId
         ? await fetchEnterpriseSubscriptionsById(sfAccountId)
         : await fetchEnterpriseSubscriptionsByName(account.accountName);

@@ -319,14 +319,14 @@ export function CSMUsageView() {
                           <div key={customerKey} className={`customer-card ${isCustomerExpanded ? "expanded" : ""}`}>
                             <div
                               className="customer-header"
-                              onClick={() => toggleCustomer(customerKey, customer.accountName, customer.organizations[0]?.salesforce_account_id)}
+                              onClick={() => toggleCustomer(customerKey, customer.accountName, customer.organizations.find(o => o.salesforce_account_id)?.salesforce_account_id)}
                               role="button"
                               tabIndex={0}
                               aria-expanded={isCustomerExpanded}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
-                                  toggleCustomer(customerKey, customer.accountName, customer.organizations[0]?.salesforce_account_id);
+                                  toggleCustomer(customerKey, customer.accountName, customer.organizations.find(o => o.salesforce_account_id)?.salesforce_account_id);
                                 }
                               }}
                             >
