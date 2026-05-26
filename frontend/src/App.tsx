@@ -1,15 +1,12 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from "react-router-dom";
 import { SyncButton } from "./components/SyncButton";
 import { SupportCustomersView } from "./components/SupportCustomersView";
-import { CSMPortfolioView } from "./components/CSMPortfolioView";
-import { PMPortfolioView } from "./components/PMPortfolioView";
 import { PMProjectsView } from "./components/PMProjectsView";
 import { ProductView } from "./components/ProductView";
 import { LoginPage } from "./components/LoginPage";
 import { UserMenu } from "./components/UserMenu";
 import { ChatWidget } from "./components/chat";
 import { CustomerUsageView } from "./components/CustomerUsageView";
-import { CSMUsageView } from "./components/CSMUsageView";
 import RenewalAgent from "./components/RenewalAgent";
 import { PRSRenewalView } from "./components/PRSRenewalView";
 import { CSMRenewalView } from "./components/CSMRenewalView";
@@ -19,8 +16,9 @@ import { QuarterlyRenewalView } from "./components/QuarterlyRenewalView";
 import { ClosedWonView } from "./components/ClosedWonView";
 import { ClosedLostView } from "./components/ClosedLostView";
 import { ProcessAuditView } from "./components/ProcessAuditView";
-import { ComingSoonPlaceholder } from "./components/ComingSoonPlaceholder";
 import { HomePage } from "./components/HomePage";
+import { HomeView } from "./components/portfolio/HomeView";
+import { PortfolioView } from "./components/portfolio/PortfolioView";
 import { HealthView } from "./components/HealthView";
 import { ProductUsageView } from "./components/ProductUsageView";
 import { OverdueRenewalsView } from "./components/OverdueRenewalsView";
@@ -30,60 +28,52 @@ import { ToastProvider } from "./components/renewal/ToastProvider";
 
 // Route configuration for easy reference
 const ROUTES = {
-  // Home
+  // Home (role-scoped portfolio + widgets)
   HOME: "/home",
-  // CSM persona (role-based)
-  CSM_SUPPORT: "/csm/support",
-  CSM_USAGE: "/csm/usage",
-  CSM_RENEWALS: "/csm/renewals",
-  CSM_HEALTH: "/csm/health",
-  CSM_PROJECTS: "/csm/projects",
-  // PM persona (role-based)
-  PM_SUPPORT: "/pm/support",
-  PM_USAGE: "/pm/usage",
-  PM_PROJECTS: "/pm/projects",
-  // Renewal Specialist (role-based — formerly Renewals > By PRS)
-  RENEWAL_SPECIALIST: "/renewal-specialist",
-  // Field Engineers (role-based — coming soon)
-  FIELD_ENGINEERS: "/field-engineers",
-  // Customer persona
+
+  // Renewals — consolidated top-level tab (Pipeline / Closed / By Owner)
+  RENEWALS_UPCOMING: "/renewals/upcoming",
+  RENEWALS_MONTHLY: "/renewals/monthly",
+  RENEWALS_QUARTERLY: "/renewals/quarterly",
+  RENEWALS_OVERDUE: "/renewals/overdue",
+  RENEWALS_CLOSED_WON: "/renewals/closed-won",
+  RENEWALS_CLOSED_LOST: "/renewals/closed-lost",
+  RENEWALS_BY_CSM: "/renewals/by-csm",
+  RENEWALS_BY_SPECIALIST: "/renewals/by-specialist",
+
+  // Deployments — deep-link target only (no top-nav tab yet)
+  DEPLOYMENTS: "/deployments",
+
+  // Customer persona (entity drilldown)
   CUSTOMER_SUPPORT: "/customer/support",
   CUSTOMER_USAGE: "/customer/usage",
   CUSTOMER_RENEWALS: "/customer/renewals",
   CUSTOMER_HEALTH: "/customer/health",
-  // Product persona
+
+  // Product persona (product-wide views)
   PRODUCT_SUPPORT: "/product/support",
   PRODUCT_USAGE: "/product/usage",
-  PRODUCT_RENEWALS_UPCOMING: "/product/renewals/upcoming",
-  PRODUCT_RENEWALS_MONTHLY: "/product/renewals/monthly",
-  PRODUCT_RENEWALS_QUARTERLY: "/product/renewals/quarterly",
-  PRODUCT_RENEWALS_CLOSED_WON: "/product/renewals/closed-won",
-  PRODUCT_RENEWALS_CLOSED_LOST: "/product/renewals/closed-lost",
-  PRODUCT_RENEWALS_OVERDUE: "/product/renewals/overdue",
-  // Process Audit (admin-only)
+
+  // Process Audit (admin-only, reached from UserMenu)
   PROCESS_AUDIT: "/process-audit",
 } as const;
 
 // Dashboard with routing
 function Dashboard() {
-  const { isAdmin } = useAuth();
   const location = useLocation();
 
   // Determine active main tab based on current path
   const getActiveMainTab = () => {
     if (location.pathname.startsWith("/home")) return "home";
-    if (location.pathname.startsWith("/csm")) return "csm";
-    if (location.pathname.startsWith("/pm")) return "pm";
-    if (location.pathname.startsWith("/renewal-specialist")) return "renewal-specialist";
-    if (location.pathname.startsWith("/field-engineers")) return "field-engineers";
+    if (location.pathname.startsWith("/renewals")) return "renewals";
     if (location.pathname.startsWith("/customer")) return "customer";
     if (location.pathname.startsWith("/product")) return "product";
     if (location.pathname.startsWith("/process-audit")) return "process-audit";
-    return "customer";
+    if (location.pathname.startsWith("/deployments")) return "deployments";
+    return "home";
   };
 
   const activeMainTab = getActiveMainTab();
-  const isProductRenewals = location.pathname.startsWith("/product/renewals");
 
   // Get hint text based on current route
   const getHintText = () => {
@@ -94,42 +84,30 @@ function Dashboard() {
         return "View product usage metrics by customer organization";
       case ROUTES.CUSTOMER_RENEWALS:
         return "View renewal opportunities grouped by customer account";
-      case ROUTES.CSM_SUPPORT:
-        return "View tickets grouped by CSM and their customer portfolio";
-      case ROUTES.CSM_USAGE:
-        return "View product usage metrics grouped by CSM portfolio";
-      case ROUTES.CSM_RENEWALS:
-        return "View renewal opportunities grouped by Customer Success Manager";
-      case ROUTES.CSM_HEALTH:
-        return "Customer health scores for your CSM portfolio — adoption, engagement, and support";
-      case ROUTES.CSM_PROJECTS:
-        return "Active projects grouped by CSM (coming soon)";
-      case ROUTES.PM_SUPPORT:
-        return "View tickets and analytics grouped by Project Manager for report compilation";
-      case ROUTES.PM_USAGE:
-        return "PM usage analytics (coming soon)";
-      case ROUTES.PM_PROJECTS:
-        return "Active implementation projects from Kantata, with team and budget health from Salesforce";
-      case ROUTES.RENEWAL_SPECIALIST:
-        return "View renewal opportunities grouped by Product Renewal Specialist";
-      case ROUTES.FIELD_ENGINEERS:
-        return "Field Engineer portfolio views (coming soon)";
+      case ROUTES.CUSTOMER_HEALTH:
+        return "Customer health scores — adoption, engagement, and support";
+      case ROUTES.RENEWALS_UPCOMING:
+        return "All upcoming renewal opportunities across accounts";
+      case ROUTES.RENEWALS_MONTHLY:
+        return "Renewal opportunities grouped by calendar month";
+      case ROUTES.RENEWALS_QUARTERLY:
+        return "Renewal opportunities grouped by fiscal quarter";
+      case ROUTES.RENEWALS_OVERDUE:
+        return "Renewals past their close date that have not been closed won or lost";
+      case ROUTES.RENEWALS_CLOSED_WON:
+        return "Renewals with Closed Won status";
+      case ROUTES.RENEWALS_CLOSED_LOST:
+        return "Renewals with Closed Lost status";
+      case ROUTES.RENEWALS_BY_CSM:
+        return "Renewal opportunities grouped by Customer Success Manager";
+      case ROUTES.RENEWALS_BY_SPECIALIST:
+        return "Renewal opportunities grouped by Product Renewal Specialist";
       case ROUTES.PRODUCT_SUPPORT:
         return "View tickets grouped by product, request type, and issue subtype";
       case ROUTES.PRODUCT_USAGE:
         return "Aggregate usage metrics across all customers by product";
-      case ROUTES.PRODUCT_RENEWALS_UPCOMING:
-        return "View all upcoming renewal opportunities across accounts";
-      case ROUTES.PRODUCT_RENEWALS_MONTHLY:
-        return "View renewal opportunities grouped by calendar month";
-      case ROUTES.PRODUCT_RENEWALS_QUARTERLY:
-        return "View renewal opportunities grouped by fiscal quarter";
-      case ROUTES.PRODUCT_RENEWALS_CLOSED_WON:
-        return "View renewals with Closed Won status";
-      case ROUTES.PRODUCT_RENEWALS_CLOSED_LOST:
-        return "View renewals with Closed Lost status";
-      case ROUTES.PRODUCT_RENEWALS_OVERDUE:
-        return "Renewals past their close date that have not been closed won or lost";
+      case ROUTES.DEPLOYMENTS:
+        return "Active implementation projects from Kantata, with team and budget health from Salesforce";
       case ROUTES.PROCESS_AUDIT:
         return "Stale R-6 actions (>5 months overdue) for process review";
       default:
@@ -138,13 +116,14 @@ function Dashboard() {
   };
 
   const hintText = getHintText();
+  const isRenewals = activeMainTab === "renewals";
 
   return (
     <div className="app">
       <header>
         <div className="header-top">
-          <div>
-            <h1>Post-sales Customer Team Portal</h1>
+          <div className="app-brand">
+            <span className="app-brand-name">Post-sales Customer Team Portal</span>
           </div>
           <div className="header-actions">
             <SyncButton />
@@ -162,32 +141,18 @@ function Dashboard() {
             Home
           </NavLink>
           <NavLink
-            to={ROUTES.CSM_SUPPORT}
-            className={activeMainTab === "csm" ? "active" : ""}
-            aria-current={activeMainTab === "csm" ? "page" : undefined}
+            to={ROUTES.RENEWALS_UPCOMING}
+            className={activeMainTab === "renewals" ? "active" : ""}
+            aria-current={activeMainTab === "renewals" ? "page" : undefined}
           >
-            CSM
+            Renewals
           </NavLink>
           <NavLink
-            to={ROUTES.PM_SUPPORT}
-            className={activeMainTab === "pm" ? "active" : ""}
-            aria-current={activeMainTab === "pm" ? "page" : undefined}
+            to={ROUTES.DEPLOYMENTS}
+            className={activeMainTab === "deployments" ? "active" : ""}
+            aria-current={activeMainTab === "deployments" ? "page" : undefined}
           >
-            PM
-          </NavLink>
-          <NavLink
-            to={ROUTES.RENEWAL_SPECIALIST}
-            className={activeMainTab === "renewal-specialist" ? "active" : ""}
-            aria-current={activeMainTab === "renewal-specialist" ? "page" : undefined}
-          >
-            Renewal Specialist
-          </NavLink>
-          <NavLink
-            to={ROUTES.FIELD_ENGINEERS}
-            className={`coming-soon-tab${activeMainTab === "field-engineers" ? " active" : ""}`}
-            aria-current={activeMainTab === "field-engineers" ? "page" : undefined}
-          >
-            Field Engineers <span className="tab-badge-soon">Soon</span>
+            Deployments
           </NavLink>
           <NavLink
             to={ROUTES.CUSTOMER_SUPPORT}
@@ -203,50 +168,26 @@ function Dashboard() {
           >
             Product
           </NavLink>
-          {isAdmin && (
-            <NavLink
-              to={ROUTES.PROCESS_AUDIT}
-              className={activeMainTab === "process-audit" ? "active" : ""}
-              aria-current={activeMainTab === "process-audit" ? "page" : undefined}
-            >
-              Process Audit
-            </NavLink>
-          )}
         </nav>
 
-        {/* CSM Sub-tabs */}
-        {activeMainTab === "csm" && (
-          <nav className="sub-tabs" aria-label="CSM views">
-            <NavLink to={ROUTES.CSM_SUPPORT} end>
-              Support Tickets
-            </NavLink>
-            <NavLink to={ROUTES.CSM_USAGE}>
-              Usage Data
-            </NavLink>
-            <NavLink to={ROUTES.CSM_RENEWALS}>
-              Renewals
-            </NavLink>
-            <NavLink to={ROUTES.CSM_HEALTH}>
-              Health
-            </NavLink>
-            <NavLink to={ROUTES.CSM_PROJECTS} className="coming-soon-tab">
-              Active Projects <span className="tab-badge-soon">Soon</span>
-            </NavLink>
-          </nav>
-        )}
+        {/* Renewals Sub-tabs — grouped: Pipeline / Closed / By Owner */}
+        {isRenewals && (
+          <nav className="sub-tabs sub-tabs-grouped" aria-label="Renewals views">
+            <span className="sub-tab-group-label">Pipeline:</span>
+            <NavLink to={ROUTES.RENEWALS_UPCOMING}>Upcoming</NavLink>
+            <NavLink to={ROUTES.RENEWALS_MONTHLY}>By Month</NavLink>
+            <NavLink to={ROUTES.RENEWALS_QUARTERLY}>By Quarter</NavLink>
+            <NavLink to={ROUTES.RENEWALS_OVERDUE}>Overdue</NavLink>
 
-        {/* PM Sub-tabs */}
-        {activeMainTab === "pm" && (
-          <nav className="sub-tabs" aria-label="PM views">
-            <NavLink to={ROUTES.PM_SUPPORT} end>
-              Support Tickets
-            </NavLink>
-            <NavLink to={ROUTES.PM_USAGE} className="coming-soon-tab">
-              Usage Data <span className="tab-badge-soon">Soon</span>
-            </NavLink>
-            <NavLink to={ROUTES.PM_PROJECTS}>
-              Active Projects
-            </NavLink>
+            <span className="sub-tab-group-divider" aria-hidden />
+            <span className="sub-tab-group-label">Closed:</span>
+            <NavLink to={ROUTES.RENEWALS_CLOSED_WON}>Won</NavLink>
+            <NavLink to={ROUTES.RENEWALS_CLOSED_LOST}>Lost</NavLink>
+
+            <span className="sub-tab-group-divider" aria-hidden />
+            <span className="sub-tab-group-label">By Owner:</span>
+            <NavLink to={ROUTES.RENEWALS_BY_CSM}>By CSM</NavLink>
+            <NavLink to={ROUTES.RENEWALS_BY_SPECIALIST}>By Specialist</NavLink>
           </nav>
         )}
 
@@ -277,33 +218,6 @@ function Dashboard() {
             <NavLink to={ROUTES.PRODUCT_USAGE}>
               Usage Data
             </NavLink>
-            <NavLink to={ROUTES.PRODUCT_RENEWALS_UPCOMING}>
-              Renewals
-            </NavLink>
-          </nav>
-        )}
-
-        {/* Product → Renewals third-level sub-tabs */}
-        {activeMainTab === "product" && isProductRenewals && (
-          <nav className="sub-sub-tabs" aria-label="Product Renewals views">
-            <NavLink to={ROUTES.PRODUCT_RENEWALS_UPCOMING} end>
-              Upcoming (All)
-            </NavLink>
-            <NavLink to={ROUTES.PRODUCT_RENEWALS_MONTHLY}>
-              By Month
-            </NavLink>
-            <NavLink to={ROUTES.PRODUCT_RENEWALS_QUARTERLY}>
-              By Quarter
-            </NavLink>
-            <NavLink to={ROUTES.PRODUCT_RENEWALS_CLOSED_WON}>
-              Closed Won
-            </NavLink>
-            <NavLink to={ROUTES.PRODUCT_RENEWALS_CLOSED_LOST}>
-              Closed Lost
-            </NavLink>
-            <NavLink to={ROUTES.PRODUCT_RENEWALS_OVERDUE}>
-              Overdue
-            </NavLink>
           </nav>
         )}
 
@@ -313,73 +227,84 @@ function Dashboard() {
       {/* Route-based content */}
       <main>
         <Routes>
-          {/* Home */}
-          <Route path="/home" element={<HomePage />} />
+          {/* Home — merged HomeView (greeting + widgets + portfolio cards).
+              Legacy HomePage kept at /home-legacy for layout comparison. */}
+          <Route path="/home" element={<HomeView />} />
+          <Route path="/home-legacy" element={<HomePage />} />
+          <Route path="/portfolio" element={<PortfolioView />} />
 
-          {/* CSM Routes */}
-          <Route path="/csm/support" element={<CSMPortfolioView />} />
-          <Route path="/csm/usage" element={<CSMUsageView />} />
-          <Route path="/csm/renewals" element={<CSMRenewalView />} />
-          <Route path="/csm/health" element={<HealthView mode="csm" />} />
-          <Route path="/csm/projects" element={<ComingSoonPlaceholder title="CSM Active Projects" description="View active product implementations and service projects grouped by CSM. Data will be sourced from Salesforce." />} />
+          {/* Renewals — consolidated top-level tab */}
+          <Route path="/renewals/upcoming" element={<RenewalAgent />} />
+          <Route path="/renewals/monthly" element={<MonthlyRenewalView />} />
+          <Route path="/renewals/quarterly" element={<QuarterlyRenewalView />} />
+          <Route path="/renewals/overdue" element={<OverdueRenewalsView />} />
+          <Route path="/renewals/closed-won" element={<ClosedWonView />} />
+          <Route path="/renewals/closed-lost" element={<ClosedLostView />} />
+          <Route path="/renewals/by-csm" element={<CSMRenewalView />} />
+          <Route path="/renewals/by-specialist" element={<PRSRenewalView />} />
 
-          {/* PM Routes */}
-          <Route path="/pm/support" element={<PMPortfolioView />} />
-          <Route path="/pm/usage" element={<ComingSoonPlaceholder title="PM Usage Analytics" description="View product usage metrics grouped by Project Manager portfolio." />} />
-          <Route path="/pm/projects" element={<PMProjectsView />} />
-
-          {/* Renewal Specialist Route */}
-          <Route path="/renewal-specialist" element={<PRSRenewalView />} />
-
-          {/* Field Engineers Route */}
-          <Route path="/field-engineers" element={<ComingSoonPlaceholder title="Field Engineers" description="Field Engineer portfolio views coming soon." />} />
+          {/* Deployments — deep-link target from card pills; no top-nav tab */}
+          <Route path="/deployments" element={<PMProjectsView />} />
 
           {/* Customer Routes */}
           <Route path="/customer/support" element={<SupportCustomersView />} />
           <Route path="/customer/usage" element={<CustomerUsageView />} />
           <Route path="/customer/renewals" element={<CustomerRenewalView />} />
-          <Route path="/customer/health" element={<HealthView mode="customer" />} />
+          <Route path="/customer/health" element={<HealthView />} />
 
           {/* Product Routes */}
           <Route path="/product/support" element={<ProductView />} />
           <Route path="/product/usage" element={<ProductUsageView />} />
-          <Route path="/product/renewals/upcoming" element={<RenewalAgent />} />
-          <Route path="/product/renewals/monthly" element={<MonthlyRenewalView />} />
-          <Route path="/product/renewals/quarterly" element={<QuarterlyRenewalView />} />
-          <Route path="/product/renewals/closed-won" element={<ClosedWonView />} />
-          <Route path="/product/renewals/closed-lost" element={<ClosedLostView />} />
-          <Route path="/product/renewals/overdue" element={<OverdueRenewalsView />} />
 
-          {/* Process Audit Route (admin-only) */}
+          {/* Process Audit (admin-only, reached from UserMenu) */}
           <Route path="/process-audit" element={<ProcessAuditView />} />
 
           {/* Default redirects */}
           <Route path="/" element={<Navigate to={ROUTES.HOME} replace />} />
-          <Route path="/csm" element={<Navigate to={ROUTES.CSM_SUPPORT} replace />} />
-          <Route path="/pm" element={<Navigate to={ROUTES.PM_SUPPORT} replace />} />
+          <Route path="/renewals" element={<Navigate to={ROUTES.RENEWALS_UPCOMING} replace />} />
           <Route path="/customer" element={<Navigate to={ROUTES.CUSTOMER_SUPPORT} replace />} />
           <Route path="/product" element={<Navigate to={ROUTES.PRODUCT_SUPPORT} replace />} />
-          <Route path="/product/renewals" element={<Navigate to={ROUTES.PRODUCT_RENEWALS_UPCOMING} replace />} />
 
-          {/* Legacy URL redirects for bookmarks */}
+          {/* Legacy URL redirects for bookmarks ────────────────────────── */}
+          {/* Old role-based tabs → Home */}
+          <Route path="/csm" element={<Navigate to={ROUTES.HOME} replace />} />
+          <Route path="/csm/*" element={<Navigate to={ROUTES.HOME} replace />} />
+          <Route path="/pm" element={<Navigate to={ROUTES.HOME} replace />} />
+          <Route path="/pm/support" element={<Navigate to={ROUTES.HOME} replace />} />
+          <Route path="/pm/usage" element={<Navigate to={ROUTES.HOME} replace />} />
+          <Route path="/pm/projects" element={<Navigate to={ROUTES.DEPLOYMENTS} replace />} />
+          <Route path="/field-engineers" element={<Navigate to={ROUTES.HOME} replace />} />
+
+          {/* Old renewal URLs → new /renewals/* */}
+          <Route path="/csm/renewals" element={<Navigate to={ROUTES.RENEWALS_BY_CSM} replace />} />
+          <Route path="/renewal-specialist" element={<Navigate to={ROUTES.RENEWALS_BY_SPECIALIST} replace />} />
+          <Route path="/product/renewals/upcoming" element={<Navigate to={ROUTES.RENEWALS_UPCOMING} replace />} />
+          <Route path="/product/renewals/monthly" element={<Navigate to={ROUTES.RENEWALS_MONTHLY} replace />} />
+          <Route path="/product/renewals/quarterly" element={<Navigate to={ROUTES.RENEWALS_QUARTERLY} replace />} />
+          <Route path="/product/renewals/closed-won" element={<Navigate to={ROUTES.RENEWALS_CLOSED_WON} replace />} />
+          <Route path="/product/renewals/closed-lost" element={<Navigate to={ROUTES.RENEWALS_CLOSED_LOST} replace />} />
+          <Route path="/product/renewals/overdue" element={<Navigate to={ROUTES.RENEWALS_OVERDUE} replace />} />
+          <Route path="/product/renewals" element={<Navigate to={ROUTES.RENEWALS_UPCOMING} replace />} />
+
+          {/* Old support/usage URLs */}
           <Route path="/support/customers" element={<Navigate to={ROUTES.CUSTOMER_SUPPORT} replace />} />
-          <Route path="/support/csm" element={<Navigate to={ROUTES.CSM_SUPPORT} replace />} />
-          <Route path="/support/pm" element={<Navigate to={ROUTES.PM_SUPPORT} replace />} />
+          <Route path="/support/csm" element={<Navigate to={ROUTES.HOME} replace />} />
+          <Route path="/support/pm" element={<Navigate to={ROUTES.HOME} replace />} />
           <Route path="/support/product" element={<Navigate to={ROUTES.PRODUCT_SUPPORT} replace />} />
           <Route path="/usage/customers" element={<Navigate to={ROUTES.CUSTOMER_USAGE} replace />} />
-          <Route path="/usage/csm" element={<Navigate to={ROUTES.CSM_USAGE} replace />} />
-          <Route path="/renewals/csm" element={<Navigate to={ROUTES.CSM_RENEWALS} replace />} />
-          <Route path="/renewals/upcoming" element={<Navigate to={ROUTES.PRODUCT_RENEWALS_UPCOMING} replace />} />
-          <Route path="/renewals/monthly" element={<Navigate to={ROUTES.PRODUCT_RENEWALS_MONTHLY} replace />} />
-          <Route path="/renewals/quarterly" element={<Navigate to={ROUTES.PRODUCT_RENEWALS_QUARTERLY} replace />} />
-          <Route path="/renewals/closed-won" element={<Navigate to={ROUTES.PRODUCT_RENEWALS_CLOSED_WON} replace />} />
-          <Route path="/renewals/closed-lost" element={<Navigate to={ROUTES.PRODUCT_RENEWALS_CLOSED_LOST} replace />} />
-          <Route path="/renewals/prs" element={<Navigate to={ROUTES.RENEWAL_SPECIALIST} replace />} />
+          <Route path="/usage/csm" element={<Navigate to={ROUTES.HOME} replace />} />
+
+          {/* Old PipelineStubs deep-links */}
+          <Route path="/renewals-pipeline" element={<Navigate to={ROUTES.RENEWALS_UPCOMING} replace />} />
+          <Route path="/deployments-pipeline" element={<Navigate to={ROUTES.DEPLOYMENTS} replace />} />
+
+          {/* Old generic renewal URLs */}
+          <Route path="/renewals/csm" element={<Navigate to={ROUTES.RENEWALS_BY_CSM} replace />} />
+          <Route path="/renewals/prs" element={<Navigate to={ROUTES.RENEWALS_BY_SPECIALIST} replace />} />
           <Route path="/renewals/audit" element={<Navigate to={ROUTES.PROCESS_AUDIT} replace />} />
-          <Route path="/renewals" element={<Navigate to={ROUTES.PRODUCT_RENEWALS_UPCOMING} replace />} />
 
           {/* Catch-all redirect */}
-          <Route path="*" element={<Navigate to={ROUTES.CUSTOMER_SUPPORT} replace />} />
+          <Route path="*" element={<Navigate to={ROUTES.HOME} replace />} />
         </Routes>
       </main>
 

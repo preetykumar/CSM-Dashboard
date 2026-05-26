@@ -5,31 +5,40 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
-    Ubuntu, Cantarell, sans-serif;
-  background-color: #f5f7fa;
-  color: #333;
-  line-height: 1.6;
+  font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
+  background-color: var(--surface-page, #f8fafc);
+  color: var(--text-primary, #0f172a);
+  line-height: var(--leading-normal, 1.5);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .app {
-  max-width: 1400px;
+  max-width: var(--container-max, 1400px);
   margin: 0 auto;
-  padding: 2rem;
+  padding: var(--space-6, 1.5rem) var(--container-pad-x, 1.5rem);
 }
 
-header {
-  margin-bottom: 2rem;
+.app > header {
+  margin-bottom: var(--space-4);
 }
 
-header h1 {
-  font-size: 2rem;
-  color: #1a1a2e;
-  margin-bottom: 0.5rem;
+.app-brand-name {
+  display: inline-block;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
 }
 
-header p {
-  color: #666;
+.app > header p,
+.app > header .hint {
+  color: var(--text-tertiary, #64748b);
+  font-size: var(--text-sm, 0.875rem);
+}
+
+.hint {
+  margin-top: var(--space-3, 0.75rem);
 }
 
 .progress-bar {
@@ -626,23 +635,29 @@ header .hint {
 }
 
 .product-card {
-  background: #f8f9fa;
-  border-radius: 8px;
+  background: var(--surface-card);
+  border-radius: var(--radius-xl);
   overflow: hidden;
-  border: 1px solid #e0e0e0;
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.product-card:hover {
+  box-shadow: var(--shadow-md);
 }
 
 .product-header {
-  padding: 1rem;
+  padding: var(--space-4) var(--space-5);
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-4);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--motion-fast) var(--ease-standard);
 }
 
 .product-header:hover {
-  background: #f0f0f0;
+  background: var(--surface-muted);
 }
 
 .product-info {
@@ -993,6 +1008,34 @@ header .hint {
   color: white;
   border-color: transparent;
   box-shadow: 0 1px 3px rgba(102, 126, 234, 0.3);
+}
+
+/* Grouped sub-tabs (e.g. Renewals: Pipeline / Closed / By Owner) */
+.sub-tabs-grouped {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.sub-tabs-grouped .sub-tab-group-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  padding: 0 0.25rem 0 0;
+  user-select: none;
+}
+
+.sub-tabs-grouped .sub-tab-group-label:not(:first-child) {
+  padding-left: 0.5rem;
+}
+
+.sub-tabs-grouped .sub-tab-group-divider {
+  display: inline-block;
+  width: 1px;
+  height: 1.25rem;
+  background: #cbd5e1;
+  margin: 0 0.25rem;
 }
 
 /* Third-level sub-tabs (e.g. Product → Renewals views) */
@@ -2032,22 +2075,24 @@ header .hint {
 }
 
 .csm-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 1.25rem;
+  background: var(--surface-muted);
+  color: var(--text-primary);
+  padding: var(--space-4) var(--space-5);
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-4);
   cursor: pointer;
-  transition: filter 0.2s;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background var(--motion-fast) var(--ease-standard);
 }
 
 .csm-header:hover {
-  filter: brightness(1.05);
+  background: var(--surface-hover);
 }
 
 .unassigned-header {
-  background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+  background: var(--color-neutral-100);
+  color: var(--text-secondary);
 }
 
 .unassigned-portfolio {
@@ -2058,7 +2103,7 @@ header .hint {
 }
 
 .csm-header .expand-icon {
-  color: white;
+  color: var(--text-tertiary);
   font-size: 1rem;
 }
 
@@ -2068,17 +2113,19 @@ header .hint {
 
 .csm-info h3 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
 }
 
 .csm-email {
-  font-size: 0.85rem;
-  opacity: 0.85;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
 }
 
 .csm-stats {
   display: flex;
-  gap: 1.5rem;
+  gap: var(--space-6);
 }
 
 .csm-stat {
@@ -2087,34 +2134,39 @@ header .hint {
 
 .csm-stat .value {
   display: block;
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
 }
 
 .csm-stat .label {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  opacity: 0.85;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
 }
 
 .csm-stat.open .value {
-  color: #ffcccc;
+  color: var(--color-danger-700);
 }
 
 .csm-analytics-products {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  padding: 0.5rem 1rem;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
   max-width: 300px;
 }
 
 .csm-analytics-products .analytics-label {
-  font-size: 0.7rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  opacity: 0.85;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
 }
 
 .csm-analytics-products .analytics-list {
@@ -2154,39 +2206,47 @@ header .hint {
 
 /* Customer Card within CSM */
 .customer-card {
-  background: white;
-  border-radius: 8px;
-  border: 1px solid #e0e0e0;
+  background: var(--surface-card);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-subtle);
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--motion-base) var(--ease-standard);
+}
+
+.customer-card:hover {
+  box-shadow: var(--shadow-md);
 }
 
 .customer-header {
-  padding: 1rem;
+  padding: var(--space-4) var(--space-5);
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-4);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background var(--motion-fast) var(--ease-standard);
 }
 
 .customer-header:hover {
-  background: #f5f5f5;
+  background: var(--surface-muted);
 }
 
 .customer-info {
   flex: 1;
+  min-width: 0;
 }
 
 .customer-info h4 {
   margin: 0;
-  font-size: 1rem;
-  color: #333;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
 }
 
 .customer-info .ticket-count {
-  font-size: 0.8rem;
-  color: #666;
-  margin-left: 0.5rem;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  margin-left: var(--space-2);
 }
 
 /* Org count badge for consolidated accounts */
@@ -4172,59 +4232,63 @@ header .hint {
 .product-view-header {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-  padding: 1rem;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+  padding: var(--space-5);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
 }
 
 .product-stats-summary {
   display: flex;
-  gap: 1rem;
+  gap: var(--space-3);
   align-items: stretch;
+  flex-wrap: wrap;
 }
 
 .product-stats-summary .stat-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0.75rem 1.25rem;
-  background: #ffffff;
-  border-radius: 8px;
-  border: 2px solid #e5e7eb;
-  min-width: 100px;
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  min-width: 110px;
 }
 
 .product-stats-summary .stat-item strong {
   display: block;
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #111827;
-  line-height: 1.2;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
 }
 
 .product-stats-summary .stat-item .label {
-  font-size: 0.75rem;
-  color: #374151;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-top: 0.25rem;
-  font-weight: 500;
+  letter-spacing: 0.04em;
+  margin-top: var(--space-1);
+  font-weight: var(--weight-semibold);
 }
 
 .product-stats-summary .stat-item.open {
-  background: #7c2d12;
-  border-color: #7c2d12;
+  background: var(--color-danger-50);
+  border-color: rgba(239, 68, 68, 0.25);
 }
 
 .product-stats-summary .stat-item.open strong {
-  color: #ffffff;
+  color: var(--color-danger-700);
 }
 
 .product-stats-summary .stat-item.open .label {
-  color: #fed7aa;
+  color: var(--color-danger-700);
+  opacity: 0.85;
 }
 
 .product-stats-summary .loading-github {
@@ -6009,69 +6073,87 @@ header .hint {
 .product-usage-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-3);
 }
 
-.product-usage-card {
-  border: 1px solid #e2e8f0;
-  border-radius: 10px;
-  overflow: hidden;
-  background: white;
-}
+.product-usage-card { padding: 0; }
 
-.product-usage-card.expanded {
-  border-color: #cbd5e1;
-}
-
-.product-usage-header {
+.product-usage-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 1rem 1.25rem;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
   cursor: pointer;
-  background: #f8fafc;
+  background: var(--surface-card);
+  border: none;
+  text-align: left;
+  width: 100%;
+  transition: background var(--motion-fast) var(--ease-standard);
 }
 
-.product-usage-header:hover {
-  background: #f1f5f9;
-}
-
-.product-usage-header:focus-visible {
-  outline: 2px solid #667eea;
+.product-usage-row:hover { background: var(--surface-muted); }
+.product-usage-row:focus-visible {
+  outline: 2px solid var(--color-brand-500);
   outline-offset: -2px;
 }
 
-.product-usage-info {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
 .product-usage-name {
-  font-weight: 600;
-  font-size: 1rem;
+  flex: 1 1 auto;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  min-width: 0;
 }
 
 .product-usage-headline {
   display: flex;
-  gap: 1rem;
+  align-items: center;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
-.product-metric-badge {
-  font-size: 0.82rem;
-  color: #1e293b;
-  font-weight: 500;
+.product-usage-detail {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-muted);
 }
 
-.product-metric-badge.secondary {
-  color: #64748b;
+.product-usage-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--text-sm);
 }
 
-.product-usage-body {
-  padding: 0.5rem 1.25rem 1.25rem;
-  border-top: 1px solid #e2e8f0;
+.product-usage-table th {
+  text-align: left;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.product-usage-table th.current { color: var(--color-brand-700); }
+
+.product-usage-table td {
+  padding: var(--space-3);
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.product-usage-table tr:last-child td { border-bottom: none; }
+
+.product-usage-table td.current {
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.product-usage-cell-trend {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
 }
 
 /* Health Trend Arrows */
@@ -8642,88 +8724,104 @@ header .hint {
 /* Stats grid */
 .renewal-stats-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
 
 .renewal-stat-card {
-  background: white;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  padding: 1rem;
+  background: var(--surface-card);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-xs);
+  padding: var(--space-5);
+  transition: box-shadow var(--motion-base) var(--ease-standard),
+              transform var(--motion-base) var(--ease-standard);
+}
+
+.renewal-stat-card.clickable {
+  cursor: pointer;
+}
+
+.renewal-stat-card.clickable:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.renewal-stat-card.active-filter {
+  border-color: var(--color-brand-500);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
 }
 
 .renewal-stat-content {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
 .renewal-stat-icon {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
-.renewal-stat-icon.slate {
-  background: #f1f5f9;
-  color: #475569;
-}
-
-.renewal-stat-icon.green {
-  background: #dcfce7;
-  color: #16a34a;
-}
-
-.renewal-stat-icon.red {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.renewal-stat-icon.blue {
-  background: #dbeafe;
-  color: #2563eb;
-}
+.renewal-stat-icon.slate { background: var(--color-neutral-100); color: var(--color-neutral-600); }
+.renewal-stat-icon.green { background: var(--color-success-50); color: var(--color-success-700); }
+.renewal-stat-icon.red   { background: var(--color-danger-50);  color: var(--color-danger-700); }
+.renewal-stat-icon.blue  { background: var(--color-info-50);    color: var(--color-info-700); }
 
 .renewal-stat-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #1e293b;
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  line-height: 1.1;
+  letter-spacing: -0.01em;
 }
 
 .renewal-stat-label {
-  font-size: 0.75rem;
-  color: #64748b;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* Card component */
 .renewal-card {
-  background: white;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  margin-top: 1.5rem;
+  background: var(--surface-card);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+  margin-top: var(--space-5);
   overflow: hidden;
 }
 
 .renewal-card.clickable {
   cursor: pointer;
-  transition: border-color 0.2s;
+  transition: box-shadow var(--motion-base) var(--ease-standard),
+              border-color var(--motion-base) var(--ease-standard);
 }
 
 .renewal-card.clickable:hover {
-  border-color: #cbd5e1;
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-default);
 }
 
 /* Search and filter bar */
 .renewal-filter-bar {
-  padding: 1rem;
+  padding: var(--space-4);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-4);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  margin-bottom: var(--space-4);
 }
 
 .renewal-search-wrapper {
