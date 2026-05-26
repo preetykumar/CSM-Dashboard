@@ -4225,8 +4225,17 @@ header .hint {
    Product View Styles (By Product Tab)
    ============================================ */
 
-.product-view {
-  padding: 1rem 0;
+/* Outer wrapper for top-level entity/product views. Mirrors the shape of
+   the .ui-page primitive so Customer/Product/Renewals/Health tabs share
+   Home's vertical rhythm. */
+.product-view,
+.usage-view,
+.health-view,
+.renewal-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-6) 0;
 }
 
 .product-view-header {
@@ -6275,9 +6284,7 @@ header .hint {
 }
 
 /* ─── Health View (tab) ─── */
-.health-view {
-  padding: 1rem 0;
-}
+/* .health-view consolidated into the .product-view multi-selector above. */
 
 .health-view-header {
   display: flex;
@@ -6579,9 +6586,7 @@ header .hint {
   margin: 0.25rem 0 0;
 }
 
-.usage-view {
-  padding: 1rem 0;
-}
+/* .usage-view, .health-view consolidated into the multi-selector above. */
 
 .usage-header {
   display: flex;
@@ -10079,9 +10084,10 @@ header .hint {
 
 /* PRS Renewal View Styles */
 .prs-view {
-  padding: 1.5rem;
-  max-width: 1600px;
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-6) 0;
 }
 
 .prs-tab-bar {
