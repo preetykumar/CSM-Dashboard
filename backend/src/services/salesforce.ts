@@ -2,6 +2,7 @@ import axios, { AxiosInstance } from "axios";
 import jwt from "jsonwebtoken";
 import fs from "fs";
 import path from "path";
+import { salesforceCache } from "./cache.js";
 
 // Support both client credentials (sandbox) and JWT (production) auth
 interface SalesforceConfigBase {
@@ -299,6 +300,27 @@ interface SFEnterpriseSubscription {
   Monitor_Project_Count__c?: number;
   Enterprise_UUID__c?: string;
   Enterprise_Domain__c?: string;
+}
+
+// Per-account role assignment tuple — used in getAccountRoleAssignments.
+export interface AccountRoleTuple {
+  tsaEmail: string | null;
+  tsaName: string | null;
+  ieEmail: string | null;
+  ieName: string | null;
+  prsEmail: string | null;
+  prsName: string | null;
+}
+
+function emptyRoles(): AccountRoleTuple {
+  return {
+    tsaEmail: null,
+    tsaName: null,
+    ieEmail: null,
+    ieName: null,
+    prsEmail: null,
+    prsName: null,
+  };
 }
 
 export class SalesforceService {
@@ -1005,6 +1027,169 @@ export class SalesforceService {
     return [...contacts, ...leads];
   }
 
+  // Deque-specific Account-level role-assignment fields (note: field names
+  // are misleading — Customer_Success_Manager__c is the TSA assignment, not
+  // the CSM; CSM lives in Customer_Success_Manager_csm__c).
+  //
+  // Returns SF Account IDs where this email is the TSA at the Account level.
+  // Opportunity-level overrides (Technical_Specialist__c) not yet wired —
+  // pending data review.
+  async getAccountIdsAssignedToTSA(email: string): Promise<string[]> {
+    const safeEmail = email.replace(/'/g, "\\'");
+    const rows = await this.queryAll<{ Id: string }>(`
+      SELECT Id FROM Account
+      WHERE Customer_Success_Manager__r.Email = '${safeEmail}'
+    `);
+    return rows.map((r) => r.Id);
+  }
+
+  // IE Account-level assignment lives in three slots (CSE1, CSE2, CSE3).
+  async getAccountIdsAssignedToIE(email: string): Promise<string[]> {
+    const safeEmail = email.replace(/'/g, "\\'");
+    const rows = await this.queryAll<{ Id: string }>(`
+      SELECT Id FROM Account
+      WHERE Customer_Success_Engineer_CSE1__r.Email = '${safeEmail}'
+         OR Customer_Success_Engineer_CSE2__r.Email = '${safeEmail}'
+         OR Customer_Success_Engineer_CSE3__r.Email = '${safeEmail}'
+    `);
+    return rows.map((r) => r.Id);
+  }
+
+  // Deployment-bearing opportunities, joined via OpportunityLineItem.ProductCode.
+  // A "deployment opp" = a closed-won opp on one of these accounts that has at
+  // least one line item with a ProductCode starting "DEP-" (the deployment
+  // services SKU family — see backend/scripts/spike-opportunity-line-items.mjs
+  // for the catalog of codes).
+  //
+  // Returns Map<accountId, Array<{oppId, oppName, closeDate, productCodes[]}>>.
+  // Used by portfolio-enrichment.fetchKantataProjects to gate Kantata
+  // workspaces — only surface workspaces tied to an opp with real deploy work.
+  async getDeploymentOppsByAccount(
+    accountIds: string[]
+  ): Promise<Map<string, Array<{ oppId: string; oppName: string; closeDate: string | null; productCodes: string[] }>>> {
+    const result = new Map<string, Array<{ oppId: string; oppName: string; closeDate: string | null; productCodes: string[] }>>();
+    if (accountIds.length === 0) return result;
+
+    // Cache key includes sorted account IDs so different scopes share results
+    // when they overlap. Salesforce cache TTL is 30 min — fine since closed-won
+    // line items are historical and change rarely.
+    const sortedKey = [...accountIds].sort().join(",");
+    const cacheKey = `sf:deployOpps:${sortedKey}`;
+    const cached = salesforceCache.get<typeof result>(cacheKey);
+    if (cached) return cached;
+
+    type Row = {
+      Id: string;
+      OpportunityId: string;
+      ProductCode: string | null;
+      Opportunity: { AccountId: string | null; Name: string | null; CloseDate: string | null } | null;
+    };
+
+    // Chunk to stay under SOQL IN-list ceilings (Opportunity.AccountId IN ...).
+    // We query OpportunityLineItem with a filter that walks back through the
+    // parent Opportunity. Restrict to closed-won + DEP-* up front so the
+    // result set is small.
+    const CHUNK = 150;
+    for (let i = 0; i < accountIds.length; i += CHUNK) {
+      const chunk = accountIds.slice(i, i + CHUNK);
+      const inList = chunk.map((id) => `'${id}'`).join(",");
+      try {
+        const rows = await this.queryAll<Row>(`
+          SELECT Id, OpportunityId, ProductCode,
+                 Opportunity.AccountId, Opportunity.Name, Opportunity.CloseDate
+          FROM OpportunityLineItem
+          WHERE Opportunity.AccountId IN (${inList})
+            AND Opportunity.StageName = '8 - Closed Won'
+            AND ProductCode LIKE 'DEP-%'
+        `);
+
+        // Group by accountId → oppId → list of product codes. One opp can have
+        // multiple DEP-* line items; we keep the distinct codes per opp.
+        const byAccountThenOpp = new Map<
+          string,
+          Map<string, { oppName: string; closeDate: string | null; codes: Set<string> }>
+        >();
+        for (const r of rows) {
+          const accountId = r.Opportunity?.AccountId;
+          if (!accountId || !r.ProductCode) continue;
+          if (!byAccountThenOpp.has(accountId)) byAccountThenOpp.set(accountId, new Map());
+          const byOpp = byAccountThenOpp.get(accountId)!;
+          if (!byOpp.has(r.OpportunityId)) {
+            byOpp.set(r.OpportunityId, {
+              oppName: r.Opportunity?.Name || "",
+              closeDate: r.Opportunity?.CloseDate || null,
+              codes: new Set(),
+            });
+          }
+          byOpp.get(r.OpportunityId)!.codes.add(r.ProductCode);
+        }
+
+        for (const [accountId, byOpp] of byAccountThenOpp.entries()) {
+          const existing = result.get(accountId) || [];
+          for (const [oppId, info] of byOpp.entries()) {
+            existing.push({
+              oppId,
+              oppName: info.oppName,
+              closeDate: info.closeDate,
+              productCodes: Array.from(info.codes),
+            });
+          }
+          result.set(accountId, existing);
+        }
+      } catch (err) {
+        console.warn(
+          `getDeploymentOppsByAccount chunk ${i}–${i + CHUNK} failed: ${(err as Error).message}`
+        );
+      }
+    }
+    salesforceCache.set(cacheKey, result);
+    return result;
+  }
+
+  // Bulk fetch TSA/IE/PRS metadata for a set of accounts. Used during portfolio
+  // resolution to populate per-account owner names for the admin grouped view
+  // and for showing role context on each card.
+  async getAccountRoleAssignments(accountIds: string[]): Promise<Map<string, AccountRoleTuple>> {
+    const result = new Map<string, AccountRoleTuple>();
+    if (accountIds.length === 0) return result;
+
+    type Row = {
+      Id: string;
+      Customer_Success_Manager__r?: { Email?: string; Name?: string } | null;
+      Customer_Success_Engineer_CSE1__r?: { Email?: string; Name?: string } | null;
+      Customer_Success_Specialist__r?: { Email?: string; Name?: string } | null;
+    };
+
+    const CHUNK = 200;
+    for (let i = 0; i < accountIds.length; i += CHUNK) {
+      const chunk = accountIds.slice(i, i + CHUNK);
+      const inList = chunk.map((id) => `'${id}'`).join(",");
+      try {
+        const rows = await this.queryAll<Row>(`
+          SELECT Id,
+                 Customer_Success_Manager__r.Email, Customer_Success_Manager__r.Name,
+                 Customer_Success_Engineer_CSE1__r.Email, Customer_Success_Engineer_CSE1__r.Name,
+                 Customer_Success_Specialist__r.Email, Customer_Success_Specialist__r.Name
+          FROM Account WHERE Id IN (${inList})
+        `);
+        for (const r of rows) {
+          result.set(r.Id, {
+            tsaEmail: r.Customer_Success_Manager__r?.Email ?? null,
+            tsaName: r.Customer_Success_Manager__r?.Name ?? null,
+            ieEmail: r.Customer_Success_Engineer_CSE1__r?.Email ?? null,
+            ieName: r.Customer_Success_Engineer_CSE1__r?.Name ?? null,
+            prsEmail: r.Customer_Success_Specialist__r?.Email ?? null,
+            prsName: r.Customer_Success_Specialist__r?.Name ?? null,
+          });
+        }
+      } catch (err) {
+        console.warn(`getAccountRoleAssignments failed for chunk ${i}:`, (err as Error).message);
+      }
+    }
+    for (const id of accountIds) if (!result.has(id)) result.set(id, emptyRoles());
+    return result;
+  }
+
   async getPRSAssignments(): Promise<PRSAssignment[]> {
     console.log("Fetching PRS assignments from Product Success object...");
 
@@ -1031,6 +1216,46 @@ export class SalesforceService {
       // Return empty array if Product Success object doesn't exist or field is different
       return [];
     }
+  }
+
+  // Slim renewal opp query — only the fields portfolio resolution needs,
+  // scoped to a given set of accounts. Much faster than getRenewalOpportunities
+  // which pulls every opp in the org with 20+ fields.
+  async getOpenRenewalsForAccounts(
+    accountIds: string[],
+    daysAhead: number = 365
+  ): Promise<Array<{ accountId: string; name: string; renewalDate: string; amount: number; stageName: string }>> {
+    if (accountIds.length === 0) return [];
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + daysAhead);
+    const futureDateStr = futureDate.toISOString().split("T")[0];
+
+    type Row = { Id: string; Name: string; AccountId: string; Amount: number | null; StageName: string; CloseDate: string };
+    const out: Array<{ accountId: string; name: string; renewalDate: string; amount: number; stageName: string }> = [];
+    const CHUNK = 150;
+    for (let i = 0; i < accountIds.length; i += CHUNK) {
+      const chunk = accountIds.slice(i, i + CHUNK);
+      const inList = chunk.map((id) => `'${id}'`).join(",");
+      const rows = await this.queryAll<Row>(`
+        SELECT Id, Name, AccountId, Amount, StageName, CloseDate
+        FROM Opportunity
+        WHERE Type = 'Renewal'
+        AND AccountId IN (${inList})
+        AND CloseDate <= ${futureDateStr}
+        AND (NOT StageName LIKE '%Closed%')
+      `);
+      for (const r of rows) {
+        if (!r.AccountId) continue;
+        out.push({
+          accountId: r.AccountId,
+          name: r.Name,
+          renewalDate: r.CloseDate,
+          amount: r.Amount || 0,
+          stageName: r.StageName,
+        });
+      }
+    }
+    return out;
   }
 
   async getRenewalOpportunities(daysAhead: number = 180): Promise<RenewalOpportunity[]> {

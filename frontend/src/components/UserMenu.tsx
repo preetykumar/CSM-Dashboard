@@ -1,8 +1,9 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
 export function UserMenu() {
-  const { user, logout, authEnabled } = useAuth();
+  const { user, logout, authEnabled, isAdmin } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
 
   if (!authEnabled || !user) {
@@ -26,6 +27,17 @@ export function UserMenu() {
             <strong>{user.name}</strong>
             <span>{user.email}</span>
           </div>
+
+          {isAdmin && (
+            <Link
+              to="/process-audit"
+              className="user-menu-item"
+              onClick={() => setShowMenu(false)}
+            >
+              Process Audit
+            </Link>
+          )}
+
           <button
             className="user-menu-item logout-btn"
             onClick={async () => {

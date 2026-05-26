@@ -69,10 +69,8 @@ export function OverdueRenewalsView() {
 
   return (
     <div className="renewal-view">
-      <div className="renewal-header">
-        <h2>Overdue Renewals</h2>
-        <p className="renewal-subtitle">Renewals past their close date that have not been closed won or lost</p>
-      </div>
+      {/* Title + subtitle live in App.tsx getHintText() so every Renewals
+          sub-tab gets the same header treatment. No per-view <h2> here. */}
 
       <div className="renewal-stats-grid">
         <div className="renewal-stat-card at-risk">

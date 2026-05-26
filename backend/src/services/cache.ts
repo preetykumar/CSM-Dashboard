@@ -62,3 +62,8 @@ export const salesforceCache = new MemoryCache(1800);
 
 // Kantata: 15 min TTL (project state changes faster than SF/renewals data)
 export const kantataCache = new MemoryCache(900);
+
+// Portfolio: 90s TTL. Short enough that role/assignment changes propagate
+// quickly, long enough to make tab switches and page refreshes effectively
+// instant. Pre-warmed at end of syncAll() for known CSM + IE emails.
+export const portfolioCache = new MemoryCache(90);

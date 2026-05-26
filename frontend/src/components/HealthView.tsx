@@ -1,7 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import {
   fetchOrganizations,
-  fetchCSMPortfolios,
   fetchAccountsWithSubscriptions,
   fetchHealthScoresBatch,
   type HealthScoreResponse,
@@ -29,9 +28,9 @@ function TrendArrow({ trend, detail }: { trend?: Trend; detail?: string }) {
   );
 }
 
-interface Props {
-  mode: "csm" | "customer";
-}
+// HealthView used to be parameterized by `mode: "csm" | "customer"`. The CSM
+// variant is gone (Home view shows portfolio health per card now), so this
+// component is customer-only — no prop needed.
 
 const SIGNAL_COLORS: Record<Signal, string> = {
   green: "#16a34a",
@@ -290,7 +289,7 @@ function AccountHealthDrilldown({ data, onClose }: { data: HealthScoreResponse; 
   );
 }
 
-export function HealthView({ mode }: Props) {
+export function HealthView() {
   const [accounts, setAccounts] = useState<{ accountName: string; organizations: Organization[] }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -304,21 +303,13 @@ export function HealthView({ mode }: Props) {
 
   useEffect(() => {
     loadAccounts();
-  }, [mode]);
+  }, []);
 
   async function loadAccounts() {
     setLoading(true);
     try {
       const [orgs, subsData] = await Promise.all([
-        mode === "csm" ? fetchCSMPortfolios().then((d) => {
-          const allOrgs: Organization[] = [];
-          for (const p of d.portfolios || []) {
-            for (const c of p.customers || []) {
-              if (c.organization) allOrgs.push(c.organization);
-            }
-          }
-          return allOrgs;
-        }) : fetchOrganizations(),
+        fetchOrganizations(),
         fetchAccountsWithSubscriptions(),
       ]);
 

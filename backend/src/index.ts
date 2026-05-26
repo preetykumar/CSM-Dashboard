@@ -34,6 +34,7 @@ import { createUserRoutes } from "./routes/user.js";
 import { createCalendarRoutes } from "./routes/calendar.js";
 import { createAmplitudeRoutes } from "./routes/amplitude.js";
 import { createUsageUsersRoutes } from "./routes/usage-users.js";
+import { createPortfolioRoutes } from "./routes/portfolio.js";
 import { createHealthRoutes } from "./routes/health.js";
 
 dotenv.config();
@@ -374,10 +375,11 @@ app.use(
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
+    rolling: true, // refresh cookie expiry on every authenticated request
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       sameSite: "lax", // Same-origin since frontend is served from same Cloud Run instance
     },
   })
@@ -520,6 +522,7 @@ async function startServer() {
       app.use("/api/health", optionalAuth, createHealthRoutes(db, salesforce));
     }
     app.use("/api/usage/users", optionalAuth, createUsageUsersRoutes(db));
+    app.use("/api/portfolio", optionalAuth, createPortfolioRoutes(db, salesforce, kantata));
     if (agent) {
       app.use("/api/agent", optionalAuth, createAgentRoutes(agent));
     }

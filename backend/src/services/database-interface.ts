@@ -230,6 +230,10 @@ export interface IDatabaseService {
   // multiple org_keys).
   getProductUserActivityByKeycloakIds(productSlug: string, keycloakIds: string[]): Promise<CachedProductUserActivity[]>;
   countProductUserActivity(productSlug?: string): Promise<number>;
+  // For each requested account, returns the count of distinct keycloak_ids
+  // that are SF contacts at that account AND have product activity in the
+  // last 90 days. Used to fill amplitudeActiveUsers90d in portfolio enrichment.
+  getActiveUserCountsByAccountIds(accountIds: string[]): Promise<Map<string, number>>;
 
   // Lifecycle
   close(): Promise<void> | void;

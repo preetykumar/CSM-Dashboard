@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from "axios";
+import { kantataCache } from "./cache.js";
 
 // Kantata (formerly Mavenlink) custom field IDs - resolved during Phase 0 discovery
 // against the Deque Kantata account. These are stable per account.
@@ -229,4 +230,153 @@ export class KantataService {
       url: `https://deque.mavenlink.com/workspaces/${ws.id}`,
     };
   }
+
+  // All active workspaces (no project-type filter). Used by portfolio
+  // enrichment so deployment-flavored projects whose project-type isn't
+  // "Implementations" still get classified by their task content.
+  //
+  // Cached in kantataCache under a single key — the query has no parameters,
+  // so the entire active-workspace list is shared across all portfolio fetches
+  // for the cache window. Cold pull is several Kantata pages, ~1-3s.
+  async getAllActiveProjects(): Promise<KantataProject[]> {
+    const cacheKey = "kantata:active-workspaces";
+    const cached = kantataCache.get<KantataProject[]>(cacheKey);
+    if (cached) return cached;
+
+    const all: KantataProject[] = [];
+    let page = 1;
+    const perPage = 200;
+    const maxPages = 20;
+    while (page <= maxPages) {
+      const params = new URLSearchParams({
+        per_page: String(perPage),
+        page: String(page),
+        archived: "false",
+        include: "custom_field_values",
+      });
+      const { data } = await this.client.get<KantataWorkspaceResponse>(
+        `/workspaces.json?${params.toString()}`
+      );
+      const cfvMap = data.custom_field_values || {};
+      const workspaces = data.workspaces ? Object.values(data.workspaces) : [];
+      if (workspaces.length === 0) break;
+      for (const ws of workspaces) all.push(this.mapWorkspace(ws, cfvMap));
+      if (workspaces.length < perPage) break;
+      page++;
+    }
+    kantataCache.set(cacheKey, all);
+    return all;
+  }
+
+  // For a set of workspaces, classify their tasks (story_type=task) by
+  // substring-matching titles against the six deployment-engagement keywords.
+  // Returns a Map keyed by workspace id; workspaces with zero matching tasks
+  // are omitted from the result.
+  //
+  // Per-workspace results are cached in kantataCache. Cache-miss workspaces
+  // are fetched in parallel (vs the old sequential loop) so a fresh portfolio
+  // with N qualifying workspaces does ~1 API round-trip in total instead of N.
+  async getTaskCategoriesForWorkspaces(workspaceIds: string[]): Promise<Map<string, TaskCategorySummary>> {
+    const summary = new Map<string, TaskCategorySummary>();
+    if (workspaceIds.length === 0) return summary;
+
+    const misses: string[] = [];
+    for (const wsId of workspaceIds) {
+      const cached = kantataCache.get<TaskCategorySummary | "empty">(`kantata:ws-tasks:${wsId}`);
+      if (cached === "empty") continue;
+      if (cached) { summary.set(wsId, cached); continue; }
+      misses.push(wsId);
+    }
+
+    if (misses.length > 0) {
+      // Parallelize the per-workspace stories calls. Kantata's rate limit
+      // can throttle bursts but in practice ~50 concurrent reads work fine.
+      const results = await Promise.allSettled(
+        misses.map(async (wsId) => {
+          const stories = await this.fetchStoriesForWorkspace(wsId);
+          return { wsId, classified: classifyStories(stories) };
+        })
+      );
+      for (const r of results) {
+        if (r.status === "rejected") {
+          console.warn(`Kantata: stories fetch failed:`, r.reason?.message || r.reason);
+          continue;
+        }
+        const { wsId, classified } = r.value;
+        if (classified.totalMatching > 0) {
+          summary.set(wsId, classified);
+          kantataCache.set(`kantata:ws-tasks:${wsId}`, classified);
+        } else {
+          // Cache "no matching tasks" too so we don't keep refetching.
+          kantataCache.set(`kantata:ws-tasks:${wsId}`, "empty");
+        }
+      }
+    }
+    return summary;
+  }
+
+  private async fetchStoriesForWorkspace(workspaceId: string): Promise<RawStory[]> {
+    const all: RawStory[] = [];
+    let page = 1;
+    const perPage = 200;
+    const maxPages = 10;
+    while (page <= maxPages) {
+      const { data } = await this.client.get<{ stories?: Record<string, RawStory> }>(
+        `/stories.json`,
+        { params: { workspace_id: workspaceId, per_page: perPage, page } }
+      );
+      const batch = data.stories ? Object.values(data.stories) : [];
+      if (batch.length === 0) break;
+      all.push(...batch);
+      if (batch.length < perPage) break;
+      page++;
+    }
+    return all;
+  }
+}
+
+// Task category constants. Match case-insensitively as substrings of task titles.
+export const TASK_CATEGORIES = [
+  "Deployment",
+  "Implementation",
+  "Product Support",
+  "Tool Support",
+  "Consulting",
+  "Flexible",
+] as const;
+export type TaskCategory = (typeof TASK_CATEGORIES)[number];
+
+interface RawStory {
+  id: string;
+  title: string;
+  story_type: string;
+  workspace_id: string;
+  archived?: boolean;
+}
+
+export interface TaskCategorySummary {
+  totalTasks: number;
+  totalMatching: number;
+  categories: Array<{ category: TaskCategory; count: number }>;
+}
+
+function classifyStories(stories: RawStory[]): TaskCategorySummary {
+  const perCategory = new Map<TaskCategory, number>();
+  let totalMatching = 0;
+  for (const s of stories) {
+    if (s.story_type !== "task") continue;
+    const title = (s.title || "").toLowerCase();
+    if (!title) continue;
+    for (const cat of TASK_CATEGORIES) {
+      if (title.includes(cat.toLowerCase())) {
+        perCategory.set(cat, (perCategory.get(cat) || 0) + 1);
+        totalMatching++;
+      }
+    }
+  }
+  return {
+    totalTasks: stories.filter((s) => s.story_type === "task").length,
+    totalMatching,
+    categories: Array.from(perCategory.entries()).map(([category, count]) => ({ category, count })),
+  };
 }

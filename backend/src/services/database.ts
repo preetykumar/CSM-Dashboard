@@ -1037,6 +1037,29 @@ export class DatabaseService implements IDatabaseService {
     return row.n;
   }
 
+  async getActiveUserCountsByAccountIds(accountIds: string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    for (const id of accountIds) out.set(id, 0);
+    if (accountIds.length === 0) return out;
+    const CHUNK = 500;
+    for (let i = 0; i < accountIds.length; i += CHUNK) {
+      const chunk = accountIds.slice(i, i + CHUNK);
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = this.db
+        .prepare(
+          `SELECT oc.account_id AS account_id, COUNT(DISTINCT pua.keycloak_id) AS n
+           FROM org_contacts oc
+           INNER JOIN product_user_activity pua ON pua.keycloak_id = oc.keycloak_id
+           WHERE oc.account_id IN (${placeholders})
+           AND pua.event_count_90d > 0
+           GROUP BY oc.account_id`
+        )
+        .all(...chunk) as Array<{ account_id: string; n: number }>;
+      for (const r of rows) out.set(r.account_id, r.n);
+    }
+    return out;
+  }
+
   close(): void {
     this.db.close();
   }

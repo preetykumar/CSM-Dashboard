@@ -225,9 +225,9 @@ export function CSMRenewalView() {
   return (
     <div className="prs-view">
       {isAdmin && (
-        <div className="admin-banner">
-          <span className="admin-badge">Admin View</span>
-          <span className="admin-info">Viewing all {csmPortfolios.length} CSM portfolios</span>
+        <div className="ui-banner ui-banner--info" style={{ marginBottom: "var(--space-4)" }}>
+          <span className="ui-badge ui-badge--info">Admin View</span>
+          <span>Viewing all {csmPortfolios.length} CSM portfolios</span>
         </div>
       )}
 

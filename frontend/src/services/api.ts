@@ -1,4 +1,5 @@
 import type { CustomerSummary, DetailedCustomerSummary, Organization, Ticket, CSMPortfolio, CSMCustomerSummary, PMPortfolio, EnhancedCustomerSummary, GitHubDevelopmentStatus, ActiveProjectsResponse } from "../types";
+import type { MockPortfolioAccount, HealthScore, HealthDimension, Role } from "../data/portfolioMocks";
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
@@ -1122,6 +1123,106 @@ export async function fetchHealthScoresBatch(accountNames: string[]): Promise<Re
   }
 
   return results;
+}
+
+// ── Portfolio ────────────────────────────────────────────────────────────────
+
+export interface PortfolioResponse {
+  role: Role;
+  email: string;
+  accounts: MockPortfolioAccount[]; // backend PortfolioAccount aligns with this shape (joined.healthScore is null at this stage)
+  totalCount: number;
+  warnings: string[];
+  tookMs?: number;
+  resolvedMs?: number;
+  cacheHit?: boolean;
+}
+
+export async function fetchPortfolio(role: Role, email: string): Promise<PortfolioResponse> {
+  const params = new URLSearchParams({ role });
+  if (email) params.set("email", email);
+  const res = await fetch(`${API_BASE}/portfolio?${params}`, fetchOptions);
+  if (!res.ok) throw new Error(`Failed to fetch portfolio: ${res.status}`);
+  return res.json();
+}
+
+// Walk the account tree (parents + children) and collect distinct names suitable
+// for /api/health/batch. We pass names, not IDs, because the health batch
+// endpoint is keyed by accountName.
+export function collectAccountNames(accounts: MockPortfolioAccount[]): string[] {
+  const names = new Set<string>();
+  const walk = (accs: MockPortfolioAccount[]) => {
+    for (const a of accs) {
+      if (a.name && a.name !== a.id) names.add(a.name);
+      if (a.children?.length) walk(a.children);
+    }
+  };
+  walk(accounts);
+  return Array.from(names);
+}
+
+// Backend → frontend health shape. The backend returns a richer signal model
+// (`DimensionScore.signal` + per-signal `detail`/`trend`); the frontend's
+// wireframe types use `status` + `currentValue`/`thresholds`. We bridge here
+// instead of changing the frontend types so existing CustomerCard +
+// HealthDrilldown renderers work unmodified.
+export function transformHealth(b: HealthScoreResponse): HealthScore {
+  return {
+    adoption: transformDim(b.adoption),
+    engagement: transformDim(b.engagement),
+    support: transformDim(b.support),
+    manual: b.manualHealthScore
+      ? {
+          status: manualToStatus(b.manualHealthScore),
+          note: b.manualHealthDescription || "",
+        }
+      : undefined,
+  };
+}
+
+function transformDim(d: DimensionScore): HealthDimension {
+  const trendMap: Record<string, "up" | "down" | "flat" | undefined> = {
+    improving: "up",
+    worsening: "down",
+    flat: "flat",
+  };
+  return {
+    status: d.signal,
+    signals: d.signals.map((s) => ({
+      name: s.label,
+      currentValue: s.detail || "",
+      status: s.signal,
+      trend: s.trend ? trendMap[s.trend] : undefined,
+      thresholds: "",
+    })),
+    calculationLogic: "",
+  };
+}
+
+function manualToStatus(raw: string): "good" | "ok" | "at-risk" {
+  const s = raw.toLowerCase();
+  if (s.includes("good") || s.includes("green") || s === "healthy") return "good";
+  if (s.includes("risk") || s.includes("red") || s === "at-risk") return "at-risk";
+  return "ok";
+}
+
+// Immutable merge of a name→HealthScore map into the account tree. Used after
+// the lazy /api/health/batch fetch resolves to update the rendered portfolio.
+export function applyHealthScores(
+  accounts: MockPortfolioAccount[],
+  healthByName: Map<string, HealthScore>
+): MockPortfolioAccount[] {
+  return accounts.map((a) => {
+    const next: MockPortfolioAccount = {
+      ...a,
+      joined: {
+        ...a.joined,
+        healthScore: healthByName.get(a.name) ?? a.joined.healthScore ?? null,
+      },
+    };
+    if (a.children?.length) next.children = applyHealthScores(a.children, healthByName);
+    return next;
+  });
 }
 
 // ── Calendly ─────────────────────────────────────────────────────────────────

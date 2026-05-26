@@ -14,7 +14,8 @@ import { SalesforceService, CSMAssignment, PMAssignment, AccountHierarchyEntry }
 import { GitHubService } from "./github.js";
 import { AmplitudeService } from "./amplitude.js";
 import type { Organization, Ticket } from "../types/index.js";
-import { renewalsCache, salesforceCache } from "./cache.js";
+import { renewalsCache, salesforceCache, portfolioCache } from "./cache.js";
+import { resolvePortfolio } from "./portfolio-resolver.js";
 
 // Amplitude product configuration (mirrors ProductConfig in routes/amplitude.ts).
 // Passed in from index.ts so sync can fetch user activity nightly.
@@ -167,6 +168,7 @@ export class SyncService {
       // Pre-warm caches: invalidate stale data, then pre-fetch renewals
       renewalsCache.clear();
       salesforceCache.clear();
+      portfolioCache.clear();
       if (this.salesforce) {
         try {
           console.log("Pre-warming renewals cache...");
@@ -183,6 +185,11 @@ export class SyncService {
           console.log(`Subscriptions cache pre-warmed with ${accountNames.length} accounts`);
         } catch (err) {
           console.error("Failed to pre-warm subscriptions cache:", err);
+        }
+        try {
+          await this.prewarmPortfolioCache();
+        } catch (err) {
+          console.error("Failed to pre-warm portfolio cache:", err);
         }
       }
 
@@ -973,5 +980,65 @@ export class SyncService {
 
   isSyncInProgress(): boolean {
     return this.isSyncing;
+  }
+
+  // Pre-warm /api/portfolio responses for the CSM + IE users we know about, so
+  // the first user landing after a sync gets a fast cached response and the
+  // downstream SF/DB query layer is warm even after portfolioCache (90s TTL)
+  // expires. Each resolution failure is logged and skipped; the sync result
+  // is unaffected.
+  private async prewarmPortfolioCache(): Promise<void> {
+    if (!this.salesforce) return;
+
+    // CSM emails — directly from the DB cache populated by syncCSMAssignments.
+    const csmAssignments = await this.db.getCSMAssignments();
+    const csmEmails = new Set<string>();
+    const allAccountIds = new Set<string>();
+    for (const a of csmAssignments) {
+      if (a.csm_email) csmEmails.add(a.csm_email.toLowerCase());
+      if (a.account_id) allAccountIds.add(a.account_id);
+    }
+
+    // IE emails — pulled from SF Account-level CSE1/2/3 role lookups for the
+    // set of accounts we already touch via CSM assignments. (Any account not
+    // in that set doesn't have an active CSM relationship anyway, so its IE
+    // user wouldn't have anything to view here.)
+    const ieEmails = new Set<string>();
+    try {
+      const roleMap = await this.salesforce.getAccountRoleAssignments(Array.from(allAccountIds));
+      for (const r of roleMap.values()) {
+        if (r.ieEmail) ieEmails.add(r.ieEmail.toLowerCase());
+      }
+    } catch (err) {
+      console.warn("Pre-warm: failed to resolve IE emails:", (err as Error).message);
+    }
+
+    console.log(
+      `Pre-warming portfolioCache for ${csmEmails.size} CSM + ${ieEmails.size} IE users...`
+    );
+
+    const t0 = Date.now();
+    let ok = 0;
+    let failed = 0;
+    const tasks: Array<Promise<void>> = [];
+    const run = (role: "csm" | "ie", email: string) =>
+      resolvePortfolio(role, email, this.db, this.salesforce, null)
+        .then((portfolio) => {
+          const key = `portfolio:${role}:${email}`;
+          portfolioCache.set(key, { portfolio, resolvedMs: 0 });
+          ok++;
+        })
+        .catch((err) => {
+          failed++;
+          console.warn(`Pre-warm ${role}/${email} failed: ${(err as Error).message}`);
+        });
+
+    for (const email of csmEmails) tasks.push(run("csm", email));
+    for (const email of ieEmails) tasks.push(run("ie", email));
+    await Promise.all(tasks);
+
+    console.log(
+      `Portfolio cache pre-warmed: ${ok} hits, ${failed} failures in ${Date.now() - t0}ms`
+    );
   }
 }
