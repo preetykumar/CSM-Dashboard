@@ -1,5 +1,60 @@
 # Post-sales Customer Team Portal - Release Notes
 
+## Version 2.2.0
+
+**Release Date:** May 26, 2026
+
+### Top-Nav Restructure, Design System, SF-Driven Portfolio
+
+**Nav consolidation:**
+- Top tabs collapsed from 8 to 5: **Home / Renewals / Deployments / Customer / Product**
+- Old role tabs removed: CSM, PM, Renewal Specialist, Field Engineers
+- **Home** is the new landing view — role-scoped portfolio cards (CSM / TSA / IE / PRS all land here)
+- **Renewals** consolidates 8 previously-scattered renewal routes under grouped sub-tabs: Pipeline (Upcoming / By Month / By Quarter / Overdue) · Closed (Won / Lost) · By Owner (By CSM / By Specialist)
+- **Deployments** brings back the Kantata-driven Active Implementations view
+- **Process Audit** moved into the user-menu dropdown (admin-only)
+- All legacy URLs (`/csm/*`, `/pm/*`, `/renewal-specialist`, `/product/renewals/*`) redirect to the new locations
+
+**Design system:**
+- New shared primitives in `frontend/src/components/ui/`: Page, PageHeader, Card, StatCard, StatGrid, Toolbar, Badge, Button, EmptyState, Banner, SectionHeader
+- Design tokens at `frontend/src/styles/tokens.css` (color / spacing / radii / shadows / typography variables) — every new view consumes these
+- Renewals stat-cards changed from rigid 2-column grid to responsive auto-fit
+- Customer / Product / CSM cards migrated off the saturated purple gradient onto a neutral palette with soft shadows
+- Fixes the Home view that previously rendered as bare HTML (its `home-view` / `portfolio-card` / etc. classes had no CSS definitions)
+
+**Portfolio resolver (`/api/portfolio`):**
+- Single source-of-truth endpoint returning role-scoped account tree from Salesforce role-assignment fields:
+  - CSM: `Customer_Success_Manager_csm__c`
+  - TSA: `Customer_Success_Manager__c`
+  - IE: `Customer_Success_Engineer_CSE1/2/3__c`
+  - PRS: `Customer_Success_Specialist__c`
+- Hierarchy walk: non-admin sees only directly-assigned accounts; admin sees full family walk
+- PRS users land on the Renewals pipeline (no per-customer portfolio drill-down)
+- Health scoring deferred to a separate `/api/health/batch` call so portfolio cards render fast, then pills lazy-fill
+- 90-second response cache keyed by `(role, email)` — repeat loads are sub-3ms
+
+**Deployments wiring (Kantata × Salesforce):**
+- Replaces the old task-title heuristic with an authoritative join via `OpportunityLineItem.ProductCode LIKE 'DEP-%'`
+- A Kantata workspace surfaces only when its SF-ref (Account or Opportunity) ties to a closed-won opp containing one of the deployment SKUs (Self-Starter, Managed, On-Demand, etc.)
+- Kantata workspaces + per-workspace task summaries now cached (15-min TTL), per-workspace task fetches parallelized
+
+**Amplitude UUID matching:**
+- `gp:enterpriseId` confirmed = `Enterprise_Subscription__c.Enterprise_UUID__c` (4,162/4,162 SF subs have a UUID; sample lookups: ADP, Deque, US Bank, Gainwell, etc.)
+- 5 products switched to exact UUID match: **Axe DevTools Extension, Developer Hub, Deque University, Axe MCP Server, Axe Reports**
+- 4 products stay on `gp:organization` name fallback until their UUID code ships: Axe Accounts, Axe DevTools Mobile, Axe Assistant, Axe Monitor
+- Re-probe coverage at any time with `backend/scripts/spike-enterpriseid-probe.mjs`
+
+**Product Usage view rebuild:**
+- Hero stat: total active users this month + trend vs previous month
+- Per-product stat grid: one card per product with headline active users + trend
+- Expandable detail cards with 3-month event breakdown table
+
+**Performance:**
+- Portfolio cold response with full caches warm: ~1.8s (was 25-31s for large IE portfolios)
+- Renewal-opp SF query scoped to assigned account IDs (was global scan); 5-6× speedup on cold reads
+
+---
+
 ## Version 2.1.0
 
 **Release Date:** May 8, 2026
