@@ -16,13 +16,13 @@ interface HealthSignal {
   trendDetail?: string;
 }
 
-interface DimensionScore {
+export interface DimensionScore {
   signal: Signal;
   signals: HealthSignal[];
   trend?: Trend;
 }
 
-interface HealthScoreResponse {
+export interface HealthScoreResponse {
   accountName: string;
   accountId?: string;
   adoption: DimensionScore;
@@ -208,7 +208,7 @@ async function computeHealthScoreById(
 
 // ─── Batch: bulk SF queries, then score each ──────────────────────────────────
 
-async function computeHealthScoresBatch(
+export async function computeHealthScoresBatch(
   accountNames: string[],
   db: IDatabaseService,
   salesforce: SalesforceService

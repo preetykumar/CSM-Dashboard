@@ -817,12 +817,30 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
   // Unified usage endpoint — fetches all product metrics in one call
   // ============================================================
 
-  // Product → event definitions with user-friendly display names
-  // usesOrgName: true = gp:organization has human names (fall back to accountName with contains)
-  // usesOrgName: false/undefined = gp:organization has Enterprise UUIDs (use exact match)
+  // Product → event definitions with user-friendly display names.
+  //
+  // Matching strategy per product:
+  //   orgProperty: "gp:enterpriseId"   = product has shipped the Axe-Account-
+  //                                      UUID SDK fix; gp:enterpriseId carries
+  //                                      the Enterprise_UUID__c. Exact match.
+  //                                      (Verified: gp:enterpriseId values are
+  //                                      a direct lookup in SF
+  //                                      Enterprise_Subscription__c.)
+  //   (no orgProperty + no usesOrgName)= match against gp:organization, which
+  //                                      historically carries the Enterprise
+  //                                      UUID for DevTools Extension only.
+  //   usesOrgName: true                = gp:organization holds a human name;
+  //                                      fall back to SF account name with
+  //                                      `contains` match. Stay here until the
+  //                                      UUID code rolls out for that product.
+  //   axe-monitor                      = special case (gp:initial_referring_domain)
+  //                                      until UUID code ships.
+  //
+  // Re-probe with backend/scripts/spike-enterpriseid-probe.mjs to see when
+  // remaining products (Accounts, Mobile, Assistant, Monitor) ship their fix.
   const PRODUCT_EVENTS: Record<string, { events: Array<{ event: string; label: string; metric: "uniques" | "totals" }>; orgProperty?: string; usesOrgName?: boolean }> = {
     "axe-account-portal": {
-      usesOrgName: true,
+      usesOrgName: true, // UUID code not yet deployed (as of 2026-05)
       events: [
         { event: "login", label: "Active Users (Logins)", metric: "uniques" },
         { event: "login", label: "Total Logins", metric: "totals" },
@@ -832,6 +850,7 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       ],
     },
     "axe-devtools-(browser-extension)": {
+      orgProperty: "gp:enterpriseId", // UUID shipped — same value as gp:organization but canonical
       events: [
         { event: "analysis:complete", label: "Active Users", metric: "uniques" },
         { event: "analysis:analyze", label: "Scans Started", metric: "totals" },
@@ -859,7 +878,7 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       ],
     },
     "developer-hub": {
-      usesOrgName: true,
+      orgProperty: "gp:enterpriseId", // UUID shipped (verified 2026-05)
       events: [
         { event: "project:create", label: "Active Users", metric: "uniques" },
         { event: "project:create", label: "Projects Created", metric: "totals" },
@@ -868,7 +887,7 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       ],
     },
     "axe-devtools-mobile": {
-      usesOrgName: true,
+      usesOrgName: true, // UUID code not yet deployed (as of 2026-05)
       events: [
         { event: "scan:create", label: "Scans Created", metric: "totals" },
         { event: "scan:save", label: "Scans Saved", metric: "totals" },
@@ -877,14 +896,14 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       ],
     },
     "axe-assistant": {
-      usesOrgName: true, // mixed UUIDs + Slack team IDs
+      usesOrgName: true, // mixed UUIDs + Slack team IDs; new UUID code not yet deployed
       events: [
         { event: "user:message_sent", label: "Active Users", metric: "uniques" },
         { event: "user:message_sent", label: "Messages Sent", metric: "totals" },
       ],
     },
     "deque-university": {
-      usesOrgName: true,
+      orgProperty: "gp:enterpriseId", // UUID shipped (141 segments, verified 2026-05)
       events: [
         { event: "session_start", label: "Unique User Logins", metric: "uniques" },
         { event: "user:en:/member", label: "Course Dashboard Views", metric: "totals" },
@@ -900,6 +919,7 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       ],
     },
     "axe-reports": {
+      orgProperty: "gp:enterpriseId", // UUID just shipped (3 segments, tiny coverage as of 2026-05)
       events: [
         { event: "usage:chart:load", label: "Active Users", metric: "uniques" },
         { event: "usage:chart:load", label: "Usage Charts Loaded", metric: "totals" },
@@ -914,7 +934,7 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       ],
     },
     "axe-mcp-server": {
-      usesOrgName: true,
+      orgProperty: "gp:enterpriseId", // UUID shipped (9 segments, verified 2026-05)
       events: [
         { event: "axe-mcp-server:analyze", label: "Active Users", metric: "uniques" },
         { event: "axe-mcp-server:analyze", label: "Analyses", metric: "totals" },

@@ -1233,6 +1233,23 @@ export class DatabaseServicePg implements IDatabaseService {
     return r.rows[0].n;
   }
 
+  async getActiveUserCountsByAccountIds(accountIds: string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    for (const id of accountIds) out.set(id, 0);
+    if (accountIds.length === 0) return out;
+    const result = await this.pool.query(
+      `SELECT oc.account_id AS account_id, COUNT(DISTINCT pua.keycloak_id)::int AS n
+       FROM org_contacts oc
+       INNER JOIN product_user_activity pua ON pua.keycloak_id = oc.keycloak_id
+       WHERE oc.account_id = ANY($1::text[])
+       AND pua.event_count_90d > 0
+       GROUP BY oc.account_id`,
+      [accountIds]
+    );
+    for (const r of result.rows) out.set(r.account_id, r.n);
+    return out;
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
   }
