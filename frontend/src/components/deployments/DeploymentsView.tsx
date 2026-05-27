@@ -39,6 +39,35 @@ import {
   Badge,
   Banner,
 } from "../ui";
+import { useStickyState } from "../../hooks/useStickyState";
+
+// Status filter options for Kantata project status. Default = "in_progress"
+// because that's what TSAs care about day-to-day.
+type StatusFilter = "in_progress" | "active" | "completed" | "no_kantata" | "all";
+const STATUS_FILTER_LABELS: Record<StatusFilter, string> = {
+  in_progress: "In Progress",
+  active: "Active (any status)",
+  completed: "Completed",
+  no_kantata: "No Kantata project",
+  all: "Show all",
+};
+
+function matchesStatusFilter(opp: DeploymentOppNode, filter: StatusFilter): boolean {
+  const status = opp.kantata?.status?.toLowerCase() || "";
+  switch (filter) {
+    case "in_progress":
+      return status.includes("in progress");
+    case "active":
+      return opp.kantata !== null && !status.includes("completed") && !status.includes("cancelled");
+    case "completed":
+      return status.includes("completed");
+    case "no_kantata":
+      return opp.kantata === null;
+    case "all":
+    default:
+      return true;
+  }
+}
 
 // Hardcoded TSA list for now — wireframe stand-in for session-driven role/email.
 // Replace with session auth once role plumbing is wired.
@@ -74,7 +103,10 @@ function kantataStatusBadge(k: DeploymentOppKantata | null) {
 }
 
 export function DeploymentsView() {
-  const [tsaEmail, setTsaEmail] = useState(TSA_OPTIONS[0].email);
+  // Selections sticky per-user (localStorage namespaced by email).
+  const [tsaEmail, setTsaEmail] = useStickyState<string>("deployments:tsa", TSA_OPTIONS[0].email);
+  const [statusFilter, setStatusFilter] = useStickyState<StatusFilter>("deployments:statusFilter", "in_progress");
+
   const [data, setData] = useState<DeploymentTreeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -103,20 +135,53 @@ export function DeploymentsView() {
     [tsaEmail]
   );
 
+  // Apply status filter to the customer tree. Customers with zero matching
+  // opps drop out of the rendered list entirely. Totals at the page-header
+  // level still come from the unfiltered data so users see the full pool.
+  const filteredCustomers = useMemo(() => {
+    if (!data) return [];
+    return data.customers
+      .map((c) => {
+        const opps = c.opps.filter((o) => matchesStatusFilter(o, statusFilter));
+        if (opps.length === 0) return null;
+        const productCount = opps.reduce((sum, o) => sum + o.products.length, 0);
+        // Recompute renderMode against the filtered opps so we don't show "by_opp"
+        // nesting when filtering collapsed the customer back to 1 opp / 1 product.
+        const renderMode = opps.length === 1 && opps[0].products.length === 1 ? "flat" : "by_opp";
+        return { ...c, opps, productCount, oppCount: opps.length, renderMode };
+      })
+      .filter((c): c is DeploymentCustomerNode => c !== null);
+  }, [data, statusFilter]);
+
   const headerActions = (
-    <div className="deployments-tsa-switcher">
-      <label htmlFor="deployments-tsa">TSA</label>
-      <select
-        id="deployments-tsa"
-        value={tsaEmail}
-        onChange={(e) => setTsaEmail(e.target.value)}
-        className="home-select"
-      >
-        {TSA_OPTIONS.map((t) => (
-          <option key={t.email} value={t.email}>{t.name}</option>
-        ))}
-      </select>
-    </div>
+    <>
+      <div className="deployments-filter">
+        <label htmlFor="deployments-status">Status</label>
+        <select
+          id="deployments-status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          className="home-select"
+        >
+          {(Object.keys(STATUS_FILTER_LABELS) as StatusFilter[]).map((s) => (
+            <option key={s} value={s}>{STATUS_FILTER_LABELS[s]}</option>
+          ))}
+        </select>
+      </div>
+      <div className="deployments-tsa-switcher">
+        <label htmlFor="deployments-tsa">TSA</label>
+        <select
+          id="deployments-tsa"
+          value={tsaEmail}
+          onChange={(e) => setTsaEmail(e.target.value)}
+          className="home-select"
+        >
+          {TSA_OPTIONS.map((t) => (
+            <option key={t.email} value={t.email}>{t.name}</option>
+          ))}
+        </select>
+      </div>
+    </>
   );
 
   return (
@@ -176,18 +241,29 @@ export function DeploymentsView() {
           <section>
             <SectionHeader
               title="Customers"
-              count={`${data.customers.length} ${data.customers.length === 1 ? "customer" : "customers"}`}
+              count={
+                statusFilter === "all"
+                  ? `${data.customers.length} ${data.customers.length === 1 ? "customer" : "customers"}`
+                  : `${filteredCustomers.length} of ${data.customers.length} (filtered to ${STATUS_FILTER_LABELS[statusFilter].toLowerCase()})`
+              }
             />
-            <div className="deployments-customer-list">
-              {data.customers.map((c) => (
-                <CustomerNode
-                  key={c.accountId}
-                  customer={c}
-                  expanded={expanded}
-                  onToggle={toggle}
-                />
-              ))}
-            </div>
+            {filteredCustomers.length === 0 ? (
+              <Card><EmptyState
+                title={`No deployments match "${STATUS_FILTER_LABELS[statusFilter]}"`}
+                detail="Try changing the Status filter or select a different TSA."
+              /></Card>
+            ) : (
+              <div className="deployments-customer-list">
+                {filteredCustomers.map((c) => (
+                  <CustomerNode
+                    key={c.accountId}
+                    customer={c}
+                    expanded={expanded}
+                    onToggle={toggle}
+                  />
+                ))}
+              </div>
+            )}
           </section>
         </>
       )}
