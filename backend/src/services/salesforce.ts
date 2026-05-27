@@ -1146,6 +1146,159 @@ export class SalesforceService {
     return result;
   }
 
+  // Sibling of getDeploymentOppsByAccount that returns FULL line-item detail
+  // for the same deploy-opp set. Used by the Deployments view, which needs
+  // the per-product line items (not just the DEP-* gate) so it can break the
+  // hierarchy down by (opp, product). See backend/scripts/spike-deploy-kantata-mapping.mjs
+  // for the spike that validated this shape (one Kantata workspace per opp,
+  // products under it).
+  async getDeploymentOppDetailsByAccount(
+    accountIds: string[]
+  ): Promise<
+    Map<
+      string,
+      Array<{
+        oppId: string;
+        oppName: string;
+        closeDate: string | null;
+        lineItems: Array<{
+          productCode: string;
+          productName: string | null;
+          family: string | null;
+          quantity: number;
+          totalPrice: number;
+        }>;
+      }>
+    >
+  > {
+    const result = new Map<
+      string,
+      Array<{
+        oppId: string;
+        oppName: string;
+        closeDate: string | null;
+        lineItems: Array<{
+          productCode: string;
+          productName: string | null;
+          family: string | null;
+          quantity: number;
+          totalPrice: number;
+        }>;
+      }>
+    >();
+    if (accountIds.length === 0) return result;
+
+    const sortedKey = [...accountIds].sort().join(",");
+    const cacheKey = `sf:deployOppDetails:${sortedKey}`;
+    const cached = salesforceCache.get<typeof result>(cacheKey);
+    if (cached) return cached;
+
+    type Row = {
+      Id: string;
+      OpportunityId: string;
+      ProductCode: string | null;
+      Quantity: number | null;
+      TotalPrice: number | null;
+      Product2: { Name?: string; Family?: string } | null;
+      Opportunity: { AccountId: string | null; Name: string | null; CloseDate: string | null } | null;
+    };
+
+    // Two-step query: SOQL doesn't allow self-referential subquery on
+    // OpportunityLineItem. So we first find opp IDs that have ≥1 DEP-* line
+    // (via Opportunity with a DEP-* line-item subquery), then fetch ALL line
+    // items for those opp IDs.
+    const CHUNK = 150;
+    for (let i = 0; i < accountIds.length; i += CHUNK) {
+      const chunk = accountIds.slice(i, i + CHUNK);
+      const inList = chunk.map((id) => `'${id}'`).join(",");
+      try {
+        // Step 1: find deploy opp IDs for this account chunk.
+        const oppRows = await this.queryAll<{ Id: string }>(`
+          SELECT Id FROM Opportunity
+          WHERE AccountId IN (${inList})
+            AND StageName = '8 - Closed Won'
+            AND Id IN (SELECT OpportunityId FROM OpportunityLineItem WHERE ProductCode LIKE 'DEP-%')
+        `);
+        if (oppRows.length === 0) continue;
+
+        // Step 2: full line-item detail for those opps (chunked again at 200
+        // to stay safely under SOQL IN-list ceilings).
+        const rows: Row[] = [];
+        const OCHUNK = 200;
+        for (let j = 0; j < oppRows.length; j += OCHUNK) {
+          const oppChunk = oppRows.slice(j, j + OCHUNK);
+          const oppInList = oppChunk.map((o) => `'${o.Id}'`).join(",");
+          const chunkRows = await this.queryAll<Row>(`
+            SELECT Id, OpportunityId, ProductCode, Quantity, TotalPrice,
+                   Product2.Name, Product2.Family,
+                   Opportunity.AccountId, Opportunity.Name, Opportunity.CloseDate
+            FROM OpportunityLineItem
+            WHERE OpportunityId IN (${oppInList})
+          `);
+          rows.push(...chunkRows);
+        }
+
+        // Group: account → opp → line items
+        const byAccountThenOpp = new Map<
+          string,
+          Map<
+            string,
+            {
+              oppName: string;
+              closeDate: string | null;
+              lineItems: Array<{
+                productCode: string;
+                productName: string | null;
+                family: string | null;
+                quantity: number;
+                totalPrice: number;
+              }>;
+            }
+          >
+        >();
+        for (const r of rows) {
+          const accountId = r.Opportunity?.AccountId;
+          if (!accountId || !r.ProductCode) continue;
+          if (!byAccountThenOpp.has(accountId)) byAccountThenOpp.set(accountId, new Map());
+          const byOpp = byAccountThenOpp.get(accountId)!;
+          if (!byOpp.has(r.OpportunityId)) {
+            byOpp.set(r.OpportunityId, {
+              oppName: r.Opportunity?.Name || "",
+              closeDate: r.Opportunity?.CloseDate || null,
+              lineItems: [],
+            });
+          }
+          byOpp.get(r.OpportunityId)!.lineItems.push({
+            productCode: r.ProductCode,
+            productName: r.Product2?.Name ?? null,
+            family: r.Product2?.Family ?? null,
+            quantity: r.Quantity ?? 0,
+            totalPrice: r.TotalPrice ?? 0,
+          });
+        }
+
+        for (const [accountId, byOpp] of byAccountThenOpp.entries()) {
+          const existing = result.get(accountId) || [];
+          for (const [oppId, info] of byOpp.entries()) {
+            existing.push({
+              oppId,
+              oppName: info.oppName,
+              closeDate: info.closeDate,
+              lineItems: info.lineItems,
+            });
+          }
+          result.set(accountId, existing);
+        }
+      } catch (err) {
+        console.warn(
+          `getDeploymentOppDetailsByAccount chunk ${i}–${i + CHUNK} failed: ${(err as Error).message}`
+        );
+      }
+    }
+    salesforceCache.set(cacheKey, result);
+    return result;
+  }
+
   // Bulk fetch TSA/IE/PRS metadata for a set of accounts. Used during portfolio
   // resolution to populate per-account owner names for the admin grouped view
   // and for showing role context on each card.

@@ -1,0 +1,195 @@
+/* ─── Deployments view ──────────────────────────────────────────────────
+   Phase 1 styles for /deployments. Hierarchy: Customer → [Opp →] Product.
+   Built on design tokens; component family namespaced .deployments-*.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.deployments-tsa-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.deployments-tsa-switcher label {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.deployments-customer-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.deployments-customer-card { padding: 0; }
+
+.deployments-customer-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-4) var(--space-5);
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+
+.deployments-customer-header:hover { background: var(--surface-muted); }
+
+.deployments-customer-name {
+  flex: 1 1 auto;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.deployments-customer-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.deployments-customer-money {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.deployments-customer-body {
+  padding: 0 var(--space-5) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Opp node — middle level, only rendered when render mode is by_opp */
+.deployments-opp {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-muted);
+  overflow: hidden;
+}
+
+.deployments-opp--no-kantata {
+  border-style: dashed;
+}
+
+.deployments-opp-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+
+.deployments-opp-header:hover { background: var(--surface-hover); }
+
+.deployments-opp-name {
+  flex: 1 1 auto;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.deployments-opp-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.deployments-opp-budget {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.deployments-opp-kantata-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-tertiary);
+}
+
+.deployments-opp-kantata-link:hover { color: var(--color-brand-600); }
+
+.deployments-opp-body {
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  background: var(--surface-card);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Product deployment leaf node */
+.deployments-product {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+}
+
+.deployments-product-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.deployments-product-name {
+  flex: 1 1 auto;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.deployments-product-money {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  margin-left: var(--space-2);
+}
+
+.deployments-product-kantata {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border-subtle);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.deployments-product-kantata a {
+  color: var(--color-brand-600);
+  display: inline-flex;
+  vertical-align: text-bottom;
+}
+
+.deployments-product-plan-stub {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border-subtle);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+}

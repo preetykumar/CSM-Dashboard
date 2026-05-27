@@ -38,6 +38,7 @@ import {
   LoadingRow,
   EmptyState,
 } from "../ui";
+import { useStickyState } from "../../hooks/useStickyState";
 
 const ROLE_LABELS: Record<Role, string> = {
   csm: "CSM",
@@ -70,10 +71,11 @@ function getGreeting(): string {
 }
 
 export function HomeView() {
-  const [isAdmin, setIsAdmin] = useState(true);
-  const [adminRole, setAdminRole] = useState<Role>("admin");
-  const [nonAdminRole, setNonAdminRole] = useState<Role>("csm");
-  const [widgetsOpen, setWidgetsOpen] = useState(true);
+  // Selections sticky per-user (localStorage namespaced by email).
+  const [isAdmin, setIsAdmin] = useStickyState<boolean>("home:isAdmin", true);
+  const [adminRole, setAdminRole] = useStickyState<Role>("home:adminRole", "admin");
+  const [nonAdminRole, setNonAdminRole] = useStickyState<Role>("home:nonAdminRole", "csm");
+  const [widgetsOpen, setWidgetsOpen] = useStickyState<boolean>("home:widgetsOpen", true);
 
   const role: Role = isAdmin ? adminRole : nonAdminRole;
   const userEmail = MOCK_USERS[role];

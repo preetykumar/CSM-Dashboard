@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from "re
 import { SyncButton } from "./components/SyncButton";
 import { SupportCustomersView } from "./components/SupportCustomersView";
 import { PMProjectsView } from "./components/PMProjectsView";
+import { DeploymentsView } from "./components/deployments/DeploymentsView";
 import { ProductView } from "./components/ProductView";
 import { LoginPage } from "./components/LoginPage";
 import { UserMenu } from "./components/UserMenu";
@@ -244,7 +245,11 @@ function Dashboard() {
           <Route path="/renewals/by-specialist" element={<PRSRenewalView />} />
 
           {/* Deployments — deep-link target from card pills; no top-nav tab */}
-          <Route path="/deployments" element={<PMProjectsView />} />
+          <Route path="/deployments" element={<DeploymentsView />} />
+          {/* Legacy: PM Projects view kept at /deployments/projects for the
+              broader Kantata-implementations view until DeploymentsView
+              reaches feature parity */}
+          <Route path="/deployments/projects" element={<PMProjectsView />} />
 
           {/* Customer Routes */}
           <Route path="/customer/support" element={<SupportCustomersView />} />

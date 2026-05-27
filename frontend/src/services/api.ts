@@ -1146,6 +1146,78 @@ export async function fetchPortfolio(role: Role, email: string): Promise<Portfol
   return res.json();
 }
 
+// ── Deployments tree ────────────────────────────────────────────────────────
+
+export type DeploymentType = "cloud" | "on_prem";
+
+export interface DeploymentProductNode {
+  productLabel: string;
+  productCode: string;
+  deploymentType: DeploymentType;
+  totalDepDollars: number;
+  lineItems: Array<{ productCode: string; productName: string | null; totalPrice: number; quantity: number }>;
+  plan: null;
+}
+
+export interface DeploymentOppKantata {
+  workspaceId: string | null;
+  title: string | null;
+  budget: number | null;
+  budgetUsed: number;
+  budgetRemaining: string | null;
+  overBudget: boolean;
+  status: string | null;
+  effectiveDueDate: string | null;
+  url: string | null;
+}
+
+export interface DeploymentOppNode {
+  oppId: string;
+  oppName: string;
+  closeDate: string | null;
+  kantata: DeploymentOppKantata | null;
+  products: DeploymentProductNode[];
+  totalDepDollars: number;
+}
+
+export interface DeploymentCustomerNode {
+  accountId: string;
+  accountName: string;
+  opps: DeploymentOppNode[];
+  renderMode: "flat" | "by_opp";
+  totalDepDollars: number;
+  totalKantataBudget: number | null;
+  oppCount: number;
+  productCount: number;
+}
+
+export interface DeploymentTreeResponse {
+  role: "tsa";
+  email: string;
+  customers: DeploymentCustomerNode[];
+  totalCount: number;
+  totals: {
+    customers: number;
+    opps: number;
+    products: number;
+    depDollars: number;
+    kantataBudget: number;
+    kantataUsed: number;
+    kantataRemaining: number;
+    oppsWithoutKantata: number;
+  };
+  tookMs?: number;
+  resolvedMs?: number;
+  cacheHit?: boolean;
+}
+
+export async function fetchDeploymentTree(role: "tsa", email: string): Promise<DeploymentTreeResponse> {
+  const params = new URLSearchParams({ role, email });
+  const res = await fetch(`${API_BASE}/deployments?${params}`, fetchOptions);
+  if (!res.ok) throw new Error(`Failed to fetch deployments tree: ${res.status}`);
+  return res.json();
+}
+
 // Walk the account tree (parents + children) and collect distinct names suitable
 // for /api/health/batch. We pass names, not IDs, because the health batch
 // endpoint is keyed by accountName.
