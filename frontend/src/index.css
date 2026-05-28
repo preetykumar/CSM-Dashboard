@@ -11301,3 +11301,15 @@ header .hint {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─── Account hierarchy nesting (used by all account-list views) ─────────── */
+.hierarchy-row {
+  margin-bottom: 8px;
+}
+.hierarchy-row.is-child > .hierarchy-row-content,
+.hierarchy-row.is-child > .card {
+  border-left: 3px solid var(--color-brand-300, #93c5fd);
+}
+.hierarchy-children {
+  margin-top: 8px;
+}

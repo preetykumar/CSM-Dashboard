@@ -6,6 +6,9 @@ import { transformApiOpportunity } from '../types/renewal';
 import { WorkflowEngine, isClosedLost, isClosedWon } from '../services/workflow-engine';
 import { formatCurrency } from '../utils/format';
 import { OpportunityCard } from './renewal/OpportunityCard';
+import { useAccountHierarchy } from '../hooks/useAccountHierarchy';
+import { nestByHierarchy } from '../lib/nestByHierarchy';
+import { HierarchyList } from './HierarchyList';
 
 interface AccountRenewalPortfolio {
   accountName: string;
@@ -148,6 +151,17 @@ export function CustomerRenewalView() {
     return groupByAccount(filtered);
   }, [opportunities, searchQuery, filter]);
 
+  // Nest account portfolios under their SF parent account (strict scope —
+  // a child only nests if its parent is also in the filtered list). Falls
+  // back to flat rendering if hierarchy hasn't loaded yet.
+  const { hierarchy } = useAccountHierarchy();
+  const hierarchyRoots = useMemo(() => {
+    if (!hierarchy) {
+      return accountPortfolios.map((p) => ({ item: p, parentId: null, children: [] }));
+    }
+    return nestByHierarchy(accountPortfolios, hierarchy);
+  }, [accountPortfolios, hierarchy]);
+
   const { totalValue, urgentCount, uniqueAccounts } = useMemo(() => {
     const total = opportunities.reduce((sum, opp) => sum + (opp.amount || 0), 0);
     const urgent = opportunities.filter(opp => WorkflowEngine.getRequiredActions(opp).length > 0).length;
@@ -206,10 +220,21 @@ export function CustomerRenewalView() {
       </div>
 
       <div className="prs-list">
-        {accountPortfolios.map(portfolio => (
-          <AccountCard key={portfolio.accountId} portfolio={portfolio} expanded={expandedAccount === portfolio.accountId} onToggle={() => setExpandedAccount(expandedAccount === portfolio.accountId ? null : portfolio.accountId)} sortConfig={sortConfig} />
-        ))}
-        {accountPortfolios.length === 0 && (<div className="renewal-empty"><FileText size={48} className="renewal-empty-icon" /><p>No renewal opportunities found</p></div>)}
+        {hierarchyRoots.length > 0 ? (
+          <HierarchyList
+            roots={hierarchyRoots}
+            renderItem={(portfolio) => (
+              <AccountCard
+                portfolio={portfolio}
+                expanded={expandedAccount === portfolio.accountId}
+                onToggle={() => setExpandedAccount(expandedAccount === portfolio.accountId ? null : portfolio.accountId)}
+                sortConfig={sortConfig}
+              />
+            )}
+          />
+        ) : (
+          <div className="renewal-empty"><FileText size={48} className="renewal-empty-icon" /><p>No renewal opportunities found</p></div>
+        )}
       </div>
 
     </div>

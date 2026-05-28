@@ -147,6 +147,29 @@ function statsFromTickets(
 export function createCachedRoutes(db: IDatabaseService): Router {
   const router = Router();
 
+  // Account hierarchy: returns the full SF account parent/child map. Cached
+  // 5 min HTTP — used by frontend views to nest customers under their parent.
+  router.get("/account-hierarchy", async (_req: Request, res: Response) => {
+    try {
+      const hierarchy = await db.getAccountHierarchy();
+      res.set("Cache-Control", "public, max-age=300");
+      res.json({
+        entries: hierarchy.map((h) => ({
+          accountId: h.account_id,
+          accountName: h.account_name,
+          parentId: h.parent_id,
+          parentName: h.parent_name,
+          ultimateParentId: h.ultimate_parent_id,
+          ultimateParentName: h.ultimate_parent_name,
+        })),
+        count: hierarchy.length,
+      });
+    } catch (error) {
+      console.error("Error fetching account hierarchy:", error);
+      res.status(500).json({ error: "Failed to fetch account hierarchy" });
+    }
+  });
+
   // Get all organizations with summaries
   router.get("/", async (_req: Request, res: Response) => {
     try {
