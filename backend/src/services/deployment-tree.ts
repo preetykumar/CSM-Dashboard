@@ -179,24 +179,38 @@ export async function getDeploymentTreeForTSA(
     if (uuid) uuidByAccountId.set(accountIds[i], uuid);
   }
 
-  // Index Zendesk orgs by SF account id. Zendesk stores 15-char SF IDs;
-  // SF returns 18-char (CLAUDE.md §14). Match by both forms.
-  const zdOrgIdsByAccountId = new Map<string, number[]>();
-  for (const org of allOrgs) {
-    if (!org.salesforce_id) continue;
-    const sf15 = org.salesforce_id.substring(0, 15);
-    for (const variant of [org.salesforce_id, sf15]) {
-      if (!zdOrgIdsByAccountId.has(variant)) zdOrgIdsByAccountId.set(variant, []);
-      const arr = zdOrgIdsByAccountId.get(variant)!;
-      if (!arr.includes(org.id)) arr.push(org.id);
-    }
-  }
-
-  // Index account names from the hierarchy cache.
+  // Index account names from the hierarchy cache (needed by the org lookup
+  // below — name fallback matches against this).
   const idSet = new Set(accountIds);
   const accountNameById = new Map<string, string>();
   for (const h of accountHierarchy as CachedAccountHierarchy[]) {
     if (idSet.has(h.account_id)) accountNameById.set(h.account_id, h.account_name);
+  }
+
+  // Index Zendesk orgs by EVERY resolution key the sync pipeline already
+  // produced. The fuzzy 8-strategy matcher (sync.ts) runs at sync time and
+  // persists results to `org.salesforce_account_name` — so at query time we
+  // pick those up alongside direct SF-ID matches. Zendesk stores 15-char SF
+  // IDs; SF returns 18-char (CLAUDE.md §14) — match both forms.
+  //
+  // Three lookup keys, OR'd together:
+  //   - org.salesforce_id (18-char or 15-char)
+  //   - org.salesforce_account_name (populated by sync's fuzzy matcher)
+  const zdOrgIdsBySfId = new Map<string, number[]>();
+  const zdOrgIdsByAccountName = new Map<string, number[]>();
+  const addToMap = (map: Map<string, number[]>, key: string, id: number) => {
+    if (!map.has(key)) map.set(key, []);
+    const arr = map.get(key)!;
+    if (!arr.includes(id)) arr.push(id);
+  };
+  for (const org of allOrgs) {
+    if (org.salesforce_id) {
+      addToMap(zdOrgIdsBySfId, org.salesforce_id, org.id);
+      addToMap(zdOrgIdsBySfId, org.salesforce_id.substring(0, 15), org.id);
+    }
+    if (org.salesforce_account_name) {
+      addToMap(zdOrgIdsByAccountName, org.salesforce_account_name, org.id);
+    }
   }
 
   // Index Kantata workspaces by Opportunity ID (1:1 per spike).
@@ -310,11 +324,16 @@ export async function getDeploymentTreeForTSA(
     const renderMode: DeploymentCustomerNode["renderMode"] =
       oppNodes.length === 1 && oppNodes[0].products.length === 1 ? "flat" : "by_opp";
 
-    // Look up Zendesk orgs by both 18-char and 15-char SF id (one will hit).
-    const zdOrgIds =
-      zdOrgIdsByAccountId.get(accountId) ||
-      zdOrgIdsByAccountId.get(accountId.substring(0, 15)) ||
-      [];
+    // Look up Zendesk orgs by ANY of: 18-char SF ID, 15-char SF ID, or the
+    // resolved salesforce_account_name (which is populated by sync's 8-strategy
+    // fuzzy matcher — domain, collapsed-alpha, acronyms, etc.). Dedupe by id.
+    const zdOrgIds = Array.from(
+      new Set([
+        ...(zdOrgIdsBySfId.get(accountId) || []),
+        ...(zdOrgIdsBySfId.get(accountId.substring(0, 15)) || []),
+        ...(zdOrgIdsByAccountName.get(accountName) || []),
+      ])
+    );
 
     customers.push({
       accountId,
