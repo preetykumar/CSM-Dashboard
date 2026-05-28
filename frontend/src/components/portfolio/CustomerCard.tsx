@@ -191,6 +191,9 @@ function SupportSection({ account }: { account: MockPortfolioAccount }) {
     j.zendeskOrgIds === null
       ? null
       : `${j.zendeskOpenTickets} open · ${j.zendeskOpen90d} in last 90 days`;
+  const [showDetail, setShowDetail] = useState(false);
+
+  const hasContent = j.zendeskOrgIds !== null && j.zendeskOrgIds.length > 0 && j.zendeskOpen90d > 0;
 
   return (
     <section className="portfolio-section">
@@ -200,17 +203,29 @@ function SupportSection({ account }: { account: MockPortfolioAccount }) {
         {summary && <span className="portfolio-section-summary">{summary}</span>}
       </header>
       <div className="portfolio-section-body">
-        {/* No-link state already handled inside AccountSupportTickets, but
-            for the cheap case where the backend already told us there's no
-            recent activity we render a lighter EmptyState here to avoid an
-            unnecessary fetch. */}
-        {j.zendeskOrgIds !== null && j.zendeskOrgIds.length > 0 && j.zendeskOpen90d === 0 ? (
-          <EmptyState reason="no-records" dataType="support tickets" />
-        ) : (
+        {!hasContent ? (
+          j.zendeskOrgIds === null ? (
+            <EmptyState
+              reason="no-match"
+              dataType="Zendesk org"
+              hint="Account isn't linked to a Zendesk organization."
+            />
+          ) : (
+            <EmptyState reason="no-records" dataType="support tickets" />
+          )
+        ) : showDetail ? (
           <AccountSupportTickets
             zendeskOrgIds={j.zendeskOrgIds}
             accountName={account.name}
           />
+        ) : (
+          <button
+            type="button"
+            className="portfolio-load-button"
+            onClick={() => setShowDetail(true)}
+          >
+            Load ticket list →
+          </button>
         )}
       </div>
     </section>
@@ -223,6 +238,9 @@ function UsageSection({ account }: { account: MockPortfolioAccount }) {
     j.amplitudeActiveUsers90d === null
       ? null
       : `${j.amplitudeActiveUsers90d} active users · ${j.amplitudeTotalUsersInSF} SF contacts/leads`;
+  const [showDetail, setShowDetail] = useState(false);
+
+  const hasContent = j.amplitudeActiveUsers90d !== null;
 
   return (
     <section className="portfolio-section">
@@ -232,15 +250,22 @@ function UsageSection({ account }: { account: MockPortfolioAccount }) {
         {summary && <span className="portfolio-section-summary">{summary}</span>}
       </header>
       <div className="portfolio-section-body">
-        {j.amplitudeActiveUsers90d === null ? (
-          // No Amplitude tracking at all for this account — skip the fetch.
+        {!hasContent ? (
           <EmptyState
             reason="no-tracking"
             dataType="Usage"
             hint="No Amplitude tracking is set up for this account yet."
           />
-        ) : (
+        ) : showDetail ? (
           <AccountUsagePanel accountId={account.id} accountName={account.name} />
+        ) : (
+          <button
+            type="button"
+            className="portfolio-load-button"
+            onClick={() => setShowDetail(true)}
+          >
+            Load per-product usage →
+          </button>
         )}
       </div>
     </section>

@@ -11430,3 +11430,20 @@ header .hint {
   color: var(--text-secondary, #6b7280);
   font-size: 13px;
 }
+
+/* ─── Portfolio card lazy-load button ───────────────────────────────── */
+.portfolio-load-button {
+  font: inherit;
+  font-size: 13px;
+  color: var(--color-brand-600, #2563eb);
+  background: none;
+  border: 1px dashed var(--border-subtle, #e5e7eb);
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.portfolio-load-button:hover {
+  background: var(--bg-hover, #f3f4f6);
+  border-color: var(--color-brand-300, #93c5fd);
+}
