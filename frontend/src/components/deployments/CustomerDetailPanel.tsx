@@ -54,6 +54,17 @@ export function CustomerDetailPanel({ customer }: Props) {
     };
   }, [customer.accountId]);
 
+  // Derive Amplitude lookup keys the same way CustomerUsageView does — pull
+  // from the subscriptions response, not from the deployment-tree's
+  // precomputed value, because the precomputed value misses cases where the
+  // ZD/SF account has subscriptions but UUID is on a non-first one. Monitor
+  // also needs the domain prefix derived from Enterprise_Domain__c.
+  const enterpriseUuid =
+    subs?.find((s) => s.enterpriseUuid)?.enterpriseUuid ||
+    customer.enterpriseUuid ||
+    undefined;
+  const monitorDomain = subs?.find((s) => s.enterpriseDomain)?.enterpriseDomain?.split(".")[0];
+
   return (
     <div className="deployments-detail-panel">
       <div className="deployments-detail-tabs" role="tablist">
@@ -79,7 +90,8 @@ export function CustomerDetailPanel({ customer }: Props) {
             <CustomerHealthCard
               accountName={customer.accountName}
               accountId={customer.accountId}
-              enterpriseUuid={customer.enterpriseUuid || undefined}
+              enterpriseUuid={enterpriseUuid}
+              monitorDomain={monitorDomain}
               subscriptions={subs || []}
             />
           )
@@ -94,9 +106,10 @@ export function CustomerDetailPanel({ customer }: Props) {
             <LoadingRow>Loading subscriptions…</LoadingRow>
           ) : (
             <UnifiedUsageSection
-              enterpriseUuid={customer.enterpriseUuid || undefined}
+              enterpriseUuid={enterpriseUuid}
               accountName={customer.accountName}
               salesforceAccountId={customer.accountId}
+              monitorDomain={monitorDomain}
               subscriptions={subs || []}
             />
           )
