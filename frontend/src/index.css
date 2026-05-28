@@ -11337,3 +11337,62 @@ header .hint {
 .is-child-account.usage-customer-card {
   border-left: 3px solid var(--color-brand-300, #93c5fd);
 }
+
+/* ─── Renewals account-primary card (Closed Won, etc.) ───────────────── */
+.renewal-account-card {
+  background: var(--bg-elevated, #fff);
+  border: 1px solid var(--border-subtle, #e5e7eb);
+  border-radius: 8px;
+  padding: 0;
+  margin-bottom: 8px;
+}
+.renewal-account-card.is-child {
+  border-left: 3px solid var(--color-brand-300, #93c5fd);
+}
+.renewal-account-card.is-phantom {
+  background: var(--bg-subtle, #f9fafb);
+  border-style: dashed;
+}
+.renewal-account-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+}
+.renewal-account-header:hover {
+  background: var(--bg-hover, #f3f4f6);
+}
+.renewal-account-name {
+  flex: 1;
+  font-size: 15px;
+  color: var(--text-primary, #111827);
+}
+.renewal-account-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+}
+.renewal-account-amount {
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+}
+.renewal-account-phantom-tag {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--text-tertiary, #9ca3af);
+}
+.renewal-account-opps {
+  padding: 0 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
