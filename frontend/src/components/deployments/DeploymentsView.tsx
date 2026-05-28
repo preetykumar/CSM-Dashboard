@@ -136,22 +136,27 @@ export function DeploymentsView() {
     [tsaEmail]
   );
 
-  // Apply status filter to the customer tree. Customers with zero matching
-  // opps drop out of the rendered list entirely. Totals at the page-header
-  // level still come from the unfiltered data so users see the full pool.
+  // Apply status filter recursively to the customer tree. A node is kept if
+  // its own opps match OR any descendant is kept (so a parent with no direct
+  // matching opps stays in view as a grouping for its matching children).
+  // Totals at the page-header level still come from the unfiltered data so
+  // users see the full pool.
   const filteredCustomers = useMemo(() => {
     if (!data) return [];
-    return data.customers
-      .map((c) => {
-        const opps = c.opps.filter((o) => matchesStatusFilter(o, statusFilter));
-        if (opps.length === 0) return null;
-        const productCount = opps.reduce((sum, o) => sum + o.products.length, 0);
-        // Recompute renderMode against the filtered opps so we don't show "by_opp"
-        // nesting when filtering collapsed the customer back to 1 opp / 1 product.
-        const renderMode = opps.length === 1 && opps[0].products.length === 1 ? "flat" : "by_opp";
-        return { ...c, opps, productCount, oppCount: opps.length, renderMode };
-      })
-      .filter((c): c is DeploymentCustomerNode => c !== null);
+    const filterNode = (c: DeploymentCustomerNode): DeploymentCustomerNode | null => {
+      const opps = c.opps.filter((o) => matchesStatusFilter(o, statusFilter));
+      const productCount = opps.reduce((sum, o) => sum + o.products.length, 0);
+      // Recompute renderMode against filtered opps so we don't show "by_opp"
+      // nesting when filtering collapsed the customer back to 1 opp / 1 product.
+      const renderMode: DeploymentCustomerNode["renderMode"] =
+        opps.length === 1 && opps[0].products.length === 1 ? "flat" : "by_opp";
+      const children = (c.children || [])
+        .map(filterNode)
+        .filter((x): x is DeploymentCustomerNode => x !== null);
+      if (opps.length === 0 && children.length === 0) return null;
+      return { ...c, opps, productCount, oppCount: opps.length, renderMode, children };
+    };
+    return data.customers.map(filterNode).filter((c): c is DeploymentCustomerNode => c !== null);
   }, [data, statusFilter]);
 
   const headerActions = (
@@ -259,6 +264,7 @@ export function DeploymentsView() {
                   <CustomerNode
                     key={c.accountId}
                     customer={c}
+                    depth={0}
                     expanded={expanded}
                     onToggle={toggle}
                   />
@@ -274,66 +280,99 @@ export function DeploymentsView() {
 
 function CustomerNode({
   customer,
+  depth,
   expanded,
   onToggle,
 }: {
   customer: DeploymentCustomerNode;
+  depth: number;
   expanded: Set<string>;
   onToggle: (key: string) => void;
 }) {
   const key = `cust:${customer.accountId}`;
   const open = expanded.has(key);
   const flat = customer.renderMode === "flat";
+  const hasOwnOpps = customer.opps.length > 0;
+  const childCount = customer.children?.length || 0;
 
   return (
-    <Card className="deployments-customer-card">
-      <button
-        type="button"
-        className="deployments-customer-header"
-        onClick={() => onToggle(key)}
-        aria-expanded={open}
-      >
-        {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        <span className="deployments-customer-name">{customer.accountName}</span>
-        <span className="deployments-customer-meta">
-          <Badge tone="brand">{customer.productCount} {customer.productCount === 1 ? "deployment" : "deployments"}</Badge>
-          {customer.oppCount > 1 && (
-            <Badge tone="neutral">{customer.oppCount} opps</Badge>
-          )}
-          <span className="deployments-customer-money">{fmtMoney(customer.totalDepDollars)}</span>
-        </span>
-      </button>
+    <div className={`deployments-customer-wrapper${depth > 0 ? " is-child" : ""}`} style={{ marginLeft: depth * 24 }}>
+      <Card className="deployments-customer-card">
+        <button
+          type="button"
+          className="deployments-customer-header"
+          onClick={() => onToggle(key)}
+          aria-expanded={open}
+        >
+          {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          <span className="deployments-customer-name">{customer.accountName}</span>
+          <span className="deployments-customer-meta">
+            {hasOwnOpps && (
+              <>
+                <Badge tone="brand">{customer.productCount} {customer.productCount === 1 ? "deployment" : "deployments"}</Badge>
+                {customer.oppCount > 1 && <Badge tone="neutral">{customer.oppCount} opps</Badge>}
+              </>
+            )}
+            {childCount > 0 && (
+              <Badge tone="info">+{childCount} {childCount === 1 ? "child" : "children"}</Badge>
+            )}
+            {hasOwnOpps && (
+              <span className="deployments-customer-money">{fmtMoney(customer.totalDepDollars)}</span>
+            )}
+          </span>
+        </button>
 
-      {open && (
+        {open && (
         <div className="deployments-customer-body">
-          {/* Deployment structure (opps / products) */}
-          {flat ? (
-            // Single-product single-opp: skip the Opp level, render the product directly
-            <ProductDeployment
-              product={customer.opps[0].products[0]}
-              kantata={customer.opps[0].kantata}
-              oppName={customer.opps[0].oppName}
-              showKantataInline
-            />
-          ) : (
-            customer.opps.map((opp) => (
-              <OppNode
-                key={opp.oppId}
-                opp={opp}
-                customerKey={key}
-                expanded={expanded}
-                onToggle={onToggle}
+          {/* Deployment structure (opps / products) — only when this account
+              has its own direct deploy opps. A pure grouping parent (only
+              children with opps) skips this section. */}
+          {hasOwnOpps && (
+            flat ? (
+              <ProductDeployment
+                product={customer.opps[0].products[0]}
+                kantata={customer.opps[0].kantata}
+                oppName={customer.opps[0].oppName}
+                showKantataInline
               />
-            ))
+            ) : (
+              customer.opps.map((opp) => (
+                <OppNode
+                  key={opp.oppId}
+                  opp={opp}
+                  customerKey={key}
+                  expanded={expanded}
+                  onToggle={onToggle}
+                />
+              ))
+            )
           )}
 
           {/* Phase 2 detail panel: Health / Support / Usage / Kantata.
-              Renders below the structural breakdown so the tree stays primary
-              and detail is a "drill-in" not a "first thing you see". */}
-          <CustomerDetailPanel customer={customer} />
+              Only shown when this account has its own deploy opps — a pure
+              grouping parent (no direct opps, only children with opps)
+              doesn't need the per-customer health/support/usage drilldown. */}
+          {hasOwnOpps && <CustomerDetailPanel customer={customer} />}
         </div>
       )}
-    </Card>
+      </Card>
+
+      {/* Children: render as nested rows under this expanded parent. Strict
+          portfolio scope — they're only here if also assigned to this TSA. */}
+      {open && childCount > 0 && (
+        <div className="deployments-customer-children">
+          {customer.children.map((child) => (
+            <CustomerNode
+              key={child.accountId}
+              customer={child}
+              depth={depth + 1}
+              expanded={expanded}
+              onToggle={onToggle}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

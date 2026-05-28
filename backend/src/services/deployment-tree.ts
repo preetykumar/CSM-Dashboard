@@ -67,6 +67,12 @@ export interface DeploymentCustomerNode {
   //   - zendeskOrgIds feed the Support tab (one customer may map to >1 ZD org)
   enterpriseUuid: string | null;
   zendeskOrgIds: number[];
+  // Hierarchy: parentId is set only when the parent SF account is ALSO in
+  // this TSA's portfolio (strict scope per user decision). Children are
+  // populated by the tree-building pass; flat siblings without an in-scope
+  // parent are top-level.
+  parentId: string | null;
+  children: DeploymentCustomerNode[];
 }
 
 export interface DeploymentTree {
@@ -346,14 +352,49 @@ export async function getDeploymentTreeForTSA(
       productCount: customerProductCount,
       enterpriseUuid: uuidByAccountId.get(accountId) || null,
       zendeskOrgIds: zdOrgIds,
+      parentId: null,   // populated by the hierarchy pass below
+      children: [],
     });
     totals.customers++;
   }
 
+  // ─── Hierarchy nesting (strict portfolio scope) ─────────────────────────
+  // A child is nested under a parent only when the parent is ALSO in this
+  // TSA's customer set. Otherwise the child stays at the top level. This
+  // matches the user's "show only assigned accounts; nest where parent is
+  // also assigned" policy.
+  const customersById = new Map<string, DeploymentCustomerNode>();
+  for (const c of customers) customersById.set(c.accountId, c);
+
+  const parentIdLookup = new Map<string, string | null>();
+  for (const h of accountHierarchy as CachedAccountHierarchy[]) {
+    if (!customersById.has(h.account_id)) continue;
+    parentIdLookup.set(
+      h.account_id,
+      h.parent_id && customersById.has(h.parent_id) ? h.parent_id : null
+    );
+  }
+  for (const c of customers) {
+    c.parentId = parentIdLookup.get(c.accountId) || null;
+    if (c.parentId) {
+      const parent = customersById.get(c.parentId);
+      if (parent) parent.children.push(c);
+    }
+  }
+  // Sort children alphabetically within each parent (consistent with the
+  // existing portfolio-resolver pattern).
+  for (const c of customers) {
+    c.children.sort((a, b) => a.accountName.localeCompare(b.accountName));
+  }
+  // Replace the flat customer list with roots only (children are reachable
+  // through their parent). Roots = customers with no in-scope parent.
+  const roots = customers.filter((c) => !c.parentId);
+  roots.sort((a, b) => a.accountName.localeCompare(b.accountName));
+
   totals.kantataRemaining = Math.max(0, totals.kantataBudget - totals.kantataUsed);
 
-  // Sort customers alphabetically; opps within a customer by close date desc.
-  customers.sort((a, b) => a.accountName.localeCompare(b.accountName));
+  // Sort opps within each customer by close date desc. Top-level (root) sort
+  // is already applied above; children are sorted within each parent.
   for (const c of customers) {
     c.opps.sort((a, b) => (b.closeDate || "").localeCompare(a.closeDate || ""));
   }
@@ -361,8 +402,8 @@ export async function getDeploymentTreeForTSA(
   return {
     role: "tsa",
     email,
-    customers,
-    totalCount: customers.length,
+    customers: roots,
+    totalCount: customers.length, // total across the whole tree, not roots
     totals,
   };
 }

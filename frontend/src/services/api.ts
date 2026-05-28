@@ -1191,6 +1191,8 @@ export interface DeploymentCustomerNode {
   productCount: number;
   enterpriseUuid: string | null;
   zendeskOrgIds: number[];
+  parentId: string | null;
+  children: DeploymentCustomerNode[];
 }
 
 export interface DeploymentTreeResponse {
