@@ -15,7 +15,7 @@
 import { Router, Request, Response } from "express";
 import type { IDatabaseService } from "../services/database-interface.js";
 import type { SalesforceService } from "../services/salesforce.js";
-import type { KantataService } from "../services/kantata.js";
+import type { KantataService, KantataProject } from "../services/kantata.js";
 import { getDeploymentTreeForTSA } from "../services/deployment-tree.js";
 import { MemoryCache } from "../services/cache.js";
 
@@ -78,6 +78,86 @@ export function createDeploymentsRoutes(
       console.error("Deployments tree failed:", error);
       res.status(500).json({
         error: "Failed to build deployments tree",
+        details: error instanceof Error ? error.message : "Unknown",
+      });
+    }
+  });
+
+  // GET /api/deployments/account/:accountId
+  // Single-account deployment summary: SF deploy opps + line items with the
+  // matching Kantata workspace per opp. Used by the Customer view's
+  // "Active Deployments" drill-down tab.
+  router.get("/account/:accountId", async (req: Request, res: Response) => {
+    try {
+      const accountId = req.params.accountId;
+      if (!accountId) return res.status(400).json({ error: "accountId required" });
+      if (!salesforce) return res.status(503).json({ error: "Salesforce unavailable" });
+
+      const cacheKey = `deployments:account:${accountId}`;
+      const cached = deploymentsCache.get<any>(cacheKey);
+      if (cached) {
+        res.set("Cache-Control", "public, max-age=60");
+        return res.json({ ...cached, cacheHit: true });
+      }
+
+      const t0 = Date.now();
+      const [oppsByAccount, allWorkspaces] = await Promise.all([
+        salesforce.getDeploymentOppDetailsByAccount([accountId]),
+        kantata ? kantata.getAllActiveProjects() : Promise.resolve([] as KantataProject[]),
+      ]);
+      const opps = oppsByAccount.get(accountId) || [];
+
+      // Index Kantata workspaces by Opportunity ID (1:1 per spike).
+      const wsByOppId = new Map<string, KantataProject>();
+      for (const ws of allWorkspaces) {
+        if (ws.sfRef?.objectType === "Opportunity" && ws.sfRef.sfId) {
+          if (!wsByOppId.has(ws.sfRef.sfId)) wsByOppId.set(ws.sfRef.sfId, ws);
+        }
+      }
+
+      // Shape into the response. Mirrors DeploymentOppNode but without the
+      // product-bucket grouping — the Customer detail tab cares about raw
+      // line items grouped under their opportunity.
+      const responseOpps = opps.map((opp) => {
+        const ws = wsByOppId.get(opp.oppId);
+        const kantata = ws
+          ? {
+              workspaceId: ws.id,
+              title: ws.title,
+              budget: ws.priceInCents != null ? ws.priceInCents / 100 : null,
+              budgetUsed: ws.budgetUsedInCents / 100,
+              budgetRemaining: ws.budgetRemaining,
+              overBudget: ws.overBudget,
+              status: ws.status?.message ?? null,
+              effectiveDueDate: ws.effectiveDueDate || ws.dueDate,
+              url: ws.url,
+            }
+          : null;
+        return {
+          oppId: opp.oppId,
+          oppName: opp.oppName,
+          closeDate: opp.closeDate,
+          lineItems: opp.lineItems,
+          kantata,
+        };
+      });
+
+      // Sort opps by closeDate desc so most recent/active is at the top.
+      responseOpps.sort((a, b) => (b.closeDate || "").localeCompare(a.closeDate || ""));
+
+      const payload = {
+        accountId,
+        opps: responseOpps,
+        oppCount: responseOpps.length,
+        tookMs: Date.now() - t0,
+      };
+      deploymentsCache.set(cacheKey, payload);
+      res.set("Cache-Control", "public, max-age=60");
+      res.json({ ...payload, cacheHit: false });
+    } catch (error) {
+      console.error("Deployments account detail failed:", error);
+      res.status(500).json({
+        error: "Failed to load account deployments",
         details: error instanceof Error ? error.message : "Unknown",
       });
     }

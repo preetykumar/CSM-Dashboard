@@ -1,17 +1,14 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useLocation } from "react-router-dom";
 import { SyncButton } from "./components/SyncButton";
-import { SupportCustomersView } from "./components/SupportCustomersView";
 import { PMProjectsView } from "./components/PMProjectsView";
 import { DeploymentsView } from "./components/deployments/DeploymentsView";
 import { ProductView } from "./components/ProductView";
 import { LoginPage } from "./components/LoginPage";
 import { UserMenu } from "./components/UserMenu";
 import { ChatWidget } from "./components/chat";
-import { CustomerUsageView } from "./components/CustomerUsageView";
 import RenewalAgent from "./components/RenewalAgent";
 import { PRSRenewalView } from "./components/PRSRenewalView";
 import { CSMRenewalView } from "./components/CSMRenewalView";
-import { CustomerRenewalView } from "./components/CustomerRenewalView";
 import { MonthlyRenewalView } from "./components/MonthlyRenewalView";
 import { QuarterlyRenewalView } from "./components/QuarterlyRenewalView";
 import { ClosedWonView } from "./components/ClosedWonView";
@@ -20,11 +17,11 @@ import { ProcessAuditView } from "./components/ProcessAuditView";
 import { HomePage } from "./components/HomePage";
 import { HomeView } from "./components/portfolio/HomeView";
 import { PortfolioView } from "./components/portfolio/PortfolioView";
-import { HealthView } from "./components/HealthView";
 import { ProductUsageView } from "./components/ProductUsageView";
 import { OverdueRenewalsView } from "./components/OverdueRenewalsView";
 import { DeploymentTemplatesView } from "./components/admin/DeploymentTemplatesView";
 import { DeploymentTemplateDetailView } from "./components/admin/DeploymentTemplateDetailView";
+import { CustomerPage } from "./components/customer/CustomerPage";
 import { useAuth } from "./contexts/AuthContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import { ToastProvider } from "./components/renewal/ToastProvider";
@@ -159,7 +156,7 @@ function Dashboard() {
             Deployments
           </NavLink>
           <NavLink
-            to={ROUTES.CUSTOMER_SUPPORT}
+            to="/customer"
             className={activeMainTab === "customer" ? "active" : ""}
             aria-current={activeMainTab === "customer" ? "page" : undefined}
           >
@@ -195,23 +192,9 @@ function Dashboard() {
           </nav>
         )}
 
-        {/* Customer Sub-tabs */}
-        {activeMainTab === "customer" && (
-          <nav className="sub-tabs" aria-label="Customer views">
-            <NavLink to={ROUTES.CUSTOMER_SUPPORT} end>
-              Support Tickets
-            </NavLink>
-            <NavLink to={ROUTES.CUSTOMER_USAGE}>
-              Usage Data
-            </NavLink>
-            <NavLink to={ROUTES.CUSTOMER_RENEWALS}>
-              Renewals
-            </NavLink>
-            <NavLink to={ROUTES.CUSTOMER_HEALTH}>
-              Health
-            </NavLink>
-          </nav>
-        )}
+        {/* Customer view is now a single unified page with a per-account
+            4-tab drill-down (Health / Support / Usage / Active Deployments).
+            No sub-tabs anymore — old subroutes redirect to /customer below. */}
 
         {/* Product Sub-tabs */}
         {activeMainTab === "product" && (
@@ -254,11 +237,14 @@ function Dashboard() {
               reaches feature parity */}
           <Route path="/deployments/projects" element={<PMProjectsView />} />
 
-          {/* Customer Routes */}
-          <Route path="/customer/support" element={<SupportCustomersView />} />
-          <Route path="/customer/usage" element={<CustomerUsageView />} />
-          <Route path="/customer/renewals" element={<CustomerRenewalView />} />
-          <Route path="/customer/health" element={<HealthView />} />
+          {/* Customer Routes — unified page with 4-tab drill-down.
+              The legacy subroutes redirect here (kept for bookmark safety;
+              we may delete the underlying view components in a later commit). */}
+          <Route path="/customer" element={<CustomerPage />} />
+          <Route path="/customer/support" element={<Navigate to="/customer" replace />} />
+          <Route path="/customer/usage" element={<Navigate to="/customer" replace />} />
+          <Route path="/customer/renewals" element={<Navigate to="/customer" replace />} />
+          <Route path="/customer/health" element={<Navigate to="/customer" replace />} />
 
           {/* Product Routes */}
           <Route path="/product/support" element={<ProductView />} />
@@ -274,7 +260,6 @@ function Dashboard() {
           {/* Default redirects */}
           <Route path="/" element={<Navigate to={ROUTES.HOME} replace />} />
           <Route path="/renewals" element={<Navigate to={ROUTES.RENEWALS_UPCOMING} replace />} />
-          <Route path="/customer" element={<Navigate to={ROUTES.CUSTOMER_SUPPORT} replace />} />
           <Route path="/product" element={<Navigate to={ROUTES.PRODUCT_SUPPORT} replace />} />
 
           {/* Legacy URL redirects for bookmarks ────────────────────────── */}

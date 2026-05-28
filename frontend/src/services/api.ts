@@ -1222,6 +1222,40 @@ export async function fetchDeploymentTree(role: "tsa", email: string): Promise<D
   return res.json();
 }
 
+// Single-account deployment summary used by the Customer drill-down's
+// "Active Deployments" tab. Returns SF deploy opps with raw line items +
+// the matching Kantata workspace per opp (1:1 per spike).
+export interface AccountDeploymentOpp {
+  oppId: string;
+  oppName: string;
+  closeDate: string | null;
+  lineItems: Array<{
+    productCode: string;
+    productName: string | null;
+    family: string | null;
+    quantity: number;
+    totalPrice: number;
+  }>;
+  kantata: DeploymentOppKantata | null;
+}
+
+export interface AccountDeploymentsResponse {
+  accountId: string;
+  opps: AccountDeploymentOpp[];
+  oppCount: number;
+  tookMs?: number;
+  cacheHit?: boolean;
+}
+
+export async function fetchAccountDeployments(accountId: string): Promise<AccountDeploymentsResponse> {
+  const res = await fetch(
+    `${API_BASE}/deployments/account/${encodeURIComponent(accountId)}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error(`Failed to fetch account deployments: ${res.status}`);
+  return res.json();
+}
+
 // Walk the account tree (parents + children) and collect distinct names suitable
 // for /api/health/batch. We pass names, not IDs, because the health batch
 // endpoint is keyed by accountName.

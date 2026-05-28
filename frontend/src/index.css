@@ -11447,3 +11447,175 @@ header .hint {
   background: var(--bg-hover, #f3f4f6);
   border-color: var(--color-brand-300, #93c5fd);
 }
+
+/* ─── Customer page (unified, 4-tab drill-down) ──────────────────────── */
+
+.customer-admin-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--text-secondary, #6b7280);
+}
+.customer-role-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  font-size: 14px;
+  color: var(--text-secondary, #6b7280);
+}
+.customer-select {
+  font: inherit;
+  font-size: 14px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle, #e5e7eb);
+  border-radius: 4px;
+  background: white;
+}
+
+.customer-account-wrapper {
+  margin-bottom: 12px;
+}
+.customer-account-wrapper.is-child .customer-account-card {
+  border-left: 3px solid var(--color-brand-300, #93c5fd);
+}
+.customer-account-card {
+  padding: 0;
+}
+.customer-account-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+}
+.customer-account-header:hover {
+  background: var(--bg-hover, #f3f4f6);
+}
+.customer-account-name {
+  flex: 1;
+  font-size: 15px;
+  color: var(--text-primary, #111827);
+}
+.customer-account-summary {
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+}
+.customer-account-body {
+  padding: 0 14px 14px;
+}
+.customer-account-children {
+  margin-top: 8px;
+}
+
+/* Drill-down tabs */
+.customer-drilldown {
+  margin-top: 8px;
+  border-top: 1px solid var(--border-subtle, #e5e7eb);
+  padding-top: 12px;
+}
+.customer-drilldown-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-subtle, #e5e7eb);
+  margin-bottom: 12px;
+}
+.customer-drilldown-tab {
+  background: none;
+  border: none;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.1s, border-color 0.1s;
+}
+.customer-drilldown-tab:hover {
+  color: var(--text-primary, #111827);
+}
+.customer-drilldown-tab.active {
+  color: var(--color-brand-600, #2563eb);
+  border-bottom-color: var(--color-brand-600, #2563eb);
+}
+.customer-drilldown-body {
+  min-height: 120px;
+}
+
+/* Active Deployments tab content */
+.customer-deployment-opp {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--bg-subtle, #f9fafb);
+  border-radius: 6px;
+}
+.customer-deployment-opp-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.customer-deployment-opp-name {
+  font-weight: 600;
+  flex: 1;
+  font-size: 14px;
+}
+.customer-deployment-opp-date {
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+}
+.customer-deployment-kantata {
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: var(--text-primary, #111827);
+}
+.customer-deployment-kantata .label {
+  font-weight: 600;
+  margin-right: 6px;
+  color: var(--text-secondary, #6b7280);
+}
+.customer-deployment-kantata .muted {
+  color: var(--text-secondary, #6b7280);
+  margin-left: 6px;
+}
+.customer-deployment-kantata-link {
+  margin-left: 6px;
+  color: var(--color-brand-600, #2563eb);
+  display: inline-flex;
+  vertical-align: text-bottom;
+}
+.customer-deployment-line-items {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.customer-deployment-line-items th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary, #6b7280);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle, #e5e7eb);
+}
+.customer-deployment-line-items td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle, #f3f4f6);
+}
+.customer-deployment-line-items .mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+.customer-deployment-line-items .muted {
+  color: var(--text-secondary, #6b7280);
+}
