@@ -31,6 +31,17 @@ body {
   letter-spacing: 0.01em;
 }
 
+.app-brand-tagline {
+  display: inline-block;
+  margin-left: var(--space-2, 8px);
+  padding-left: var(--space-2, 8px);
+  border-left: 1px solid var(--border-subtle, #e5e7eb);
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: var(--weight-normal, 400);
+  color: var(--text-tertiary, #64748b);
+  letter-spacing: 0.01em;
+}
+
 .app > header p,
 .app > header .hint {
   color: var(--text-tertiary, #64748b);

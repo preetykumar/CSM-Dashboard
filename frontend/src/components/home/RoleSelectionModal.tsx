@@ -63,7 +63,7 @@ export function RoleSelectionModal({ onRoleSelected }: RoleSelectionModalProps) 
     <div className="role-modal-overlay">
       <div className="role-modal" role="dialog" aria-modal="true" aria-labelledby="role-modal-title">
         <div className="role-modal-header">
-          <h2 id="role-modal-title">Welcome to the Post-sales Customer Team Portal</h2>
+          <h2 id="role-modal-title">Welcome to Customer 360° — Deque's Customer Intelligence Platform</h2>
           <p>Select your role to personalise your home page with relevant tasks and insights.</p>
         </div>
 

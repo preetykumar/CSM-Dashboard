@@ -17,8 +17,8 @@ export function LoginPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <h1>Support, Product Usage, and Renewals Dashboard</h1>
-          <p>Post-sales customer team portal</p>
+          <h1>Customer 360°</h1>
+          <p>Deque's Customer Intelligence Platform</p>
         </div>
 
         <div className="login-body">

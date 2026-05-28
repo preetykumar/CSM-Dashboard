@@ -126,7 +126,8 @@ function Dashboard() {
       <header>
         <div className="header-top">
           <div className="app-brand">
-            <span className="app-brand-name">Post-sales Customer Team Portal</span>
+            <span className="app-brand-name">Customer 360°</span>
+            <span className="app-brand-tagline">Deque's Customer Intelligence Platform</span>
           </div>
           <div className="header-actions">
             <SyncButton />
@@ -325,7 +326,7 @@ function Dashboard() {
       {/* Footer */}
       <footer className="app-footer">
         <div className="footer-content">
-          <span>CSM Dashboard v1.0.0 (MVP)</span>
+          <span>Customer 360° v1.0.0 (MVP)</span>
           <span className="footer-separator">|</span>
           <a
             href="https://github.com/preetykumar/CSM-Dashboard/blob/main/RELEASE_NOTES.md"
