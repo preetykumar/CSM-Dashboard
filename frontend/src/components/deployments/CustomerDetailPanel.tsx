@@ -14,14 +14,13 @@ import { useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import {
   fetchEnterpriseSubscriptionsById,
-  fetchTicketsByStatus,
   type DeploymentCustomerNode,
   type DeploymentOppNode,
   type EnterpriseSubscription,
 } from "../../services/api";
-import type { Ticket } from "../../types";
 import { CustomerHealthCard } from "../CustomerHealthCard";
 import { UnifiedUsageSection } from "../UnifiedUsageSection";
+import { AccountSupportTickets } from "../account/AccountSupportTickets";
 import { Badge, LoadingRow, EmptyState } from "../ui";
 
 type TabId = "health" | "support" | "usage" | "kantata";
@@ -98,7 +97,10 @@ export function CustomerDetailPanel({ customer }: Props) {
         )}
 
         {activeTab === "support" && (
-          <SupportTab zendeskOrgIds={customer.zendeskOrgIds} accountName={customer.accountName} />
+          <AccountSupportTickets
+            zendeskOrgIds={customer.zendeskOrgIds}
+            accountName={customer.accountName}
+          />
         )}
 
         {activeTab === "usage" && (
@@ -126,110 +128,6 @@ const TAB_LABELS: Record<TabId, string> = {
   support: "Support",
   usage: "Usage",
   kantata: "Kantata",
-};
-
-// ── Support tab ──────────────────────────────────────────────────────────
-
-function SupportTab({ zendeskOrgIds, accountName }: { zendeskOrgIds: number[]; accountName: string }) {
-  const [tickets, setTickets] = useState<Ticket[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    if (zendeskOrgIds.length === 0) {
-      setTickets([]);
-      setLoading(false);
-      return;
-    }
-    // Fetch open + pending tickets across all ZD orgs for this customer.
-    Promise.all(
-      zendeskOrgIds.flatMap((orgId) => [
-        fetchTicketsByStatus(orgId, "open").catch(() => [] as Ticket[]),
-        fetchTicketsByStatus(orgId, "pending").catch(() => [] as Ticket[]),
-        fetchTicketsByStatus(orgId, "hold").catch(() => [] as Ticket[]),
-      ])
-    )
-      .then((groups) => {
-        if (cancelled) return;
-        const merged = groups.flat();
-        // Sort newest first by updated_at; cap at 20.
-        merged.sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
-        setTickets(merged.slice(0, 20));
-        setLoading(false);
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Failed to load tickets");
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [zendeskOrgIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (zendeskOrgIds.length === 0) {
-    return (
-      <EmptyState
-        title="No Zendesk org linked"
-        detail={`We couldn't find a Zendesk organization linked to ${accountName} via SF Account ID. Support data will appear once a ZD org is tagged with this SF account.`}
-      />
-    );
-  }
-  if (loading) return <LoadingRow>Loading tickets…</LoadingRow>;
-  if (error) return <EmptyState title="Couldn't load tickets" detail={error} />;
-  if (!tickets || tickets.length === 0) {
-    return <EmptyState title="No open tickets" detail="No open, pending, or on-hold tickets for this customer right now." />;
-  }
-
-  return (
-    <div className="deployments-support">
-      <div className="deployments-support-count">
-        Showing {tickets.length} open / pending / hold ticket{tickets.length === 1 ? "" : "s"}
-        {zendeskOrgIds.length > 1 ? ` across ${zendeskOrgIds.length} Zendesk orgs` : ""}.
-      </div>
-      <table className="deployments-support-table">
-        <thead>
-          <tr>
-            <th>Subject</th>
-            <th>Status</th>
-            <th>Priority</th>
-            <th>Updated</th>
-            <th><span className="visually-hidden">Link</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {tickets.map((t) => (
-            <tr key={t.id}>
-              <td>{t.subject}</td>
-              <td><Badge tone={STATUS_TONE[t.status] || "neutral"}>{t.status}</Badge></td>
-              <td>{t.priority ? <Badge tone={PRIORITY_TONE[t.priority] || "neutral"}>{t.priority}</Badge> : "—"}</td>
-              <td className="deployments-support-date">{t.updated_at ? new Date(t.updated_at).toLocaleDateString() : "—"}</td>
-              <td><span className="visually-hidden">No link available</span></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-const STATUS_TONE: Record<string, "neutral" | "info" | "warning" | "success" | "danger"> = {
-  new: "info",
-  open: "warning",
-  pending: "warning",
-  hold: "neutral",
-  solved: "success",
-  closed: "success",
-};
-
-const PRIORITY_TONE: Record<string, "neutral" | "info" | "warning" | "success" | "danger"> = {
-  low: "neutral",
-  normal: "neutral",
-  high: "warning",
-  urgent: "danger",
 };
 
 // ── Kantata tab ──────────────────────────────────────────────────────────

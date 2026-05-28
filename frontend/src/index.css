@@ -11396,3 +11396,33 @@ header .hint {
   flex-direction: column;
   gap: 8px;
 }
+
+/* ─── Account-scoped components (Support tickets, Usage panel) ────────── */
+.account-support-count {
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+  margin-bottom: 8px;
+}
+.account-support-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.account-support-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+  padding: 8px;
+  border-bottom: 1px solid var(--border-subtle, #e5e7eb);
+}
+.account-support-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border-subtle, #f3f4f6);
+  vertical-align: top;
+}
+.account-support-date {
+  white-space: nowrap;
+  color: var(--text-secondary, #6b7280);
+  font-size: 13px;
+}

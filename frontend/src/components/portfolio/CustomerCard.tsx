@@ -23,6 +23,8 @@ import {
 } from "../../data/portfolioMocks";
 import { EmptyState } from "./EmptyState";
 import { HealthDrilldown } from "./HealthDrilldown";
+import { AccountSupportTickets } from "../account/AccountSupportTickets";
+import { AccountUsagePanel } from "../account/AccountUsagePanel";
 
 interface Props {
   account: MockPortfolioAccount;
@@ -189,6 +191,7 @@ function SupportSection({ account }: { account: MockPortfolioAccount }) {
     j.zendeskOrgIds === null
       ? null
       : `${j.zendeskOpenTickets} open · ${j.zendeskOpen90d} in last 90 days`;
+
   return (
     <section className="portfolio-section">
       <header className="portfolio-section-header">
@@ -197,16 +200,17 @@ function SupportSection({ account }: { account: MockPortfolioAccount }) {
         {summary && <span className="portfolio-section-summary">{summary}</span>}
       </header>
       <div className="portfolio-section-body">
-        {j.zendeskOrgIds === null ? (
-          <EmptyState
-            reason="no-match"
-            dataType="Zendesk org"
-            hint="Account isn't linked to a Zendesk organization. Ask the Zendesk admin to set the SF Account ID on the matching org."
-          />
-        ) : j.zendeskOrgIds.length === 0 || j.zendeskOpen90d === 0 ? (
+        {/* No-link state already handled inside AccountSupportTickets, but
+            for the cheap case where the backend already told us there's no
+            recent activity we render a lighter EmptyState here to avoid an
+            unnecessary fetch. */}
+        {j.zendeskOrgIds !== null && j.zendeskOrgIds.length > 0 && j.zendeskOpen90d === 0 ? (
           <EmptyState reason="no-records" dataType="support tickets" />
         ) : (
-          <p className="portfolio-section-stub">[Ticket list, escalations, SLA — to be wired]</p>
+          <AccountSupportTickets
+            zendeskOrgIds={j.zendeskOrgIds}
+            accountName={account.name}
+          />
         )}
       </div>
     </section>
@@ -219,6 +223,7 @@ function UsageSection({ account }: { account: MockPortfolioAccount }) {
     j.amplitudeActiveUsers90d === null
       ? null
       : `${j.amplitudeActiveUsers90d} active users · ${j.amplitudeTotalUsersInSF} SF contacts/leads`;
+
   return (
     <section className="portfolio-section">
       <header className="portfolio-section-header">
@@ -228,11 +233,14 @@ function UsageSection({ account }: { account: MockPortfolioAccount }) {
       </header>
       <div className="portfolio-section-body">
         {j.amplitudeActiveUsers90d === null ? (
-          <EmptyState reason="no-tracking" dataType="Usage" hint="No Amplitude tracking is set up for this account yet." />
-        ) : j.amplitudeActiveUsers90d === 0 ? (
-          <EmptyState reason="no-records" dataType="active users" />
+          // No Amplitude tracking at all for this account — skip the fetch.
+          <EmptyState
+            reason="no-tracking"
+            dataType="Usage"
+            hint="No Amplitude tracking is set up for this account yet."
+          />
         ) : (
-          <p className="portfolio-section-stub">[Per-product user list, filters — to be wired]</p>
+          <AccountUsagePanel accountId={account.id} accountName={account.name} />
         )}
       </div>
     </section>
