@@ -2856,6 +2856,7 @@ header .hint {
 }
 
 .user-menu-item {
+  display: block;
   width: 100%;
   padding: 0.75rem 1rem;
   background: none;
@@ -2863,6 +2864,9 @@ header .hint {
   text-align: left;
   cursor: pointer;
   color: #333;
+  text-decoration: none;
+  font: inherit;
+  box-sizing: border-box;
   transition: background 0.2s ease;
 }
 
