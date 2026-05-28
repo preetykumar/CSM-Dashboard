@@ -1,136 +1,25 @@
-// Per-customer detail panel that opens under a CustomerNode in the Deployments
-// tree. Four tabs: Health, Support, Usage, Kantata.
-//
-// Lazy-fetches per tab:
-//   - Subscriptions are needed by both Health and Usage, so fetched once at the
-//     panel level and passed down.
-//   - Each tab does its own loading state and never blocks the others.
-//
-// Why a separate panel (vs. inlining): keeps CustomerNode's body lean and lets
-// us swap the layout (e.g., side-by-side instead of tabbed) without rewriting
-// the tree.
+// Per-customer detail panel that opens under a CustomerNode in the
+// Deployments tree. Currently just the Kantata summary — Health, Support,
+// and Usage moved to the unified Customer page's drill-down. New
+// Deployments-specific functionality will be added back here later.
 
-import { useEffect, useState } from "react";
 import { ExternalLink } from "lucide-react";
-import {
-  fetchEnterpriseSubscriptionsById,
-  type DeploymentCustomerNode,
-  type DeploymentOppNode,
-  type EnterpriseSubscription,
-} from "../../services/api";
-import { CustomerHealthCard } from "../CustomerHealthCard";
-import { UnifiedUsageSection } from "../UnifiedUsageSection";
-import { AccountSupportTickets } from "../account/AccountSupportTickets";
-import { Badge, LoadingRow, EmptyState } from "../ui";
-
-type TabId = "health" | "support" | "usage" | "kantata";
+import type { DeploymentCustomerNode, DeploymentOppNode } from "../../services/api";
+import { Badge, EmptyState } from "../ui";
 
 interface Props {
   customer: DeploymentCustomerNode;
 }
 
 export function CustomerDetailPanel({ customer }: Props) {
-  const [activeTab, setActiveTab] = useState<TabId>("health");
-  const [subs, setSubs] = useState<EnterpriseSubscription[] | null>(null);
-  const [subsLoading, setSubsLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    setSubsLoading(true);
-    fetchEnterpriseSubscriptionsById(customer.accountId)
-      .then((res) => {
-        if (cancelled) return;
-        setSubs(res.subscriptions);
-        setSubsLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setSubs([]);
-        setSubsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [customer.accountId]);
-
-  // Derive Amplitude lookup keys the same way CustomerUsageView does — pull
-  // from the subscriptions response, not from the deployment-tree's
-  // precomputed value, because the precomputed value misses cases where the
-  // ZD/SF account has subscriptions but UUID is on a non-first one. Monitor
-  // also needs the domain prefix derived from Enterprise_Domain__c.
-  const enterpriseUuid =
-    subs?.find((s) => s.enterpriseUuid)?.enterpriseUuid ||
-    customer.enterpriseUuid ||
-    undefined;
-  const monitorDomain = subs?.find((s) => s.enterpriseDomain)?.enterpriseDomain?.split(".")[0];
-
   return (
     <div className="deployments-detail-panel">
-      <div className="deployments-detail-tabs" role="tablist">
-        {(["health", "support", "usage", "kantata"] as TabId[]).map((id) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === id}
-            className={`deployments-detail-tab ${activeTab === id ? "active" : ""}`}
-            onClick={() => setActiveTab(id)}
-          >
-            {TAB_LABELS[id]}
-          </button>
-        ))}
-      </div>
-
-      <div className="deployments-detail-body" role="tabpanel">
-        {activeTab === "health" && (
-          subsLoading ? (
-            <LoadingRow>Loading subscriptions…</LoadingRow>
-          ) : (
-            <CustomerHealthCard
-              accountName={customer.accountName}
-              accountId={customer.accountId}
-              enterpriseUuid={enterpriseUuid}
-              monitorDomain={monitorDomain}
-              subscriptions={subs || []}
-            />
-          )
-        )}
-
-        {activeTab === "support" && (
-          <AccountSupportTickets
-            zendeskOrgIds={customer.zendeskOrgIds}
-            accountName={customer.accountName}
-          />
-        )}
-
-        {activeTab === "usage" && (
-          subsLoading ? (
-            <LoadingRow>Loading subscriptions…</LoadingRow>
-          ) : (
-            <UnifiedUsageSection
-              enterpriseUuid={enterpriseUuid}
-              accountName={customer.accountName}
-              salesforceAccountId={customer.accountId}
-              monitorDomain={monitorDomain}
-              subscriptions={subs || []}
-            />
-          )
-        )}
-
-        {activeTab === "kantata" && <KantataTab opps={customer.opps} />}
-      </div>
+      <KantataTab opps={customer.opps} />
     </div>
   );
 }
 
-const TAB_LABELS: Record<TabId, string> = {
-  health: "Health",
-  support: "Support",
-  usage: "Usage",
-  kantata: "Kantata",
-};
-
-// ── Kantata tab ──────────────────────────────────────────────────────────
+// ── Kantata budget summary ────────────────────────────────────────────────
 
 function KantataTab({ opps }: { opps: DeploymentOppNode[] }) {
   const withKantata = opps.filter((o) => o.kantata);
