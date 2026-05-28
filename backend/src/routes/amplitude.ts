@@ -911,6 +911,11 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       ],
     },
     "axe-monitor": {
+      // UUID shipped per product team (verified 2026-05). Coverage is currently
+      // low in the segmentation API (most scan:create:complete events still
+      // emit gp:enterpriseId = "(none)" for not-yet-migrated traffic) — the
+      // domain-prefix fallback below kicks in when no UUID is available.
+      orgProperty: "gp:enterpriseId",
       events: [
         { event: "scan:create:complete", label: "Active Users", metric: "uniques" },
         { event: "scan:create:complete", label: "Scans Created", metric: "totals" },
@@ -919,7 +924,8 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
       ],
     },
     "axe-reports": {
-      orgProperty: "gp:enterpriseId", // UUID just shipped (3 segments, tiny coverage as of 2026-05)
+      // UUID shipped; coverage growing (14 segments verified 2026-05).
+      orgProperty: "gp:enterpriseId",
       events: [
         { event: "usage:chart:load", label: "Active Users", metric: "uniques" },
         { event: "usage:chart:load", label: "Usage Charts Loaded", metric: "totals" },
@@ -979,8 +985,12 @@ export function createAmplitudeRoutes(products: ProductConfig[]): Router {
           let orgProp = config.orgProperty || "gp:organization";
           let matchOp: "is" | "contains" = "is";
 
-          // Monitor workaround: use initial_referring_domain with contains
-          if (slug === "axe-monitor" && monitorDomain) {
+          // Monitor: prefer UUID matching (gp:enterpriseId), but fall back to
+          // referring-domain matching when no UUID is available for this
+          // customer. The Monitor UUID rollout is partial as of 2026-05; many
+          // existing customers still only have referring-domain data.
+          const hasUuid = orgIdentifier && orgIdentifier !== "_";
+          if (slug === "axe-monitor" && !hasUuid && monitorDomain) {
             orgValue = monitorDomain;
             orgProp = "gp:initial_referring_domain";
             matchOp = "contains";
