@@ -195,3 +195,113 @@
   font-size: var(--text-xs);
   color: var(--text-tertiary);
 }
+
+/* ─── Phase 2: Per-customer detail panel ─────────────────────────────── */
+
+.deployments-detail-panel {
+  margin-top: var(--space-4, 16px);
+  padding-top: var(--space-3, 12px);
+  border-top: 2px solid var(--border-subtle, #e5e7eb);
+}
+
+.deployments-detail-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border-subtle, #e5e7eb);
+  margin-bottom: var(--space-3, 12px);
+}
+
+.deployments-detail-tab {
+  background: none;
+  border: none;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.1s, border-color 0.1s;
+}
+.deployments-detail-tab:hover {
+  color: var(--text-primary, #111827);
+}
+.deployments-detail-tab.active {
+  color: var(--color-brand-600, #2563eb);
+  border-bottom-color: var(--color-brand-600, #2563eb);
+}
+
+.deployments-detail-body {
+  min-height: 120px;
+}
+
+/* Support tab table */
+.deployments-support-count {
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+  margin-bottom: 8px;
+}
+.deployments-support-table,
+.deployments-kantata-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.deployments-support-table th,
+.deployments-kantata-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+  padding: 8px;
+  border-bottom: 1px solid var(--border-subtle, #e5e7eb);
+}
+.deployments-support-table td,
+.deployments-kantata-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border-subtle, #f3f4f6);
+  vertical-align: top;
+}
+.deployments-support-date {
+  white-space: nowrap;
+  color: var(--text-secondary, #6b7280);
+  font-size: 13px;
+}
+
+/* Kantata tab summary stats */
+.deployments-kantata-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: var(--space-4, 16px);
+  padding: 12px;
+  background: var(--bg-subtle, #f9fafb);
+  border-radius: 6px;
+}
+.deployments-kantata-stat {
+  display: flex;
+  flex-direction: column;
+}
+.deployments-kantata-stat .label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary, #6b7280);
+  font-weight: 600;
+}
+.deployments-kantata-stat .value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary, #111827);
+  margin-top: 2px;
+}
+.deployments-kantata-stat .value.negative {
+  color: var(--color-danger-600, #dc2626);
+}
+
+/* Hide the Phase-1 "Implementation plan: coming in Phase 2" stub from the
+   product nodes — Phase 2 lives in the detail panel now. */
+.deployments-product-plan-stub {
+  display: none;
+}

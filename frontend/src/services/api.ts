@@ -1189,6 +1189,8 @@ export interface DeploymentCustomerNode {
   totalKantataBudget: number | null;
   oppCount: number;
   productCount: number;
+  enterpriseUuid: string | null;
+  zendeskOrgIds: number[];
 }
 
 export interface DeploymentTreeResponse {

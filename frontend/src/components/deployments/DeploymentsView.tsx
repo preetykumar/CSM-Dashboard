@@ -40,6 +40,7 @@ import {
   Banner,
 } from "../ui";
 import { useStickyState } from "../../hooks/useStickyState";
+import { CustomerDetailPanel } from "./CustomerDetailPanel";
 
 // Status filter options for Kantata project status. Default = "in_progress"
 // because that's what TSAs care about day-to-day.
@@ -305,6 +306,7 @@ function CustomerNode({
 
       {open && (
         <div className="deployments-customer-body">
+          {/* Deployment structure (opps / products) */}
           {flat ? (
             // Single-product single-opp: skip the Opp level, render the product directly
             <ProductDeployment
@@ -324,6 +326,11 @@ function CustomerNode({
               />
             ))
           )}
+
+          {/* Phase 2 detail panel: Health / Support / Usage / Kantata.
+              Renders below the structural breakdown so the tree stays primary
+              and detail is a "drill-in" not a "first thing you see". */}
+          <CustomerDetailPanel customer={customer} />
         </div>
       )}
     </Card>

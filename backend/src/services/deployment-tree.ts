@@ -62,6 +62,11 @@ export interface DeploymentCustomerNode {
   totalKantataBudget: number | null;
   oppCount: number;
   productCount: number;
+  // Phase 2 enrichments for the per-customer detail panel:
+  //   - enterpriseUuid feeds Amplitude/Health lookups
+  //   - zendeskOrgIds feed the Support tab (one customer may map to >1 ZD org)
+  enterpriseUuid: string | null;
+  zendeskOrgIds: number[];
 }
 
 export interface DeploymentTree {
@@ -145,12 +150,47 @@ export async function getDeploymentTreeForTSA(
   if (accountIds.length === 0) return empty;
 
   // Step 2: SF deploy-opp line-item detail per account (in parallel with
-  // Kantata workspace fetch + account-name lookup from DB cache).
-  const [oppDetailsByAccount, allWorkspaces, accountHierarchy] = await Promise.all([
-    salesforce.getDeploymentOppDetailsByAccount(accountIds),
-    kantata ? kantata.getAllActiveProjects() : Promise.resolve([] as KantataProject[]),
-    db.getAccountHierarchy(),
-  ]);
+  // Kantata workspace fetch + account-name lookup from DB cache + per-customer
+  // detail enrichments needed by the Phase 2 detail panel:
+  //   - Enterprise UUIDs (for Amplitude + Health)
+  //   - All Zendesk orgs (to map SF account → ZD orgs for Support tab)
+  const [oppDetailsByAccount, allWorkspaces, accountHierarchy, allOrgs, ...uuidsByAccount] =
+    await Promise.all([
+      salesforce.getDeploymentOppDetailsByAccount(accountIds),
+      kantata ? kantata.getAllActiveProjects() : Promise.resolve([] as KantataProject[]),
+      db.getAccountHierarchy(),
+      db.getOrganizations(),
+      // One SOQL per account for enterprise UUIDs — small N (TSA-scoped, <30).
+      // Failures fall back to []; UUID is optional in the response.
+      ...accountIds.map((id) =>
+        salesforce.getEnterpriseSubscriptionsByAccountId(id).catch((e) => {
+          console.warn(`[deployment-tree] enterprise sub fetch failed for ${id}:`, e instanceof Error ? e.message : e);
+          return [] as Awaited<ReturnType<typeof salesforce.getEnterpriseSubscriptionsByAccountId>>;
+        })
+      ),
+    ]);
+
+  // Index UUIDs by account: first non-empty UUID wins (some products may not
+  // have one assigned yet; per-account display only needs one to drive lookups).
+  const uuidByAccountId = new Map<string, string>();
+  for (let i = 0; i < accountIds.length; i++) {
+    const subs = uuidsByAccount[i] || [];
+    const uuid = subs.find((s) => s.enterpriseUuid)?.enterpriseUuid;
+    if (uuid) uuidByAccountId.set(accountIds[i], uuid);
+  }
+
+  // Index Zendesk orgs by SF account id. Zendesk stores 15-char SF IDs;
+  // SF returns 18-char (CLAUDE.md §14). Match by both forms.
+  const zdOrgIdsByAccountId = new Map<string, number[]>();
+  for (const org of allOrgs) {
+    if (!org.salesforce_id) continue;
+    const sf15 = org.salesforce_id.substring(0, 15);
+    for (const variant of [org.salesforce_id, sf15]) {
+      if (!zdOrgIdsByAccountId.has(variant)) zdOrgIdsByAccountId.set(variant, []);
+      const arr = zdOrgIdsByAccountId.get(variant)!;
+      if (!arr.includes(org.id)) arr.push(org.id);
+    }
+  }
 
   // Index account names from the hierarchy cache.
   const idSet = new Set(accountIds);
@@ -270,6 +310,12 @@ export async function getDeploymentTreeForTSA(
     const renderMode: DeploymentCustomerNode["renderMode"] =
       oppNodes.length === 1 && oppNodes[0].products.length === 1 ? "flat" : "by_opp";
 
+    // Look up Zendesk orgs by both 18-char and 15-char SF id (one will hit).
+    const zdOrgIds =
+      zdOrgIdsByAccountId.get(accountId) ||
+      zdOrgIdsByAccountId.get(accountId.substring(0, 15)) ||
+      [];
+
     customers.push({
       accountId,
       accountName,
@@ -279,6 +325,8 @@ export async function getDeploymentTreeForTSA(
       totalKantataBudget: customerKantataBudget > 0 ? customerKantataBudget : null,
       oppCount: oppNodes.length,
       productCount: customerProductCount,
+      enterpriseUuid: uuidByAccountId.get(accountId) || null,
+      zendeskOrgIds: zdOrgIds,
     });
     totals.customers++;
   }
