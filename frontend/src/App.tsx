@@ -23,6 +23,8 @@ import { PortfolioView } from "./components/portfolio/PortfolioView";
 import { HealthView } from "./components/HealthView";
 import { ProductUsageView } from "./components/ProductUsageView";
 import { OverdueRenewalsView } from "./components/OverdueRenewalsView";
+import { DeploymentTemplatesView } from "./components/admin/DeploymentTemplatesView";
+import { DeploymentTemplateDetailView } from "./components/admin/DeploymentTemplateDetailView";
 import { useAuth } from "./contexts/AuthContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import { ToastProvider } from "./components/renewal/ToastProvider";
@@ -263,6 +265,10 @@ function Dashboard() {
 
           {/* Process Audit (admin-only, reached from UserMenu) */}
           <Route path="/process-audit" element={<ProcessAuditView />} />
+
+          {/* Admin: Deployment Templates (Phase 2) */}
+          <Route path="/admin/deployment-templates" element={<DeploymentTemplatesView />} />
+          <Route path="/admin/deployment-templates/:id" element={<DeploymentTemplateDetailView />} />
 
           {/* Default redirects */}
           <Route path="/" element={<Navigate to={ROUTES.HOME} replace />} />

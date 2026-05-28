@@ -1,0 +1,238 @@
+/* Admin Deployment Templates UI ------------------------------------------- */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.admin-tpl-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.admin-tpl-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-text-muted, #6b7280);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+}
+
+.admin-tpl-table td {
+  padding: 12px;
+  border-bottom: 1px solid var(--color-border-light, #f3f4f6);
+  vertical-align: top;
+  font-size: 14px;
+}
+
+.admin-tpl-link {
+  color: var(--color-link, #2563eb);
+  font-weight: 500;
+  text-decoration: none;
+}
+.admin-tpl-link:hover {
+  text-decoration: underline;
+}
+
+.admin-tpl-desc {
+  font-size: 12px;
+  color: var(--color-text-muted, #6b7280);
+  margin-top: 4px;
+}
+
+.admin-tpl-date {
+  font-size: 12px;
+  color: var(--color-text-muted, #6b7280);
+}
+
+.admin-tpl-back {
+  font-size: 13px;
+  color: var(--color-link, #2563eb);
+  text-decoration: none;
+}
+.admin-tpl-back:hover {
+  text-decoration: underline;
+}
+
+.admin-tpl-summary {
+  color: var(--color-text-muted, #6b7280);
+  font-size: 13px;
+  margin-left: 8px;
+}
+
+.admin-tpl-title-input {
+  font: inherit;
+  font-weight: 700;
+  font-size: 24px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 6px;
+  padding: 4px 8px;
+  width: 100%;
+  max-width: 600px;
+}
+
+.admin-tpl-header-edit {
+  margin-bottom: 16px;
+  padding: 12px;
+}
+.admin-tpl-header-edit label {
+  display: block;
+  font-size: 13px;
+  color: var(--color-text-muted, #6b7280);
+  margin-bottom: 4px;
+}
+.admin-tpl-header-edit textarea {
+  font: inherit;
+  padding: 8px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 4px;
+  margin-top: 4px;
+  resize: vertical;
+}
+
+.admin-tpl-description {
+  color: var(--color-text-muted, #6b7280);
+  margin-bottom: 16px;
+  font-size: 14px;
+  max-width: 720px;
+}
+
+/* Tree -------------------------------------------------------------------- */
+
+.admin-tpl-tree {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-tpl-row {
+  display: grid;
+  grid-template-columns: 24px 64px 90px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border-light, #f3f4f6);
+  font-size: 14px;
+  transition: background-color 0.1s;
+}
+.admin-tpl-row:hover {
+  background: var(--color-bg-hover, #f9fafb);
+}
+.admin-tpl-row.editing {
+  background: var(--color-bg-accent, #eff6ff);
+}
+
+.admin-tpl-chev {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  color: var(--color-text-muted, #6b7280);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.admin-tpl-chev:hover {
+  background: var(--color-bg-hover-strong, #e5e7eb);
+}
+.admin-tpl-chev-spacer {
+  display: inline-block;
+  width: 18px;
+}
+
+.admin-tpl-id {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--color-text-muted, #6b7280);
+  font-weight: 500;
+}
+
+.admin-tpl-desc-cell {
+  cursor: pointer;
+  line-height: 1.4;
+}
+.admin-tpl-desc-cell:hover {
+  color: var(--color-link, #2563eb);
+}
+
+.admin-tpl-outcome {
+  color: var(--color-text-muted, #6b7280);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.admin-tpl-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.admin-tpl-add-root {
+  padding: 12px;
+  border-top: 1px dashed var(--color-border, #e5e7eb);
+}
+
+/* Edit panel (inline, not modal) ------------------------------------------ */
+
+.admin-tpl-edit-panel {
+  position: sticky;
+  bottom: 0;
+  margin-top: 16px;
+  background: var(--color-bg, #fff);
+  border-top: 2px solid var(--color-accent, #2563eb);
+  padding: 12px;
+  z-index: 5;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.admin-tpl-edit-header {
+  font-size: 13px;
+  color: var(--color-text-muted, #6b7280);
+  margin-bottom: 8px;
+}
+
+.admin-tpl-edit-grid {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.admin-tpl-edit-grid label {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+  color: var(--color-text-muted, #6b7280);
+  font-weight: 500;
+}
+.admin-tpl-edit-grid label.admin-tpl-full {
+  grid-column: 1 / -1;
+}
+.admin-tpl-edit-grid input,
+.admin-tpl-edit-grid select,
+.admin-tpl-edit-grid textarea {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 4px;
+  margin-top: 4px;
+  background: #fff;
+  color: var(--color-text, #111827);
+}
+.admin-tpl-edit-grid textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
+.admin-tpl-edit-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

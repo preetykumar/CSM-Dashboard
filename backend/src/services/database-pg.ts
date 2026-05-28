@@ -17,6 +17,10 @@ import type {
   UserPreferences,
   CachedOrgContact,
   CachedProductUserActivity,
+  DeploymentTemplate,
+  DeploymentTemplateItem,
+  DeploymentAuditEntry,
+  DeploymentType,
 } from "./database-interface.js";
 
 // PostgreSQL connection configuration
@@ -228,6 +232,86 @@ export class DatabaseServicePg implements IDatabaseService {
         cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (product_slug, org_key, keycloak_id)
       );
+
+      -- Deployment templates (Phase 2)
+      CREATE TABLE IF NOT EXISTS deployment_templates (
+        id BIGSERIAL PRIMARY KEY,
+        product TEXT NOT NULL,
+        deployment_type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        description TEXT,
+        source_file TEXT,
+        created_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(product, deployment_type, version)
+      );
+
+      CREATE TABLE IF NOT EXISTS deployment_template_items (
+        id BIGSERIAL PRIMARY KEY,
+        template_id BIGINT NOT NULL REFERENCES deployment_templates(id) ON DELETE CASCADE,
+        parent_id BIGINT REFERENCES deployment_template_items(id) ON DELETE CASCADE,
+        item_id TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        activity_type TEXT NOT NULL,
+        description TEXT NOT NULL,
+        target_outcome TEXT,
+        default_deque_role TEXT,
+        default_estimated_days INTEGER,
+        notes TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS deployment_plans (
+        id BIGSERIAL PRIMARY KEY,
+        template_id BIGINT NOT NULL REFERENCES deployment_templates(id),
+        opportunity_id TEXT NOT NULL,
+        opportunity_name TEXT,
+        product TEXT NOT NULL,
+        account_id TEXT NOT NULL,
+        account_name TEXT,
+        tsa_email TEXT,
+        ie_email TEXT,
+        status TEXT NOT NULL DEFAULT 'not_started',
+        created_by TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(opportunity_id, product)
+      );
+
+      CREATE TABLE IF NOT EXISTS deployment_plan_items (
+        id BIGSERIAL PRIMARY KEY,
+        plan_id BIGINT NOT NULL REFERENCES deployment_plans(id) ON DELETE CASCADE,
+        template_item_id BIGINT REFERENCES deployment_template_items(id) ON DELETE SET NULL,
+        parent_id BIGINT REFERENCES deployment_plan_items(id) ON DELETE CASCADE,
+        item_id TEXT,
+        position INTEGER NOT NULL,
+        activity_type TEXT NOT NULL,
+        description TEXT NOT NULL,
+        target_outcome TEXT,
+        progress_status TEXT NOT NULL DEFAULT 'not_started',
+        notes TEXT,
+        deque_responsible TEXT,
+        customer_responsible TEXT,
+        start_date DATE,
+        end_date DATE,
+        estimated_days INTEGER,
+        actual_days INTEGER,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS deployment_audit (
+        id BIGSERIAL PRIMARY KEY,
+        plan_id BIGINT REFERENCES deployment_plans(id) ON DELETE CASCADE,
+        plan_item_id BIGINT REFERENCES deployment_plan_items(id) ON DELETE SET NULL,
+        template_id BIGINT REFERENCES deployment_templates(id) ON DELETE SET NULL,
+        template_item_id BIGINT REFERENCES deployment_template_items(id) ON DELETE SET NULL,
+        actor_email TEXT NOT NULL,
+        action TEXT NOT NULL,
+        details_json JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
     `);
 
     // Create indexes
@@ -249,6 +333,16 @@ export class DatabaseServicePg implements IDatabaseService {
       CREATE INDEX IF NOT EXISTS idx_org_contacts_email ON org_contacts(email);
       CREATE INDEX IF NOT EXISTS idx_pua_product_org ON product_user_activity(product_slug, org_key);
       CREATE INDEX IF NOT EXISTS idx_pua_keycloak ON product_user_activity(keycloak_id);
+      CREATE INDEX IF NOT EXISTS idx_dti_template ON deployment_template_items(template_id);
+      CREATE INDEX IF NOT EXISTS idx_dti_parent ON deployment_template_items(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_dp_tsa ON deployment_plans(tsa_email);
+      CREATE INDEX IF NOT EXISTS idx_dp_account ON deployment_plans(account_id);
+      CREATE INDEX IF NOT EXISTS idx_dpi_plan ON deployment_plan_items(plan_id);
+      CREATE INDEX IF NOT EXISTS idx_dpi_parent ON deployment_plan_items(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_dpi_status ON deployment_plan_items(progress_status);
+      CREATE INDEX IF NOT EXISTS idx_da_plan ON deployment_audit(plan_id);
+      CREATE INDEX IF NOT EXISTS idx_da_actor ON deployment_audit(actor_email);
+      CREATE INDEX IF NOT EXISTS idx_da_created ON deployment_audit(created_at);
     `);
   }
 
@@ -1250,7 +1344,245 @@ export class DatabaseServicePg implements IDatabaseService {
     return out;
   }
 
+  // ─── Deployment Templates (Phase 2) ─────────────────────────────────────
+
+  async listDeploymentTemplates(filter?: {
+    product?: string;
+    deployment_type?: DeploymentType;
+    is_active?: boolean;
+  }): Promise<DeploymentTemplate[]> {
+    const where: string[] = [];
+    const params: any[] = [];
+    if (filter?.product) {
+      params.push(filter.product);
+      where.push(`product = $${params.length}`);
+    }
+    if (filter?.deployment_type) {
+      params.push(filter.deployment_type);
+      where.push(`deployment_type = $${params.length}`);
+    }
+    if (filter?.is_active !== undefined) {
+      params.push(filter.is_active);
+      where.push(`is_active = $${params.length}`);
+    }
+    const sql = `SELECT * FROM deployment_templates ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY product, deployment_type, version DESC`;
+    const r = await this.pool.query(sql, params);
+    return r.rows.map(rowToTemplatePg);
+  }
+
+  async getDeploymentTemplate(id: number): Promise<DeploymentTemplate | null> {
+    const r = await this.pool.query("SELECT * FROM deployment_templates WHERE id = $1", [id]);
+    return r.rows[0] ? rowToTemplatePg(r.rows[0]) : null;
+  }
+
+  async createDeploymentTemplate(
+    template: Omit<DeploymentTemplate, "id" | "created_at" | "updated_at">,
+    items: Array<Omit<DeploymentTemplateItem, "id" | "template_id" | "parent_id"> & {
+      parent_index: number | null;
+    }>
+  ): Promise<number> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const tplResult = await client.query(
+        `INSERT INTO deployment_templates
+           (product, deployment_type, name, version, is_active, description, source_file, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id`,
+        [
+          template.product,
+          template.deployment_type,
+          template.name,
+          template.version,
+          template.is_active,
+          template.description,
+          template.source_file,
+          template.created_by,
+        ]
+      );
+      const templateId: number = parseInt(tplResult.rows[0].id, 10);
+      const dbIds: number[] = [];
+      for (const it of items) {
+        const parentId = it.parent_index !== null ? dbIds[it.parent_index] : null;
+        const r = await client.query(
+          `INSERT INTO deployment_template_items
+             (template_id, parent_id, item_id, position, activity_type, description,
+              target_outcome, default_deque_role, default_estimated_days, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           RETURNING id`,
+          [
+            templateId,
+            parentId,
+            it.item_id,
+            it.position,
+            it.activity_type,
+            it.description,
+            it.target_outcome,
+            it.default_deque_role,
+            it.default_estimated_days,
+            it.notes,
+          ]
+        );
+        dbIds.push(parseInt(r.rows[0].id, 10));
+      }
+      await client.query("COMMIT");
+      return templateId;
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateDeploymentTemplate(
+    id: number,
+    updates: Partial<Pick<DeploymentTemplate, "name" | "description" | "is_active">>
+  ): Promise<void> {
+    const sets: string[] = [];
+    const params: any[] = [];
+    if (updates.name !== undefined) {
+      params.push(updates.name);
+      sets.push(`name = $${params.length}`);
+    }
+    if (updates.description !== undefined) {
+      params.push(updates.description);
+      sets.push(`description = $${params.length}`);
+    }
+    if (updates.is_active !== undefined) {
+      params.push(updates.is_active);
+      sets.push(`is_active = $${params.length}`);
+    }
+    if (sets.length === 0) return;
+    sets.push(`updated_at = CURRENT_TIMESTAMP`);
+    params.push(id);
+    await this.pool.query(
+      `UPDATE deployment_templates SET ${sets.join(", ")} WHERE id = $${params.length}`,
+      params
+    );
+  }
+
+  async listDeploymentTemplateItems(templateId: number): Promise<DeploymentTemplateItem[]> {
+    const r = await this.pool.query(
+      "SELECT * FROM deployment_template_items WHERE template_id = $1 ORDER BY position ASC, id ASC",
+      [templateId]
+    );
+    return r.rows.map(rowToTemplateItemPg);
+  }
+
+  async addDeploymentTemplateItem(item: Omit<DeploymentTemplateItem, "id">): Promise<number> {
+    const r = await this.pool.query(
+      `INSERT INTO deployment_template_items
+         (template_id, parent_id, item_id, position, activity_type, description,
+          target_outcome, default_deque_role, default_estimated_days, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id`,
+      [
+        item.template_id,
+        item.parent_id,
+        item.item_id,
+        item.position,
+        item.activity_type,
+        item.description,
+        item.target_outcome,
+        item.default_deque_role,
+        item.default_estimated_days,
+        item.notes,
+      ]
+    );
+    return parseInt(r.rows[0].id, 10);
+  }
+
+  async updateDeploymentTemplateItem(
+    id: number,
+    updates: Partial<Omit<DeploymentTemplateItem, "id" | "template_id">>
+  ): Promise<void> {
+    const allowed: Array<keyof typeof updates> = [
+      "parent_id",
+      "item_id",
+      "position",
+      "activity_type",
+      "description",
+      "target_outcome",
+      "default_deque_role",
+      "default_estimated_days",
+      "notes",
+    ];
+    const sets: string[] = [];
+    const params: any[] = [];
+    for (const key of allowed) {
+      if (updates[key] !== undefined) {
+        params.push(updates[key]);
+        sets.push(`${key} = $${params.length}`);
+      }
+    }
+    if (sets.length === 0) return;
+    params.push(id);
+    await this.pool.query(
+      `UPDATE deployment_template_items SET ${sets.join(", ")} WHERE id = $${params.length}`,
+      params
+    );
+  }
+
+  async deleteDeploymentTemplateItem(id: number): Promise<void> {
+    await this.pool.query("DELETE FROM deployment_template_items WHERE id = $1", [id]);
+  }
+
+  async logDeploymentAudit(entry: Omit<DeploymentAuditEntry, "id" | "created_at">): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO deployment_audit
+         (plan_id, plan_item_id, template_id, template_item_id, actor_email, action, details_json)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        entry.plan_id,
+        entry.plan_item_id,
+        entry.template_id,
+        entry.template_item_id,
+        entry.actor_email,
+        entry.action,
+        entry.details_json,
+      ]
+    );
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
   }
+}
+
+function rowToTemplatePg(row: any): DeploymentTemplate {
+  return {
+    id: typeof row.id === "string" ? parseInt(row.id, 10) : row.id,
+    product: row.product,
+    deployment_type: row.deployment_type,
+    name: row.name,
+    version: row.version,
+    is_active: row.is_active === true,
+    description: row.description,
+    source_file: row.source_file,
+    created_by: row.created_by,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+  };
+}
+
+function rowToTemplateItemPg(row: any): DeploymentTemplateItem {
+  return {
+    id: typeof row.id === "string" ? parseInt(row.id, 10) : row.id,
+    template_id: typeof row.template_id === "string" ? parseInt(row.template_id, 10) : row.template_id,
+    parent_id:
+      row.parent_id === null
+        ? null
+        : typeof row.parent_id === "string"
+        ? parseInt(row.parent_id, 10)
+        : row.parent_id,
+    item_id: row.item_id,
+    position: row.position,
+    activity_type: row.activity_type,
+    description: row.description,
+    target_outcome: row.target_outcome,
+    default_deque_role: row.default_deque_role,
+    default_estimated_days: row.default_estimated_days,
+    notes: row.notes,
+  };
 }

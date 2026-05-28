@@ -1299,4 +1299,149 @@ export function applyHealthScores(
 
 // ── Calendly ─────────────────────────────────────────────────────────────────
 
+// ── Admin: Deployment Templates ──────────────────────────────────────────────
+
+export type AdminDeploymentType = "cloud" | "on_prem";
+export type AdminActivityType = "milestone" | "epic" | "task";
+
+export interface AdminTemplate {
+  id: number;
+  product: string;
+  deployment_type: AdminDeploymentType;
+  name: string;
+  version: number;
+  is_active: boolean;
+  description: string | null;
+  source_file: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  item_count?: number;
+}
+
+export interface AdminTemplateItem {
+  id: number;
+  template_id: number;
+  parent_id: number | null;
+  item_id: string;
+  position: number;
+  activity_type: AdminActivityType;
+  description: string;
+  target_outcome: string | null;
+  default_deque_role: string | null;
+  default_estimated_days: number | null;
+  notes: string | null;
+}
+
+export interface AdminTemplateItemTree extends AdminTemplateItem {
+  children: AdminTemplateItemTree[];
+}
+
+const ADMIN_BASE = `${API_BASE}/admin/deployment-templates`;
+
+export async function listAdminTemplates(filter?: {
+  product?: string;
+  deployment_type?: AdminDeploymentType;
+  is_active?: boolean;
+}): Promise<AdminTemplate[]> {
+  const params = new URLSearchParams();
+  if (filter?.product) params.set("product", filter.product);
+  if (filter?.deployment_type) params.set("deployment_type", filter.deployment_type);
+  if (filter?.is_active !== undefined) params.set("is_active", String(filter.is_active));
+  const qs = params.toString();
+  const res = await fetch(`${ADMIN_BASE}${qs ? "?" + qs : ""}`, fetchOptions);
+  if (!res.ok) throw new Error(`Failed to list templates: ${res.status}`);
+  const data = await res.json();
+  return data.templates;
+}
+
+export async function getAdminTemplate(id: number): Promise<{
+  template: AdminTemplate;
+  items: AdminTemplateItem[];
+  tree: AdminTemplateItemTree[];
+}> {
+  const res = await fetch(`${ADMIN_BASE}/${id}`, fetchOptions);
+  if (!res.ok) throw new Error(`Failed to get template ${id}: ${res.status}`);
+  return res.json();
+}
+
+export async function updateAdminTemplate(
+  id: number,
+  updates: { name?: string; description?: string | null; is_active?: boolean }
+): Promise<AdminTemplate> {
+  const res = await fetch(`${ADMIN_BASE}/${id}`, {
+    ...fetchOptions,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Failed to update template ${id}: ${res.status}`);
+  const data = await res.json();
+  return data.template;
+}
+
+export async function addAdminTemplateItem(
+  templateId: number,
+  item: {
+    item_id: string;
+    activity_type: AdminActivityType;
+    description: string;
+    parent_id?: number | null;
+    target_outcome?: string | null;
+    default_deque_role?: string | null;
+    default_estimated_days?: number | null;
+    notes?: string | null;
+  }
+): Promise<number> {
+  const res = await fetch(`${ADMIN_BASE}/${templateId}/items`, {
+    ...fetchOptions,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(item),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to add item: ${res.status} ${err}`);
+  }
+  const data = await res.json();
+  return data.id;
+}
+
+export async function updateAdminTemplateItem(
+  templateId: number,
+  itemId: number,
+  updates: Partial<{
+    item_id: string;
+    parent_id: number | null;
+    position: number;
+    activity_type: AdminActivityType;
+    description: string;
+    target_outcome: string | null;
+    default_deque_role: string | null;
+    default_estimated_days: number | null;
+    notes: string | null;
+  }>
+): Promise<void> {
+  const res = await fetch(`${ADMIN_BASE}/${templateId}/items/${itemId}`, {
+    ...fetchOptions,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Failed to update item: ${res.status} ${err}`);
+  }
+}
+
+export async function deleteAdminTemplateItem(
+  templateId: number,
+  itemId: number
+): Promise<void> {
+  const res = await fetch(`${ADMIN_BASE}/${templateId}/items/${itemId}`, {
+    ...fetchOptions,
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error(`Failed to delete item: ${res.status}`);
+}
 

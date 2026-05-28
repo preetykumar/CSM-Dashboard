@@ -235,6 +235,39 @@ export interface IDatabaseService {
   // last 90 days. Used to fill amplitudeActiveUsers90d in portfolio enrichment.
   getActiveUserCountsByAccountIds(accountIds: string[]): Promise<Map<string, number>>;
 
+  // Deployment Templates (Phase 2)
+  listDeploymentTemplates(filter?: {
+    product?: string;
+    deployment_type?: DeploymentType;
+    is_active?: boolean;
+  }): Promise<DeploymentTemplate[]>;
+  getDeploymentTemplate(id: number): Promise<DeploymentTemplate | null>;
+  // Create a template with all its items in a single transaction. Items use
+  // tree-local indices (parent_index = position in the `items` array) so the
+  // caller doesn't need to know DB ids in advance.
+  createDeploymentTemplate(
+    template: Omit<DeploymentTemplate, "id" | "created_at" | "updated_at">,
+    items: Array<Omit<DeploymentTemplateItem, "id" | "template_id" | "parent_id"> & {
+      parent_index: number | null;
+    }>
+  ): Promise<number>;
+  updateDeploymentTemplate(
+    id: number,
+    updates: Partial<Pick<DeploymentTemplate, "name" | "description" | "is_active">>
+  ): Promise<void>;
+  listDeploymentTemplateItems(templateId: number): Promise<DeploymentTemplateItem[]>;
+  addDeploymentTemplateItem(
+    item: Omit<DeploymentTemplateItem, "id">
+  ): Promise<number>;
+  updateDeploymentTemplateItem(
+    id: number,
+    updates: Partial<Omit<DeploymentTemplateItem, "id" | "template_id">>
+  ): Promise<void>;
+  deleteDeploymentTemplateItem(id: number): Promise<void>;
+
+  // Deployment Audit (Phase 2: writes only; reads added when audit-viewing UI lands)
+  logDeploymentAudit(entry: Omit<DeploymentAuditEntry, "id" | "created_at">): Promise<void>;
+
   // Lifecycle
   close(): Promise<void> | void;
 }
@@ -281,4 +314,119 @@ export interface ProductUserRow {
   last_seen: string | null;
   event_count_90d: number;
   matched: boolean;             // true if SF Contact found
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Deployment templates (Phase 2): playbooks per product/deployment-type with
+// hierarchical items (Milestone → Epic → Task) seeded from xlsx files.
+// ───────────────────────────────────────────────────────────────────────────
+
+export type DeploymentType = "cloud" | "on_prem";
+export type ActivityType = "milestone" | "epic" | "task";
+
+export interface DeploymentTemplate {
+  id: number;
+  product: string;                  // 'axe-monitor', 'axe-devtools', ...
+  deployment_type: DeploymentType;
+  name: string;                     // 'Axe Monitor SaaS Playbook v1'
+  version: number;
+  is_active: boolean;
+  description: string | null;
+  source_file: string | null;       // original xlsx filename (audit trail)
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeploymentTemplateItem {
+  id: number;
+  template_id: number;
+  parent_id: number | null;
+  item_id: string;                  // '2.14.1' — dotted hierarchy key
+  position: number;                 // sort order within siblings
+  activity_type: ActivityType;
+  description: string;
+  target_outcome: string | null;
+  default_deque_role: string | null; // 'TSA' | 'IE' | 'PM' | 'CSM'
+  default_estimated_days: number | null;
+  notes: string | null;
+}
+
+// Tree node for API responses (parent + recursive children).
+export interface DeploymentTemplateItemTree extends DeploymentTemplateItem {
+  children: DeploymentTemplateItemTree[];
+}
+
+export type PlanStatus = "not_started" | "in_progress" | "completed" | "paused";
+export type ProgressStatus =
+  | "not_started"
+  | "in_progress"
+  | "complete"
+  | "delayed"
+  | "at_risk"
+  | "blocked";
+
+export interface DeploymentPlan {
+  id: number;
+  template_id: number;
+  opportunity_id: string;
+  opportunity_name: string | null;
+  product: string;
+  account_id: string;
+  account_name: string | null;
+  tsa_email: string | null;
+  ie_email: string | null;
+  status: PlanStatus;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeploymentPlanItem {
+  id: number;
+  plan_id: number;
+  template_item_id: number | null;
+  parent_id: number | null;
+  item_id: string | null;
+  position: number;
+  activity_type: ActivityType;
+  description: string;
+  target_outcome: string | null;
+  progress_status: ProgressStatus;
+  notes: string | null;
+  deque_responsible: string | null;
+  customer_responsible: string | null;
+  start_date: string | null;        // ISO date
+  end_date: string | null;
+  estimated_days: number | null;
+  actual_days: number | null;
+  updated_at: string;
+}
+
+export type DeploymentAuditAction =
+  | "template_create"
+  | "template_edit"
+  | "template_activate"
+  | "template_deactivate"
+  | "item_create"
+  | "item_edit"
+  | "item_delete"
+  | "plan_create"
+  | "plan_status_change"
+  | "plan_assign"
+  | "plan_item_status_change"
+  | "plan_item_edit"
+  | "plan_item_create"
+  | "plan_item_delete";
+
+export interface DeploymentAuditEntry {
+  id?: number;
+  plan_id: number | null;
+  plan_item_id: number | null;
+  template_id: number | null;
+  template_item_id: number | null;
+  actor_email: string;
+  action: DeploymentAuditAction;
+  details_json: string | null;      // JSON-stringified payload
+  created_at?: string;
 }

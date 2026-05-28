@@ -29,13 +29,22 @@ export function UserMenu() {
           </div>
 
           {isAdmin && (
-            <Link
-              to="/process-audit"
-              className="user-menu-item"
-              onClick={() => setShowMenu(false)}
-            >
-              Process Audit
-            </Link>
+            <>
+              <Link
+                to="/process-audit"
+                className="user-menu-item"
+                onClick={() => setShowMenu(false)}
+              >
+                Process Audit
+              </Link>
+              <Link
+                to="/admin/deployment-templates"
+                className="user-menu-item"
+                onClick={() => setShowMenu(false)}
+              >
+                Deployment Templates
+              </Link>
+            </>
           )}
 
           <button
