@@ -11313,3 +11313,27 @@ header .hint {
 .hierarchy-children {
   margin-top: 8px;
 }
+
+/* ─── Child account visual cue (used by Support + Usage views) ───────── */
+.child-account-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-brand-700, #1d4ed8);
+  background: var(--color-brand-100, #dbeafe);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.is-child-account-wrapper {
+  position: relative;
+  /* leftward visual tie to parent — like CustomerCard's depth indent */
+}
+.is-child-account-wrapper > .summary-card,
+.is-child-account-wrapper > .usage-customer-card,
+.is-child-account.usage-customer-card {
+  border-left: 3px solid var(--color-brand-300, #93c5fd);
+}

@@ -4,14 +4,22 @@ import { CustomerSummaryCard } from "./CustomerSummaryCard";
 import { OrganizationDrilldown } from "./OrganizationDrilldown";
 import { TicketListModal } from "./TicketListModal";
 import { Pagination, usePagination } from "./Pagination";
+import { useAccountHierarchy } from "../hooks/useAccountHierarchy";
+import { nestByHierarchy } from "../lib/nestByHierarchy";
+import { HierarchyList } from "./HierarchyList";
 import type { CustomerSummary, Organization } from "../types";
 
 type SmartFilter = "all" | "escalated" | "critical";
 type AlphabetRange = "all" | "A-D" | "E-H" | "I-L" | "M-P" | "Q-T" | "U-Z";
 
-// Consolidated account that groups child Zendesk orgs by SF parent account
+// One row per SF account. accountId is the SF id when available, else the
+// resolved account name (orgs that never got an SF ID at sync time stay
+// flat — no hierarchy parent to look up). accountName mirrors the legacy
+// displayName field but renamed for HierarchyList's HasAccount contract.
 interface ConsolidatedAccount {
-  displayName: string;
+  accountId: string;
+  accountName: string;
+  displayName: string;     // = accountName, kept for existing consumers
   organizations: Organization[];
   orgIds: number[];
 }
@@ -74,19 +82,31 @@ export function SupportCustomersView() {
     loadData();
   }, []);
 
-  // Consolidate organizations by SF ultimate parent name
+  // Consolidate Zendesk orgs into one row per SF account. Prior version
+  // collapsed by sf_ultimate_parent_name — that absorbed every descendant
+  // into a single family row, hiding child accounts' own ticket numbers.
+  // We now group by salesforce_account_id (with name fallback for orgs that
+  // never got an SF ID at sync time). Hierarchy nesting in the renderer
+  // handles the "show parent + children under it" visual.
   const consolidatedAccounts = useMemo(() => {
-    const accountMap = new Map<string, Organization[]>();
+    const accountMap = new Map<string, { displayName: string; orgs: Organization[] }>();
     for (const org of organizations) {
-      const groupKey = org.sf_ultimate_parent_name || org.salesforce_account_name || org.name;
-      const existing = accountMap.get(groupKey) || [];
-      existing.push(org);
-      accountMap.set(groupKey, existing);
+      const sfId = org.salesforce_account_id || "";
+      const displayName = org.salesforce_account_name || org.name;
+      const key = sfId || displayName;
+      const entry = accountMap.get(key);
+      if (entry) {
+        entry.orgs.push(org);
+      } else {
+        accountMap.set(key, { displayName, orgs: [org] });
+      }
     }
-    return Array.from(accountMap.entries()).map(([displayName, orgs]) => ({
-      displayName,
-      organizations: orgs,
-      orgIds: orgs.map(o => o.id),
+    return Array.from(accountMap.entries()).map(([key, v]) => ({
+      accountId: key,
+      accountName: v.displayName,
+      displayName: v.displayName,
+      organizations: v.orgs,
+      orgIds: v.orgs.map((o) => o.id),
     }));
   }, [organizations]);
 
@@ -194,6 +214,19 @@ export function SupportCustomersView() {
   }, [consolidatedAccounts, consolidatedSummaries]);
 
   const paginatedAccounts = usePagination(filteredAndSortedAccounts, pageSize, currentPage);
+
+  // Nest paginated accounts under their SF parent → child hierarchy. Each
+  // account's own ticket stats stay per-account (no rollup) — parents show
+  // only their own tickets, children show only theirs. Page boundaries split
+  // families: if a parent is on page 1 and a child on page 2, the child
+  // renders as a root on its own page.
+  const { hierarchy } = useAccountHierarchy();
+  const hierarchyRoots = useMemo(() => {
+    if (!hierarchy) {
+      return paginatedAccounts.map((acc) => ({ item: acc, parentId: null, children: [] }));
+    }
+    return nestByHierarchy(paginatedAccounts, hierarchy);
+  }, [paginatedAccounts, hierarchy]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -406,31 +439,38 @@ export function SupportCustomersView() {
             {alphabetRange !== "all" && ` • ${alphabetRange}`}
           </div>
           <div className="summaries-grid">
-            {paginatedAccounts.map((account) => {
-              const summary = consolidatedSummaries.get(account.displayName);
-              if (summary) {
+            <HierarchyList
+              roots={hierarchyRoots}
+              renderItem={(account, { depth }) => {
+                const summary = consolidatedSummaries.get(account.displayName);
+                const isChild = depth > 0;
+                const childSubtitle = account.organizations.length > 1 ? `${account.organizations.length} Zendesk orgs` : undefined;
+                if (summary) {
+                  return (
+                    <div className={isChild ? "is-child-account-wrapper" : ""}>
+                      {isChild && <span className="child-account-pill" title="Child SF account — its own ticket counts">child of parent above</span>}
+                      <CustomerSummaryCard
+                        summary={summary}
+                        subtitle={childSubtitle}
+                        onClick={() => handleAccountClick(account)}
+                        onStatusClick={(status) => handleStatusClick(account, status)}
+                        onPriorityClick={(priority) => handlePriorityClick(account, priority)}
+                        isEscalatedView={smartFilter === "escalated"}
+                        isCriticalView={smartFilter === "critical"}
+                      />
+                    </div>
+                  );
+                }
                 return (
-                  <CustomerSummaryCard
-                    key={account.displayName}
-                    summary={summary}
-                    subtitle={account.organizations.length > 1 ? `${account.organizations.length} accounts` : undefined}
-                    onClick={() => handleAccountClick(account)}
-                    onStatusClick={(status) => handleStatusClick(account, status)}
-                    onPriorityClick={(priority) => handlePriorityClick(account, priority)}
-                    isEscalatedView={smartFilter === "escalated"}
-                    isCriticalView={smartFilter === "critical"}
-                  />
-                );
-              }
-              return (
-                <div key={account.displayName} className="summary-card loading-card">
-                  <div className="summary-card-header">
-                    <h2>{account.displayName}</h2>
-                    <div className="total-tickets">Loading...</div>
+                  <div className={`summary-card loading-card ${isChild ? "is-child-account-wrapper" : ""}`}>
+                    <div className="summary-card-header">
+                      <h2>{account.displayName}</h2>
+                      <div className="total-tickets">Loading...</div>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              }}
+            />
             {filteredAndSortedAccounts.length === 0 && organizations.length > 0 && (
               <p className="no-results">No accounts match the current filters.</p>
             )}

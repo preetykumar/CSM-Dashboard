@@ -12,10 +12,17 @@ import { Pagination, usePagination } from "./Pagination";
 import { UnifiedUsageSection } from "./UnifiedUsageSection";
 import { CustomerHealthCard } from "./CustomerHealthCard";
 import { useChurnedAccounts } from "../hooks/useChurnedAccounts";
+import { useAccountHierarchy } from "../hooks/useAccountHierarchy";
+import { nestByHierarchy } from "../lib/nestByHierarchy";
+import { HierarchyList } from "./HierarchyList";
 import type { Organization } from "../types";
 
-// Consolidated account that groups multiple Zendesk orgs by SF account name
+// Consolidated account that groups multiple Zendesk orgs by SF account.
+// accountId is the SF ID when available (so hierarchy nesting can find a
+// parent); falls back to accountName when the orgs only carry a name
+// match (no SF ID — those rows stay flat at the top level).
 interface ConsolidatedAccount {
+  accountId: string;     // SF account id or name-fallback (for hierarchy key)
   accountName: string;
   organizations: Organization[];
 }
@@ -28,19 +35,28 @@ interface CustomerUsageData {
   error?: string;
 }
 
-// Group organizations by salesforce_account_name to consolidate duplicates
+// Group organizations into one row per SF account. Prefer salesforce_account_id
+// as the grouping key (so hierarchy lookups work); fall back to the resolved
+// account name when no SF ID was matched. The grouping key becomes the
+// ConsolidatedAccount.accountId regardless of which form we used — the
+// hierarchy nesting will only find a parent for the SF-ID form.
 function consolidateOrganizations(orgs: Organization[]): ConsolidatedAccount[] {
-  const accountMap = new Map<string, Organization[]>();
+  const groups = new Map<string, { accountName: string; orgs: Organization[]; usedSfId: boolean }>();
 
   for (const org of orgs) {
-    const accountName = org.salesforce_account_name || org.name;
-    const existing = accountMap.get(accountName) || [];
-    existing.push(org);
-    accountMap.set(accountName, existing);
+    const sfId = org.salesforce_account_id || "";
+    const sfName = org.salesforce_account_name || org.name;
+    const key = sfId || sfName;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.orgs.push(org);
+    } else {
+      groups.set(key, { accountName: sfName, orgs: [org], usedSfId: !!sfId });
+    }
   }
 
-  return Array.from(accountMap.entries())
-    .map(([accountName, organizations]) => ({ accountName, organizations }))
+  return Array.from(groups.entries())
+    .map(([key, g]) => ({ accountId: key, accountName: g.accountName, organizations: g.orgs }))
     .sort((a, b) => a.accountName.localeCompare(b.accountName));
 }
 
@@ -111,6 +127,18 @@ export function CustomerUsageView() {
 
   // Apply pagination to filtered accounts
   const paginatedAccounts = usePagination(filteredAccounts, pageSize, currentPage);
+
+  // Nest paginated accounts by SF parent → child hierarchy. Parents render
+  // with their own license/usage data; children render nested underneath with
+  // their own data. If a child's parent isn't on this page, the child shows
+  // as a root on its own.
+  const { hierarchy } = useAccountHierarchy();
+  const hierarchyRoots = useMemo(() => {
+    if (!hierarchy) {
+      return paginatedAccounts.map((acc) => ({ item: acc, parentId: null, children: [] }));
+    }
+    return nestByHierarchy(paginatedAccounts, hierarchy);
+  }, [paginatedAccounts, hierarchy]);
 
   // Load account data (subscriptions)
   const loadAccountUsage = useCallback(async (account: ConsolidatedAccount) => {
@@ -249,70 +277,72 @@ export function CustomerUsageView() {
             {searchQuery ? "No customers match your search." : "No customers with active subscriptions found."}
           </p>
         ) : (
-          paginatedAccounts.map((account) => {
-            const isExpanded = expandedAccounts.has(account.accountName);
-            const usageData = customerUsage.get(account.accountName);
-            const subscriptions = usageData?.subscriptions || [];
-
-            return (
-              <div key={account.accountName} className={`usage-customer-card ${isExpanded ? "expanded" : ""}`}>
-                <button
-                  className="usage-customer-header"
-                  onClick={() => toggleAccount(account)}
-                  aria-expanded={isExpanded}
-                >
-                  <span className="expand-icon">{isExpanded ? "▼" : "▶"}</span>
-                  <span className="customer-name">{account.accountName}</span>
-                  {account.organizations.length > 1 && (
-                    <span className="org-count">({account.organizations.length} orgs)</span>
-                  )}
-                  {churnedAccountNames.has(account.accountName.toLowerCase()) && (
-                    <span className="churned-badge" title="Lost a renewal in the last 2 quarters">Churned</span>
-                  )}
-                  <span className="expand-hint">
-                    {isExpanded ? "Click to collapse" : "Click to view usage"}
-                  </span>
-                </button>
-
-                {isExpanded && (
-                  <div className="usage-customer-content">
-                    {usageData?.loading ? (
-                      <div className="usage-loading">Loading subscription data...</div>
-                    ) : usageData?.error ? (
-                      <div className="usage-error">{usageData.error}</div>
-                    ) : (
-                      <>
-                        {(() => {
-                          const euuid = subscriptions.find(s => s.enterpriseUuid)?.enterpriseUuid;
-                          const domain = subscriptions.find(s => s.enterpriseDomain)?.enterpriseDomain?.split('.')[0];
-                          const sfId = account.organizations.find(o => o.salesforce_account_id)?.salesforce_account_id;
-                          return <CustomerHealthCard accountName={account.accountName} accountId={sfId} enterpriseUuid={euuid} monitorDomain={domain} subscriptions={subscriptions} />;
-                        })()}
-                        {subscriptions.length > 0 && (() => {
-                          const euuid = subscriptions.find(s => s.enterpriseUuid)?.enterpriseUuid;
-                          const domain = subscriptions.find(s => s.enterpriseDomain)?.enterpriseDomain?.split('.')[0];
-                          const sfId = account.organizations.find(o => o.salesforce_account_id)?.salesforce_account_id;
-                          // Render the unified view even without an Enterprise UUID — products
-                          // that key off SF account name (Account Portal, Assistant, University,
-                          // Monitor) still resolve, and the per-product user lists work via
-                          // SF Contact join. Only DevTools-style products will show empty.
-                          return (
-                            <UnifiedUsageSection
-                              enterpriseUuid={euuid}
-                              accountName={account.accountName}
-                              salesforceAccountId={sfId}
-                              monitorDomain={domain}
-                              subscriptions={subscriptions}
-                            />
-                          );
-                        })()}
-                      </>
+          <HierarchyList
+            roots={hierarchyRoots}
+            renderItem={(account, { depth }) => {
+              const isExpanded = expandedAccounts.has(account.accountName);
+              const usageData = customerUsage.get(account.accountName);
+              const subscriptions = usageData?.subscriptions || [];
+              const isChild = depth > 0;
+              return (
+                <div className={`usage-customer-card ${isExpanded ? "expanded" : ""}${isChild ? " is-child-account" : ""}`}>
+                  <button
+                    className="usage-customer-header"
+                    onClick={() => toggleAccount(account)}
+                    aria-expanded={isExpanded}
+                  >
+                    <span className="expand-icon">{isExpanded ? "▼" : "▶"}</span>
+                    <span className="customer-name">{account.accountName}</span>
+                    {isChild && (
+                      <span className="child-account-pill" title="Child SF account — its own license/usage data">child</span>
                     )}
-                  </div>
-                )}
-              </div>
-            );
-          })
+                    {account.organizations.length > 1 && (
+                      <span className="org-count">({account.organizations.length} orgs)</span>
+                    )}
+                    {churnedAccountNames.has(account.accountName.toLowerCase()) && (
+                      <span className="churned-badge" title="Lost a renewal in the last 2 quarters">Churned</span>
+                    )}
+                    <span className="expand-hint">
+                      {isExpanded ? "Click to collapse" : "Click to view usage"}
+                    </span>
+                  </button>
+
+                  {isExpanded && (
+                    <div className="usage-customer-content">
+                      {usageData?.loading ? (
+                        <div className="usage-loading">Loading subscription data...</div>
+                      ) : usageData?.error ? (
+                        <div className="usage-error">{usageData.error}</div>
+                      ) : (
+                        <>
+                          {(() => {
+                            const euuid = subscriptions.find(s => s.enterpriseUuid)?.enterpriseUuid;
+                            const domain = subscriptions.find(s => s.enterpriseDomain)?.enterpriseDomain?.split('.')[0];
+                            const sfId = account.organizations.find(o => o.salesforce_account_id)?.salesforce_account_id;
+                            return <CustomerHealthCard accountName={account.accountName} accountId={sfId} enterpriseUuid={euuid} monitorDomain={domain} subscriptions={subscriptions} />;
+                          })()}
+                          {subscriptions.length > 0 && (() => {
+                            const euuid = subscriptions.find(s => s.enterpriseUuid)?.enterpriseUuid;
+                            const domain = subscriptions.find(s => s.enterpriseDomain)?.enterpriseDomain?.split('.')[0];
+                            const sfId = account.organizations.find(o => o.salesforce_account_id)?.salesforce_account_id;
+                            return (
+                              <UnifiedUsageSection
+                                enterpriseUuid={euuid}
+                                accountName={account.accountName}
+                                salesforceAccountId={sfId}
+                                monitorDomain={domain}
+                                subscriptions={subscriptions}
+                              />
+                            );
+                          })()}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            }}
+          />
         )}
       </div>
     </div>
