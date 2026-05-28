@@ -21,6 +21,9 @@ import type {
   DeploymentTemplateItem,
   DeploymentAuditEntry,
   DeploymentType,
+  DeploymentPlan,
+  DeploymentPlanItem,
+  PlanStatus,
 } from "./database-interface.js";
 
 // PostgreSQL connection configuration
@@ -1528,6 +1531,145 @@ export class DatabaseServicePg implements IDatabaseService {
     await this.pool.query("DELETE FROM deployment_template_items WHERE id = $1", [id]);
   }
 
+  // ─── Deployment Plans (Phase 3) ─────────────────────────────────────────
+
+  async listDeploymentPlans(filter?: {
+    tsa_email?: string;
+    ie_email?: string;
+    account_id?: string;
+    opportunity_id?: string;
+    status?: PlanStatus;
+  }): Promise<DeploymentPlan[]> {
+    const where: string[] = [];
+    const params: any[] = [];
+    if (filter?.tsa_email) {
+      params.push(filter.tsa_email);
+      where.push(`LOWER(tsa_email) = LOWER($${params.length})`);
+    }
+    if (filter?.ie_email) {
+      params.push(filter.ie_email);
+      where.push(`LOWER(ie_email) = LOWER($${params.length})`);
+    }
+    if (filter?.account_id) {
+      params.push(filter.account_id);
+      where.push(`account_id = $${params.length}`);
+    }
+    if (filter?.opportunity_id) {
+      params.push(filter.opportunity_id);
+      where.push(`opportunity_id = $${params.length}`);
+    }
+    if (filter?.status) {
+      params.push(filter.status);
+      where.push(`status = $${params.length}`);
+    }
+    const sql = `SELECT * FROM deployment_plans ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY created_at DESC`;
+    const r = await this.pool.query(sql, params);
+    return r.rows.map(rowToPlanPg);
+  }
+
+  async getDeploymentPlan(id: number): Promise<DeploymentPlan | null> {
+    const r = await this.pool.query("SELECT * FROM deployment_plans WHERE id = $1", [id]);
+    return r.rows[0] ? rowToPlanPg(r.rows[0]) : null;
+  }
+
+  async createDeploymentPlanFromTemplate(
+    plan: Omit<DeploymentPlan, "id" | "created_at" | "updated_at">,
+    templateItemsInOrder: DeploymentTemplateItem[]
+  ): Promise<number> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const planResult = await client.query(
+        `INSERT INTO deployment_plans
+          (template_id, opportunity_id, opportunity_name, product, account_id, account_name,
+           tsa_email, ie_email, status, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+        [
+          plan.template_id,
+          plan.opportunity_id,
+          plan.opportunity_name,
+          plan.product,
+          plan.account_id,
+          plan.account_name,
+          plan.tsa_email,
+          plan.ie_email,
+          plan.status,
+          plan.created_by,
+        ]
+      );
+      const planId = parseInt(planResult.rows[0].id, 10);
+
+      const templateIdToPlanItemId = new Map<number, number>();
+      for (const tItem of templateItemsInOrder) {
+        const parentPlanItemId =
+          tItem.parent_id !== null ? templateIdToPlanItemId.get(tItem.parent_id) ?? null : null;
+        const itemResult = await client.query(
+          `INSERT INTO deployment_plan_items
+            (plan_id, template_item_id, parent_id, item_id, position, activity_type,
+             description, target_outcome, progress_status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'not_started') RETURNING id`,
+          [
+            planId,
+            tItem.id,
+            parentPlanItemId,
+            tItem.item_id,
+            tItem.position,
+            tItem.activity_type,
+            tItem.description,
+            tItem.target_outcome,
+          ]
+        );
+        templateIdToPlanItemId.set(tItem.id, parseInt(itemResult.rows[0].id, 10));
+      }
+      await client.query("COMMIT");
+      return planId;
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async updateDeploymentPlan(
+    id: number,
+    updates: Partial<Pick<DeploymentPlan, "status" | "tsa_email" | "ie_email">>
+  ): Promise<void> {
+    const sets: string[] = [];
+    const params: any[] = [];
+    if (updates.status !== undefined) {
+      params.push(updates.status);
+      sets.push(`status = $${params.length}`);
+    }
+    if (updates.tsa_email !== undefined) {
+      params.push(updates.tsa_email);
+      sets.push(`tsa_email = $${params.length}`);
+    }
+    if (updates.ie_email !== undefined) {
+      params.push(updates.ie_email);
+      sets.push(`ie_email = $${params.length}`);
+    }
+    if (sets.length === 0) return;
+    sets.push(`updated_at = CURRENT_TIMESTAMP`);
+    params.push(id);
+    await this.pool.query(
+      `UPDATE deployment_plans SET ${sets.join(", ")} WHERE id = $${params.length}`,
+      params
+    );
+  }
+
+  async deleteDeploymentPlan(id: number): Promise<void> {
+    await this.pool.query("DELETE FROM deployment_plans WHERE id = $1", [id]);
+  }
+
+  async listDeploymentPlanItems(planId: number): Promise<DeploymentPlanItem[]> {
+    const r = await this.pool.query(
+      "SELECT * FROM deployment_plan_items WHERE plan_id = $1 ORDER BY position ASC, id ASC",
+      [planId]
+    );
+    return r.rows.map(rowToPlanItemPg);
+  }
+
   async logDeploymentAudit(entry: Omit<DeploymentAuditEntry, "id" | "created_at">): Promise<void> {
     await this.pool.query(
       `INSERT INTO deployment_audit
@@ -1584,5 +1726,48 @@ function rowToTemplateItemPg(row: any): DeploymentTemplateItem {
     default_deque_role: row.default_deque_role,
     default_estimated_days: row.default_estimated_days,
     notes: row.notes,
+  };
+}
+
+function rowToPlanPg(row: any): DeploymentPlan {
+  const i = (v: any) => (typeof v === "string" ? parseInt(v, 10) : v);
+  return {
+    id: i(row.id),
+    template_id: i(row.template_id),
+    opportunity_id: row.opportunity_id,
+    opportunity_name: row.opportunity_name,
+    product: row.product,
+    account_id: row.account_id,
+    account_name: row.account_name,
+    tsa_email: row.tsa_email,
+    ie_email: row.ie_email,
+    status: row.status as PlanStatus,
+    created_by: row.created_by,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+  };
+}
+
+function rowToPlanItemPg(row: any): DeploymentPlanItem {
+  const i = (v: any) => (v === null ? null : typeof v === "string" ? parseInt(v, 10) : v);
+  return {
+    id: i(row.id),
+    plan_id: i(row.plan_id),
+    template_item_id: i(row.template_item_id),
+    parent_id: i(row.parent_id),
+    item_id: row.item_id,
+    position: row.position,
+    activity_type: row.activity_type,
+    description: row.description,
+    target_outcome: row.target_outcome,
+    progress_status: row.progress_status,
+    notes: row.notes,
+    deque_responsible: row.deque_responsible,
+    customer_responsible: row.customer_responsible,
+    start_date: row.start_date instanceof Date ? row.start_date.toISOString().slice(0, 10) : row.start_date,
+    end_date: row.end_date instanceof Date ? row.end_date.toISOString().slice(0, 10) : row.end_date,
+    estimated_days: row.estimated_days,
+    actual_days: row.actual_days,
+    updated_at: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
   };
 }

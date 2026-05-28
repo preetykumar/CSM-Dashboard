@@ -23,6 +23,9 @@ import type {
   DeploymentTemplateItem,
   DeploymentAuditEntry,
   DeploymentType,
+  DeploymentPlan,
+  DeploymentPlanItem,
+  PlanStatus,
 } from "./database-interface.js";
 
 // Re-export all interfaces so existing imports from "./database.js" still work
@@ -1335,6 +1338,134 @@ export class DatabaseService implements IDatabaseService {
     this.db.prepare("DELETE FROM deployment_template_items WHERE id = ?").run(id);
   }
 
+  // ─── Deployment Plans (Phase 3) ─────────────────────────────────────────
+
+  async listDeploymentPlans(filter?: {
+    tsa_email?: string;
+    ie_email?: string;
+    account_id?: string;
+    opportunity_id?: string;
+    status?: PlanStatus;
+  }): Promise<DeploymentPlan[]> {
+    const where: string[] = [];
+    const params: any[] = [];
+    if (filter?.tsa_email) {
+      where.push("LOWER(tsa_email) = LOWER(?)");
+      params.push(filter.tsa_email);
+    }
+    if (filter?.ie_email) {
+      where.push("LOWER(ie_email) = LOWER(?)");
+      params.push(filter.ie_email);
+    }
+    if (filter?.account_id) {
+      where.push("account_id = ?");
+      params.push(filter.account_id);
+    }
+    if (filter?.opportunity_id) {
+      where.push("opportunity_id = ?");
+      params.push(filter.opportunity_id);
+    }
+    if (filter?.status) {
+      where.push("status = ?");
+      params.push(filter.status);
+    }
+    const sql = `SELECT * FROM deployment_plans ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY created_at DESC`;
+    const rows = this.db.prepare(sql).all(...params) as any[];
+    return rows.map(rowToPlan);
+  }
+
+  async getDeploymentPlan(id: number): Promise<DeploymentPlan | null> {
+    const row = this.db.prepare("SELECT * FROM deployment_plans WHERE id = ?").get(id) as any;
+    return row ? rowToPlan(row) : null;
+  }
+
+  async createDeploymentPlanFromTemplate(
+    plan: Omit<DeploymentPlan, "id" | "created_at" | "updated_at">,
+    templateItemsInOrder: DeploymentTemplateItem[]
+  ): Promise<number> {
+    const txn = this.db.transaction(() => {
+      const r = this.db.prepare(
+        `INSERT INTO deployment_plans
+          (template_id, opportunity_id, opportunity_name, product, account_id, account_name,
+           tsa_email, ie_email, status, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        plan.template_id,
+        plan.opportunity_id,
+        plan.opportunity_name,
+        plan.product,
+        plan.account_id,
+        plan.account_name,
+        plan.tsa_email,
+        plan.ie_email,
+        plan.status,
+        plan.created_by
+      );
+      const planId = r.lastInsertRowid as number;
+
+      // Walk template items in their stored order; map template id → new plan id.
+      const templateIdToPlanItemId = new Map<number, number>();
+      const insertItem = this.db.prepare(
+        `INSERT INTO deployment_plan_items
+          (plan_id, template_item_id, parent_id, item_id, position, activity_type,
+           description, target_outcome, progress_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'not_started')`
+      );
+      for (const tItem of templateItemsInOrder) {
+        const parentPlanItemId =
+          tItem.parent_id !== null ? templateIdToPlanItemId.get(tItem.parent_id) ?? null : null;
+        const itemResult = insertItem.run(
+          planId,
+          tItem.id,
+          parentPlanItemId,
+          tItem.item_id,
+          tItem.position,
+          tItem.activity_type,
+          tItem.description,
+          tItem.target_outcome
+        );
+        templateIdToPlanItemId.set(tItem.id, itemResult.lastInsertRowid as number);
+      }
+      return planId;
+    });
+    return txn();
+  }
+
+  async updateDeploymentPlan(
+    id: number,
+    updates: Partial<Pick<DeploymentPlan, "status" | "tsa_email" | "ie_email">>
+  ): Promise<void> {
+    const sets: string[] = [];
+    const params: any[] = [];
+    if (updates.status !== undefined) {
+      sets.push("status = ?");
+      params.push(updates.status);
+    }
+    if (updates.tsa_email !== undefined) {
+      sets.push("tsa_email = ?");
+      params.push(updates.tsa_email);
+    }
+    if (updates.ie_email !== undefined) {
+      sets.push("ie_email = ?");
+      params.push(updates.ie_email);
+    }
+    if (sets.length === 0) return;
+    sets.push("updated_at = CURRENT_TIMESTAMP");
+    params.push(id);
+    this.db.prepare(`UPDATE deployment_plans SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+  }
+
+  async deleteDeploymentPlan(id: number): Promise<void> {
+    this.db.prepare("DELETE FROM deployment_plans WHERE id = ?").run(id);
+  }
+
+  async listDeploymentPlanItems(planId: number): Promise<DeploymentPlanItem[]> {
+    const rows = this.db
+      .prepare("SELECT * FROM deployment_plan_items WHERE plan_id = ? ORDER BY position ASC, id ASC")
+      .all(planId) as any[];
+    return rows.map(rowToPlanItem);
+  }
+
   async logDeploymentAudit(entry: Omit<DeploymentAuditEntry, "id" | "created_at">): Promise<void> {
     this.db
       .prepare(
@@ -1389,5 +1520,46 @@ function rowToTemplateItem(row: any): DeploymentTemplateItem {
     default_deque_role: row.default_deque_role,
     default_estimated_days: row.default_estimated_days,
     notes: row.notes,
+  };
+}
+
+function rowToPlan(row: any): DeploymentPlan {
+  return {
+    id: row.id,
+    template_id: row.template_id,
+    opportunity_id: row.opportunity_id,
+    opportunity_name: row.opportunity_name,
+    product: row.product,
+    account_id: row.account_id,
+    account_name: row.account_name,
+    tsa_email: row.tsa_email,
+    ie_email: row.ie_email,
+    status: row.status as PlanStatus,
+    created_by: row.created_by,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function rowToPlanItem(row: any): DeploymentPlanItem {
+  return {
+    id: row.id,
+    plan_id: row.plan_id,
+    template_item_id: row.template_item_id,
+    parent_id: row.parent_id,
+    item_id: row.item_id,
+    position: row.position,
+    activity_type: row.activity_type,
+    description: row.description,
+    target_outcome: row.target_outcome,
+    progress_status: row.progress_status,
+    notes: row.notes,
+    deque_responsible: row.deque_responsible,
+    customer_responsible: row.customer_responsible,
+    start_date: row.start_date,
+    end_date: row.end_date,
+    estimated_days: row.estimated_days,
+    actual_days: row.actual_days,
+    updated_at: row.updated_at,
   };
 }

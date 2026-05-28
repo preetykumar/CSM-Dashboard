@@ -22,6 +22,8 @@ import { OverdueRenewalsView } from "./components/OverdueRenewalsView";
 import { DeploymentTemplatesView } from "./components/admin/DeploymentTemplatesView";
 import { DeploymentTemplateDetailView } from "./components/admin/DeploymentTemplateDetailView";
 import { CustomerPage } from "./components/customer/CustomerPage";
+import { PlansPage } from "./components/deployments/plans/PlansPage";
+import { PlanDetailPage } from "./components/deployments/plans/PlanDetailPage";
 import { useAuth } from "./contexts/AuthContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import { ToastProvider } from "./components/renewal/ToastProvider";
@@ -192,6 +194,14 @@ function Dashboard() {
           </nav>
         )}
 
+        {/* Deployments Sub-tabs: Tree (default) | Plans */}
+        {activeMainTab === "deployments" && (
+          <nav className="sub-tabs" aria-label="Deployments views">
+            <NavLink to="/deployments" end>Tree</NavLink>
+            <NavLink to="/deployments/plans">Plans</NavLink>
+          </nav>
+        )}
+
         {/* Customer view is now a single unified page with a per-account
             4-tab drill-down (Health / Support / Usage / Active Deployments).
             No sub-tabs anymore — old subroutes redirect to /customer below. */}
@@ -230,8 +240,10 @@ function Dashboard() {
           <Route path="/renewals/by-csm" element={<CSMRenewalView />} />
           <Route path="/renewals/by-specialist" element={<PRSRenewalView />} />
 
-          {/* Deployments — deep-link target from card pills; no top-nav tab */}
+          {/* Deployments — Tree (default) + Plans sub-tab. */}
           <Route path="/deployments" element={<DeploymentsView />} />
+          <Route path="/deployments/plans" element={<PlansPage />} />
+          <Route path="/deployments/plans/:planId" element={<PlanDetailPage />} />
           {/* Legacy: PM Projects view kept at /deployments/projects for the
               broader Kantata-implementations view until DeploymentsView
               reaches feature parity */}

@@ -36,6 +36,7 @@ import { createAmplitudeRoutes } from "./routes/amplitude.js";
 import { createUsageUsersRoutes } from "./routes/usage-users.js";
 import { createPortfolioRoutes } from "./routes/portfolio.js";
 import { createDeploymentsRoutes } from "./routes/deployments.js";
+import { createDeploymentPlansRoutes } from "./routes/deployment-plans.js";
 import { createAdminTemplatesRoutes } from "./routes/admin-templates.js";
 import { createHealthRoutes } from "./routes/health.js";
 
@@ -525,6 +526,8 @@ async function startServer() {
     }
     app.use("/api/usage/users", optionalAuth, createUsageUsersRoutes(db));
     app.use("/api/portfolio", optionalAuth, createPortfolioRoutes(db, salesforce, kantata));
+    // Mount /plans BEFORE /api/deployments so the more specific path wins.
+    app.use("/api/deployments/plans", optionalAuth, createDeploymentPlansRoutes(db));
     app.use("/api/deployments", optionalAuth, createDeploymentsRoutes(db, salesforce, kantata));
     app.use("/api/admin/deployment-templates", optionalAuth, createAdminTemplatesRoutes(db));
     if (agent) {

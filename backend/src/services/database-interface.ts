@@ -265,6 +265,31 @@ export interface IDatabaseService {
   ): Promise<void>;
   deleteDeploymentTemplateItem(id: number): Promise<void>;
 
+  // Deployment Plans (Phase 3)
+  // Lists plans for either a TSA, an account, or by other filters. All
+  // filters AND together; pass {} to get every plan in the DB (admin use).
+  listDeploymentPlans(filter?: {
+    tsa_email?: string;
+    ie_email?: string;
+    account_id?: string;
+    opportunity_id?: string;
+    status?: PlanStatus;
+  }): Promise<DeploymentPlan[]>;
+  getDeploymentPlan(id: number): Promise<DeploymentPlan | null>;
+  // Creates a plan and atomically copies all items from the given template
+  // (template_items.parent_id chain preserved). Items keep their template
+  // item_id ("2.14.1") for display. Returns the new plan id.
+  createDeploymentPlanFromTemplate(
+    plan: Omit<DeploymentPlan, "id" | "created_at" | "updated_at">,
+    templateItemsInOrder: DeploymentTemplateItem[]
+  ): Promise<number>;
+  updateDeploymentPlan(
+    id: number,
+    updates: Partial<Pick<DeploymentPlan, "status" | "tsa_email" | "ie_email">>
+  ): Promise<void>;
+  deleteDeploymentPlan(id: number): Promise<void>;
+  listDeploymentPlanItems(planId: number): Promise<DeploymentPlanItem[]>;
+
   // Deployment Audit (Phase 2: writes only; reads added when audit-viewing UI lands)
   logDeploymentAudit(entry: Omit<DeploymentAuditEntry, "id" | "created_at">): Promise<void>;
 

@@ -1256,6 +1256,110 @@ export async function fetchAccountDeployments(accountId: string): Promise<Accoun
   return res.json();
 }
 
+// ── Deployment Plans (Phase 3a) ──────────────────────────────────────────
+
+export type PlanStatus = "not_started" | "in_progress" | "completed" | "paused";
+export type ProgressStatus =
+  | "not_started"
+  | "in_progress"
+  | "complete"
+  | "delayed"
+  | "at_risk"
+  | "blocked";
+
+export interface DeploymentPlan {
+  id: number;
+  template_id: number;
+  opportunity_id: string;
+  opportunity_name: string | null;
+  product: string;
+  account_id: string;
+  account_name: string | null;
+  tsa_email: string | null;
+  ie_email: string | null;
+  status: PlanStatus;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeploymentPlanItem {
+  id: number;
+  plan_id: number;
+  template_item_id: number | null;
+  parent_id: number | null;
+  item_id: string | null;
+  position: number;
+  activity_type: "milestone" | "epic" | "task";
+  description: string;
+  target_outcome: string | null;
+  progress_status: ProgressStatus;
+  notes: string | null;
+  deque_responsible: string | null;
+  customer_responsible: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  estimated_days: number | null;
+  actual_days: number | null;
+  updated_at: string;
+}
+
+export interface DeploymentPlanItemTree extends DeploymentPlanItem {
+  children: DeploymentPlanItemTree[];
+}
+
+export async function listDeploymentPlans(filter?: {
+  tsa_email?: string;
+  ie_email?: string;
+  account_id?: string;
+  opportunity_id?: string;
+}): Promise<DeploymentPlan[]> {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(filter || {})) {
+    if (v) params.set(k, v as string);
+  }
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE}/deployments/plans${qs ? "?" + qs : ""}`, fetchOptions);
+  if (!res.ok) throw new Error(`Failed to list plans: ${res.status}`);
+  const data = await res.json();
+  return data.plans;
+}
+
+export async function getDeploymentPlan(id: number): Promise<{
+  plan: DeploymentPlan;
+  items: DeploymentPlanItem[];
+  tree: DeploymentPlanItemTree[];
+  canEdit: boolean;
+}> {
+  const res = await fetch(`${API_BASE}/deployments/plans/${id}`, fetchOptions);
+  if (!res.ok) throw new Error(`Failed to get plan: ${res.status}`);
+  return res.json();
+}
+
+export async function createDeploymentPlan(body: {
+  template_id: number;
+  opportunity_id: string;
+  opportunity_name?: string | null;
+  product: string;
+  account_id: string;
+  account_name?: string | null;
+  tsa_email?: string | null;
+  ie_email?: string | null;
+}): Promise<DeploymentPlan> {
+  const res = await fetch(`${API_BASE}/deployments/plans`, {
+    ...fetchOptions,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error || `Failed to create plan: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.plan;
+}
+
 // Walk the account tree (parents + children) and collect distinct names suitable
 // for /api/health/batch. We pass names, not IDs, because the health batch
 // endpoint is keyed by accountName.
