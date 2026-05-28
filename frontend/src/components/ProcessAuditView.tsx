@@ -1,32 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AlertTriangle, Search, FileText } from 'lucide-react';
 import { fetchRenewalOpportunities } from '../services/api';
 import type { Opportunity, OverdueItem } from '../types/renewal';
 import { transformApiOpportunity } from '../types/renewal';
 import { WorkflowEngine } from '../services/workflow-engine';
 import { formatCurrency } from '../utils/format';
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
-}
-
-function groupByPRS(items: OverdueItem[]): [string, OverdueItem[]][] {
-  const groups = new Map<string, OverdueItem[]>();
-  for (const item of items) {
-    const prs = item.opportunity.prsName || 'Unassigned';
-    if (!groups.has(prs)) groups.set(prs, []);
-    groups.get(prs)!.push(item);
-  }
-  return Array.from(groups.entries()).sort(([a], [b]) => {
-    if (a === 'Unassigned') return 1;
-    if (b === 'Unassigned') return -1;
-    return a.localeCompare(b);
-  });
-}
+import { RenewalAccountTree } from './renewal/RenewalAccountTree';
 
 export const ProcessAuditView: React.FC = () => {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -71,7 +50,12 @@ export const ProcessAuditView: React.FC = () => {
     );
   }, [auditItems, searchTerm]);
 
-  const prsGroups = useMemo(() => groupByPRS(filtered), [filtered]);
+  // Per the hierarchy redesign: accounts are primary. PRS grouping dropped at
+  // the top level; each opp's PRS still shows on its OpportunityCard.
+  const filteredOpps = useMemo(
+    () => filtered.map((item) => item.opportunity),
+    [filtered]
+  );
 
   const totalAuditValue = useMemo(
     () => auditItems.reduce((sum, item) => sum + item.opportunity.amount, 0),
@@ -133,46 +117,9 @@ export const ProcessAuditView: React.FC = () => {
           <p>No stale audit items found. All R-6 actions are within the actionable window.</p>
         </div>
       ) : (
-        prsGroups.map(([prsName, items]) => (
-          <div key={prsName} className="prs-group" style={{ marginBottom: '24px' }}>
-            <div className="prs-group-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0', borderBottom: '2px solid #e5e7eb' }}>
-              <span style={{ fontWeight: 600 }}>{prsName}</span>
-              <span style={{ color: '#666', fontSize: '13px' }}>{items.length} audit items</span>
-            </div>
-            <div className="prs-table-container">
-              <table className="prs-table">
-                <thead>
-                  <tr>
-                    <th>Account</th>
-                    <th>AE</th>
-                    <th>Product</th>
-                    <th>Milestone</th>
-                    <th>Description</th>
-                    <th>Due Date</th>
-                    <th>Days Past Due</th>
-                    <th>Total Price</th>
-                    <th>Renewal Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((item, idx) => (
-                    <tr key={`${item.opportunity.id}-${idx}`}>
-                      <td className="prs-cell-account">{item.opportunity.companyName}</td>
-                      <td>{item.opportunity.ownerName || '-'}</td>
-                      <td>{item.opportunity.productName}</td>
-                      <td><span className="overdue-milestone R-6">{item.milestone}</span></td>
-                      <td>{item.action.description}</td>
-                      <td className="prs-cell-date">{formatDate(item.dueDate)}</td>
-                      <td><span className="overdue-days severe">{item.daysPastDue} days</span></td>
-                      <td className="prs-cell-amount">{formatCurrency(item.opportunity.amount)}</td>
-                      <td className="prs-cell-date">{new Date(item.opportunity.renewalDate).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ))
+        <div className="renewal-opp-list">
+          <RenewalAccountTree opps={filteredOpps} mode="overdue" />
+        </div>
       )}
     </div>
   );

@@ -1,142 +1,17 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AlertTriangle, CheckCircle, Clock, FileText, User as UserIcon, DollarSign, X, Search, ChevronRight, XCircle } from 'lucide-react';
 import { fetchRenewalOpportunities } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import type { Opportunity, RequiredAction, SortConfig, SortField } from '../types/renewal';
+import type { Opportunity, SortConfig, SortField } from '../types/renewal';
 import { transformApiOpportunity } from '../types/renewal';
 import { WorkflowEngine, getStageBadgeVariant, isClosedLost, isClosedWon } from '../services/workflow-engine';
-import { RENEWAL_EMAIL_TEMPLATES, getTemplateForAction } from '../services/email-templates';
+import { RENEWAL_EMAIL_TEMPLATES } from '../services/email-templates';
 import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
 import { EmailComposer } from './renewal/EmailComposer';
 import { OpportunityCard } from './renewal/OpportunityCard';
 import { useChurnedAccounts } from '../hooks/useChurnedAccounts';
-
-interface PRSPortfolio {
-  prsName: string;
-  prsEmail: string;
-  opportunities: Opportunity[];
-  totalValue: number;
-  urgentCount: number;
-}
-
-// Group opportunities by PRS
-function groupByPRS(opportunities: Opportunity[]): PRSPortfolio[] {
-  const prsMap = new Map<string, Opportunity[]>();
-
-  for (const opp of opportunities) {
-    const key = opp.prsEmail || opp.prsName || 'Unassigned';
-    const existing = prsMap.get(key) || [];
-    existing.push(opp);
-    prsMap.set(key, existing);
-  }
-
-  return Array.from(prsMap.entries())
-    .map(([email, opps]) => {
-      const prsName = opps[0]?.prsName || (email === 'Unassigned' ? 'Unassigned' : email);
-      const totalValue = opps.reduce((sum, o) => sum + (o.amount || 0), 0);
-      const urgentCount = opps.filter(o => WorkflowEngine.getRequiredActions(o).length > 0).length;
-
-      return { prsName, prsEmail: email, opportunities: opps, totalValue, urgentCount };
-    })
-    .sort((a, b) => a.prsName.localeCompare(b.prsName));
-}
-
-// PRS Card component
-interface PRSCardProps {
-  portfolio: PRSPortfolio;
-  expanded: boolean;
-  onToggle: () => void;
-  isCurrentUser: boolean;
-  onDraftEmail: (opp: Opportunity, action: RequiredAction) => void;
-  sortConfig: SortConfig;
-}
-
-const PRSCard: React.FC<PRSCardProps> = ({
-  portfolio, expanded, onToggle, isCurrentUser, onDraftEmail, sortConfig
-}) => {
-  const [expandedOppId, setExpandedOppId] = useState<string | null>(null);
-
-  const sortedOpportunities = useMemo(() => {
-    if (!sortConfig.direction) return portfolio.opportunities;
-    return [...portfolio.opportunities].sort((a, b) => {
-      let comparison = 0;
-      switch (sortConfig.field) {
-        case 'opportunityName': comparison = a.opportunityName.localeCompare(b.opportunityName); break;
-        case 'productName': comparison = a.productName.localeCompare(b.productName); break;
-        case 'stage': comparison = a.stage.localeCompare(b.stage); break;
-        case 'renewalStatus': comparison = (a.renewalStatus || '').localeCompare(b.renewalStatus || ''); break;
-        case 'accountingRenewalStatus': comparison = (a.accountingRenewalStatus || '').localeCompare(b.accountingRenewalStatus || ''); break;
-        case 'poRequired': comparison = (a.poRequired ? 1 : 0) - (b.poRequired ? 1 : 0); break;
-        case 'amount': comparison = (a.amount || 0) - (b.amount || 0); break;
-        case 'renewalDate': comparison = new Date(a.renewalDate).getTime() - new Date(b.renewalDate).getTime(); break;
-        case 'companyName': comparison = a.companyName.localeCompare(b.companyName); break;
-        case 'ownerName': comparison = (a.ownerName || '').localeCompare(b.ownerName || ''); break;
-        case 'action': {
-          const actionsA = WorkflowEngine.getRequiredActions(a);
-          const actionsB = WorkflowEngine.getRequiredActions(b);
-          const priorityOrder = { critical: 0, urgent: 1, high: 2, medium: 3 };
-          const priorityA = actionsA[0] ? priorityOrder[actionsA[0].priority] : 4;
-          const priorityB = actionsB[0] ? priorityOrder[actionsB[0].priority] : 4;
-          comparison = priorityA - priorityB;
-          break;
-        }
-      }
-      return sortConfig.direction === 'desc' ? -comparison : comparison;
-    });
-  }, [portfolio.opportunities, sortConfig]);
-
-  return (
-    <div className={`prs-card ${expanded ? 'expanded' : ''} ${isCurrentUser ? 'current-user' : ''}`}>
-      <div className="prs-card-header" onClick={onToggle}>
-        <div className="prs-card-left">
-          <ChevronRight className={`prs-chevron ${expanded ? 'expanded' : ''}`} size={20} />
-          <div className="prs-avatar"><UserIcon size={20} /></div>
-          <div className="prs-info">
-            <h3 className="prs-name">
-              {portfolio.prsName}
-              {isCurrentUser && <span className="prs-you-badge">You</span>}
-            </h3>
-            <p className="prs-email">{portfolio.prsEmail}</p>
-          </div>
-        </div>
-        <div className="prs-card-stats">
-          <div className="prs-stat">
-            <span className="prs-stat-value">{portfolio.opportunities.length}</span>
-            <span className="prs-stat-label">Renewals</span>
-          </div>
-          <div className="prs-stat">
-            <span className="prs-stat-value">{formatCurrency(portfolio.totalValue)}</span>
-            <span className="prs-stat-label">Total Value</span>
-          </div>
-          {portfolio.urgentCount > 0 && (
-            <div className="prs-stat urgent">
-              <span className="prs-stat-value">{portfolio.urgentCount}</span>
-              <span className="prs-stat-label">Urgent</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="prs-card-content">
-          <div className="renewal-opp-list">
-            {sortedOpportunities.map((opp, idx) => (
-              <OpportunityCard
-                key={opp.id}
-                opp={opp}
-                index={idx}
-                expanded={expandedOppId === opp.id}
-                onToggle={() => setExpandedOppId(expandedOppId === opp.id ? null : opp.id)}
-                onDraftEmail={onDraftEmail}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
+import { RenewalAccountTree } from './renewal/RenewalAccountTree';
 
 const DAYS_OPTIONS = [30, 60, 90, 120, 180] as const;
 
@@ -152,7 +27,6 @@ export function PRSRenewalView() {
   const [daysAhead, setDaysAhead] = useState<number>(60);
   const [filter, setFilter] = useState<'all' | 'urgent'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedPRS, setExpandedPRS] = useState<string | null>(null);
   const [showNeedsActionModal, setShowNeedsActionModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'active' | 'overdue' | 'churn'>('active');
   const [overdueOpportunities, setOverdueOpportunities] = useState<Opportunity[]>([]);
@@ -163,7 +37,6 @@ export function PRSRenewalView() {
   const [expandedChurnOpp, setExpandedChurnOpp] = useState<string | null>(null);
   const churnData = useChurnedAccounts();
 
-  const currentUserEmail = user?.email?.toLowerCase() || '';
   const userName = user?.name || user?.email?.split('@')[0] || 'PRS User';
 
 
@@ -209,8 +82,10 @@ export function PRSRenewalView() {
     loadOverdue();
   }, [activeTab, overdueOpportunities.length]);
 
-  const prsPortfolios = useMemo(() => {
-    let filtered = opportunities.filter(opp => {
+  // Per the hierarchy redesign: accounts are now primary. PRS grouping
+  // dropped at the top level; each opp's PRS still shows on its OpportunityCard.
+  const filteredOpps = useMemo(() => {
+    const filtered = opportunities.filter(opp => {
       const matchesSearch = opp.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             opp.opportunityName.toLowerCase().includes(searchQuery.toLowerCase()) ||
                             opp.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -221,7 +96,9 @@ export function PRSRenewalView() {
       }
       return matchesSearch;
     });
-    return groupByPRS(filtered);
+    return [...filtered].sort((a, b) =>
+      new Date(a.renewalDate).getTime() - new Date(b.renewalDate).getTime()
+    );
   }, [opportunities, searchQuery, filter]);
 
   const overdueStageGroups = useMemo(() => {
@@ -289,13 +166,6 @@ export function PRSRenewalView() {
     return { totalCount, totalValue, accounts };
   }, [churnData.opportunities]);
 
-  const handleDraftEmail = useCallback((opp: Opportunity, action: RequiredAction) => {
-    setSelectedOpportunity(opp);
-    const templateKey = getTemplateForAction(action.type);
-    setCurrentTemplateKey(templateKey);
-    setShowEmailComposer(true);
-  }, []);
-
   const { totalValue, urgentCount, uniqueAccounts, needsActionOpportunities } = useMemo(() => {
     const total = opportunities.reduce((sum, opp) => sum + (opp.amount || 0), 0);
     const needsAction = opportunities.filter(opp => WorkflowEngine.getRequiredActions(opp).length > 0);
@@ -329,7 +199,7 @@ export function PRSRenewalView() {
       {isAdmin && (
         <div className="admin-banner">
           <span className="admin-badge">Admin View</span>
-          <span className="admin-info">Viewing all {prsPortfolios.length} PRS portfolios</span>
+          <span className="admin-info">Viewing all {uniqueAccounts} accounts</span>
         </div>
       )}
 
@@ -668,26 +538,17 @@ export function PRSRenewalView() {
         </div>
       </div>
 
-      <div className="prs-list">
-        {prsPortfolios.map(portfolio => {
-          const isCurrentUser = portfolio.prsEmail.toLowerCase() === currentUserEmail;
-          return (
-            <PRSCard
-              key={portfolio.prsEmail}
-              portfolio={portfolio}
-              expanded={expandedPRS === portfolio.prsEmail}
-              onToggle={() => setExpandedPRS(expandedPRS === portfolio.prsEmail ? null : portfolio.prsEmail)}
-              isCurrentUser={isCurrentUser}
-              onDraftEmail={handleDraftEmail}
-              sortConfig={sortConfig}
-            />
-          );
-        })}
-        {prsPortfolios.length === 0 && (
+      <div className="renewal-opp-list">
+        {filteredOpps.length === 0 ? (
           <div className="renewal-empty">
             <FileText size={48} className="renewal-empty-icon" />
             <p>No renewal opportunities found</p>
           </div>
+        ) : (
+          <RenewalAccountTree
+            opps={filteredOpps}
+            mode="active"
+          />
         )}
       </div>
 

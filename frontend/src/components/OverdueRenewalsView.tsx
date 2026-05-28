@@ -1,15 +1,14 @@
 import { useState, useEffect, useMemo } from "react";
 import { fetchRenewalOpportunities } from "../services/api";
 import { transformApiOpportunity, type Opportunity } from "../types/renewal";
-import { Badge } from "./renewal/Badge";
-import { getStageBadgeVariant } from "../services/workflow-engine";
 import { formatCurrency } from "../utils/format";
+import { RenewalAccountTree } from "./renewal/RenewalAccountTree";
 
 export function OverdueRenewalsView() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
+  const [expandedOppId, setExpandedOppId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchRenewalOpportunities(365)
@@ -30,30 +29,20 @@ export function OverdueRenewalsView() {
     });
   }, [opportunities]);
 
-  // Group by month
-  const monthlyGroups = useMemo(() => {
-    const groups = new Map<string, Opportunity[]>();
-    for (const opp of overdueOpps) {
-      const month = opp.renewalDate.substring(0, 7); // YYYY-MM
-      const existing = groups.get(month) || [];
-      existing.push(opp);
-      groups.set(month, existing);
-    }
-    // Sort months descending (most recent first)
-    return Array.from(groups.entries())
-      .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([month, opps]) => ({
-        month,
-        label: formatMonth(month),
-        opps: opps.sort((a, b) => (b.amount || 0) - (a.amount || 0)),
-        totalValue: opps.reduce((sum, o) => sum + (o.amount || 0), 0),
-        count: opps.length,
-      }));
-  }, [overdueOpps]);
+  // Sort overdue opps by days-overdue desc (so the most stale percolate up
+  // inside each account row when expanded).
+  const sortedOverdueOpps = useMemo(
+    () =>
+      [...overdueOpps].sort(
+        (a, b) => new Date(a.renewalDate).getTime() - new Date(b.renewalDate).getTime()
+      ),
+    [overdueOpps]
+  );
 
   // Summary stats
   const totalOverdue = overdueOpps.length;
   const totalValue = overdueOpps.reduce((sum, o) => sum + (o.amount || 0), 0);
+  const uniqueAccounts = new Set(overdueOpps.map((o) => o.accountId || o.companyName)).size;
 
   if (loading) {
     return (
@@ -85,90 +74,26 @@ export function OverdueRenewalsView() {
         </div>
         <div className="renewal-stat-card">
           <div className="renewal-stat-content">
-            <div><p className="renewal-stat-value">{monthlyGroups.length}</p><p className="renewal-stat-label">Months with Overdue</p></div>
+            <div><p className="renewal-stat-value">{uniqueAccounts}</p><p className="renewal-stat-label">Accounts</p></div>
           </div>
         </div>
       </div>
 
-      {monthlyGroups.length === 0 ? (
+      {overdueOpps.length === 0 ? (
         <div className="renewal-empty">
           <p>No overdue renewals found.</p>
         </div>
       ) : (
-        <div className="overdue-months">
-          {monthlyGroups.map(({ month, label, opps, totalValue: monthValue, count }) => {
-            const isExpanded = expandedMonth === month;
-            return (
-              <div key={month} className={`overdue-month-card ${isExpanded ? "expanded" : ""}`}>
-                <div
-                  className="overdue-month-header"
-                  onClick={() => setExpandedMonth(isExpanded ? null : month)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedMonth(isExpanded ? null : month); } }}
-                  aria-expanded={isExpanded}
-                >
-                  <div className="overdue-month-info">
-                    <h3>{label}</h3>
-                    <span className="overdue-month-stats">
-                      {count} renewal{count !== 1 ? "s" : ""} &middot; {formatCurrency(monthValue)}
-                    </span>
-                  </div>
-                  <span className="expand-icon">{isExpanded ? "\u25BC" : "\u25B6"}</span>
-                </div>
-
-                {isExpanded && (
-                  <div className="overdue-month-body">
-                    <div className="renewal-table-container">
-                      <table className="renewal-table">
-                        <thead>
-                          <tr>
-                            <th>#</th>
-                            <th>Account</th>
-                            <th>AE</th>
-                            <th>Opportunity</th>
-                            <th>Product</th>
-                            <th>CSM</th>
-                            <th>Stage</th>
-                            <th>Amount</th>
-                            <th>Renewal Date</th>
-                            <th>Days Overdue</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {opps.map((opp, idx) => {
-                            const daysOverdue = Math.floor((Date.now() - new Date(opp.renewalDate).getTime()) / (1000 * 60 * 60 * 24));
-                            return (
-                              <tr key={opp.id} className="renewal-opp-row">
-                                <td className="row-number-cell">{idx + 1}</td>
-                                <td className="renewal-account-cell">{opp.companyName}</td>
-                                <td>{opp.ownerName || "-"}</td>
-                                <td>{opp.opportunityName}</td>
-                                <td>{opp.productName}</td>
-                                <td>{opp.csmName || "Unassigned"}</td>
-                                <td><Badge variant={getStageBadgeVariant(opp.stage)}>{opp.stage}</Badge></td>
-                                <td className="renewal-amount-cell">{formatCurrency(opp.amount || 0)}</td>
-                                <td>{new Date(opp.renewalDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
-                                <td><span className={`overdue-days ${daysOverdue > 30 ? "critical" : daysOverdue > 14 ? "warning" : ""}`}>{daysOverdue}d</span></td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        <div className="renewal-opp-list">
+          <RenewalAccountTree
+            opps={sortedOverdueOpps}
+            mode="overdue"
+            expandedOppId={expandedOppId}
+            setExpandedOppId={setExpandedOppId}
+          />
         </div>
       )}
     </div>
   );
 }
 
-function formatMonth(yyyymm: string): string {
-  const [year, month] = yyyymm.split("-");
-  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  return `${months[parseInt(month) - 1]} ${year}`;
-}

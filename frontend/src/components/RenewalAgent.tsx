@@ -3,8 +3,9 @@ import { Mail, AlertTriangle, CheckCircle, FileText, Phone, RefreshCw, User as U
 import { fetchRenewalOpportunities, RenewalOpportunity as ApiRenewalOpportunity } from '../services/api';
 import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
-import { getStageBadgeVariant, isClosedLost, isClosedWon } from '../services/workflow-engine';
+import { isClosedLost, isClosedWon } from '../services/workflow-engine';
 import { SortHeader as SharedSortHeader } from './renewal/SortHeader';
+import { RenewalAccountTree } from './renewal/RenewalAccountTree';
 
 // TypeScript interfaces
 
@@ -298,13 +299,10 @@ const WorkflowEngine = {
 
 // Badge and formatCurrency imported from shared modules
 
-// SortHeader imported from shared modules - aliased for local SortField compatibility
-const SortHeader = SharedSortHeader as React.FC<{
-  label: string;
-  field: SortField;
-  sortConfig: SortConfig;
-  onSort: (field: SortField) => void;
-}>;
+// SortHeader and handleSort are no longer used since the table view was
+// replaced with RenewalAccountTree. Sorting now happens inside each account
+// group by close date.
+void SharedSortHeader;
 
 // Milestone tracker component
 const MilestoneTracker: React.FC<{ currentMilestone: string }> = ({ currentMilestone }) => {
@@ -727,7 +725,7 @@ export default function RenewalAgent() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [currentEmailTemplate, setCurrentEmailTemplate] = useState<EmailTemplate | null>(null);
-  const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'renewalDate', direction: 'asc' });
+  const [sortConfig] = useState<SortConfig>({ field: 'renewalDate', direction: 'asc' });
   const [daysAhead, setDaysAhead] = useState<number>(60);
 
   // Fetch renewal opportunities from API
@@ -747,18 +745,9 @@ export default function RenewalAgent() {
     loadOpportunities();
   }, [daysAhead]);
 
-  // Handle sorting
-  const handleSort = (field: SortField) => {
-    setSortConfig(prev => {
-      if (prev.field === field) {
-        // Cycle through: asc -> desc -> null
-        if (prev.direction === 'asc') return { field, direction: 'desc' };
-        if (prev.direction === 'desc') return { field, direction: null };
-        return { field, direction: 'asc' };
-      }
-      return { field, direction: 'asc' };
-    });
-  };
+  // Sorting was used by the old table view; RenewalAccountTree handles its
+  // own ordering. Function intentionally left out.
+
 
   // Filter and sort opportunities (flat list, no grouping)
   const sortedOpportunities = useMemo(() => {
@@ -924,89 +913,22 @@ export default function RenewalAgent() {
           </div>
         </div>
 
-        {/* Renewals Table */}
-        <div className="renewal-card">
-          <div style={{ overflowX: 'auto' }}>
-            <table className="renewal-table">
-              <thead>
-                <tr>
-                  <SortHeader label="Account" field="companyName" sortConfig={sortConfig} onSort={handleSort} />
-                  <SortHeader label="AE" field="ownerName" sortConfig={sortConfig} onSort={handleSort} />
-                  <SortHeader label="Opportunity Name" field="opportunityName" sortConfig={sortConfig} onSort={handleSort} />
-                  <SortHeader label="Product Name" field="productName" sortConfig={sortConfig} onSort={handleSort} />
-                  <SortHeader label="Stage" field="stage" sortConfig={sortConfig} onSort={handleSort} />
-                  <SortHeader label="Total Price" field="amount" sortConfig={sortConfig} onSort={handleSort} />
-                  <SortHeader label="Renewal Date" field="renewalDate" sortConfig={sortConfig} onSort={handleSort} />
-                  <SortHeader label="Action Needed" field="action" sortConfig={sortConfig} onSort={handleSort} />
-                </tr>
-              </thead>
-              <tbody>
-                {sortedOpportunities.map(opp => {
-                  const actions = WorkflowEngine.getRequiredActions(opp);
-                  const primaryAction = actions[0];
-                  const isUrgent = actions.some(a => a.priority === 'critical' || a.priority === 'urgent');
-
-                  return (
-                    <tr
-                      key={opp.id}
-                      className={`renewal-opp-row ${isUrgent ? 'urgent' : ''}`}
-                    >
-                      <td className="renewal-account-cell">{opp.companyName}</td>
-                      <td>{opp.ae || '-'}</td>
-                      <td>
-                        <button
-                          className="renewal-opp-name-btn"
-                          onClick={() => dispatch({ type: 'SELECT_OPPORTUNITY', payload: opp })}
-                        >
-                          {opp.opportunityName}
-                        </button>
-                      </td>
-                      <td>{opp.productName}</td>
-                      <td>
-                        <Badge variant={getStageBadgeVariant(opp.stage)}>
-                          {opp.stage}
-                        </Badge>
-                      </td>
-                      <td className="renewal-amount-cell">
-                        {formatCurrency(opp.amount || 0)}
-                      </td>
-                      <td>
-                        {new Date(opp.renewalDate).toLocaleDateString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
-                      </td>
-                      <td>
-                        {primaryAction ? (
-                          <button
-                            onClick={() => dispatch({ type: 'SELECT_OPPORTUNITY', payload: opp })}
-                            className={`renewal-action-link ${primaryAction.priority}`}
-                          >
-                            {isUrgent && <AlertTriangle size={14} />}
-                            <span>{primaryAction.description}</span>
-                            {actions.length > 1 && (
-                              <span className="renewal-action-more">(+{actions.length - 1})</span>
-                            )}
-                          </button>
-                        ) : (
-                          <span className="renewal-no-action">
-                            <CheckCircle size={14} /> No action needed
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            {sortedOpportunities.length === 0 && (
-              <div className="renewal-empty">
-                <FileText size={48} className="renewal-empty-icon" />
-                <p>No renewal opportunities found</p>
-              </div>
-            )}
-          </div>
+        {/* Renewals tree (accounts primary, opps inside). RenewalAgent has
+            its own local Opportunity shape that differs from the shared one
+            used by OpportunityCard — the cast is safe because RenewalAccountTree
+            only reads accountId/companyName/amount from each item. */}
+        <div className="renewal-opp-list">
+          {sortedOpportunities.length === 0 ? (
+            <div className="renewal-empty">
+              <FileText size={48} className="renewal-empty-icon" />
+              <p>No renewal opportunities found</p>
+            </div>
+          ) : (
+            <RenewalAccountTree
+              opps={sortedOpportunities as unknown as Parameters<typeof RenewalAccountTree>[0]["opps"]}
+              mode="active"
+            />
+          )}
         </div>
 
         {/* Opportunity Detail Modal */}

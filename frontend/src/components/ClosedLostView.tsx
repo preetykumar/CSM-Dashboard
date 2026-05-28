@@ -5,7 +5,7 @@ import type { Opportunity, SortConfig, SortField } from '../types/renewal';
 import { transformApiOpportunity } from '../types/renewal';
 import { isClosedLost } from '../services/workflow-engine';
 import { formatCurrency } from '../utils/format';
-import { OpportunityCard } from './renewal/OpportunityCard';
+import { RenewalAccountTree } from './renewal/RenewalAccountTree';
 
 export const ClosedLostView: React.FC = () => {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -135,16 +135,12 @@ export const ClosedLostView: React.FC = () => {
         </div>
       ) : (
         <div className="renewal-opp-list">
-          {sorted.map((opp, idx) => (
-            <OpportunityCard
-              key={opp.id}
-              opp={opp}
-              index={idx}
-              expanded={expandedOppId === opp.id}
-              onToggle={() => setExpandedOppId(expandedOppId === opp.id ? null : opp.id)}
-              mode="closed-lost"
-            />
-          ))}
+          <RenewalAccountTree
+            opps={sorted}
+            mode="closed-lost"
+            expandedOppId={expandedOppId}
+            setExpandedOppId={setExpandedOppId}
+          />
         </div>
       )}
     </div>

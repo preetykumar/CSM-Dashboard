@@ -1,14 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { CheckCircle, Search, DollarSign, FileText, ChevronRight, ChevronDown } from 'lucide-react';
+import { CheckCircle, Search, DollarSign, FileText } from 'lucide-react';
 import { fetchRenewalOpportunities } from '../services/api';
 import type { Opportunity, SortConfig, SortField } from '../types/renewal';
 import { transformApiOpportunity } from '../types/renewal';
 import { isClosedWon } from '../services/workflow-engine';
 import { formatCurrency } from '../utils/format';
-import { OpportunityCard } from './renewal/OpportunityCard';
-import { useAccountHierarchy } from '../hooks/useAccountHierarchy';
-import { nestOppsByAccount } from '../lib/nestOppsByAccount';
-import { HierarchyList } from './HierarchyList';
+import { RenewalAccountTree } from './renewal/RenewalAccountTree';
 
 export const ClosedWonView: React.FC = () => {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -18,12 +15,6 @@ export const ClosedWonView: React.FC = () => {
   const [daysAhead, setDaysAhead] = useState(365);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'renewalDate', direction: 'asc' });
   const [expandedOppId, setExpandedOppId] = useState<string | null>(null);
-  const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
-  const toggleAccount = (id: string) => setExpandedAccounts((prev) => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
 
   useEffect(() => {
     loadData();
@@ -72,13 +63,6 @@ export const ClosedWonView: React.FC = () => {
   }, [filtered, sortConfig]);
 
   const totalWonValue = useMemo(() => opportunities.reduce((sum, opp) => sum + opp.amount, 0), [opportunities]);
-
-  // Account hierarchy nesting: opps grouped by account → accounts nested
-  // by SF parent → child. Phantom parent rows (no own opps) appear when an
-  // opp's parent isn't already in the filtered set, so the family tree is
-  // always complete.
-  const { hierarchy } = useAccountHierarchy();
-  const accountTree = useMemo(() => nestOppsByAccount(sorted, hierarchy), [sorted, hierarchy]);
 
   if (loading) {
     return <div className="renewal-loading"><div className="loading-spinner" /><p>Loading closed won renewals...</p></div>;
@@ -151,48 +135,11 @@ export const ClosedWonView: React.FC = () => {
         </div>
       ) : (
         <div className="renewal-opp-list">
-          <HierarchyList
-            roots={accountTree}
-            renderItem={(group, { depth }) => {
-              const isExpanded = expandedAccounts.has(group.accountId);
-              const isChild = depth > 0;
-              return (
-                <div className={`renewal-account-card${group.isPhantom ? ' is-phantom' : ''}${isChild ? ' is-child' : ''}`}>
-                  <button
-                    type="button"
-                    className="renewal-account-header"
-                    onClick={() => toggleAccount(group.accountId)}
-                    aria-expanded={isExpanded}
-                  >
-                    {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    <span className="renewal-account-name">{group.accountName}</span>
-                    {isChild && <span className="child-account-pill">child</span>}
-                    {group.isPhantom ? (
-                      <span className="renewal-account-phantom-tag" title="No closed-won opportunities for this account itself; shown to anchor its children">parent (no own opps)</span>
-                    ) : (
-                      <span className="renewal-account-meta">
-                        <span>{group.oppCount} {group.oppCount === 1 ? 'opp' : 'opps'}</span>
-                        <span className="renewal-account-amount">{formatCurrency(group.totalAmount)}</span>
-                      </span>
-                    )}
-                  </button>
-                  {isExpanded && group.opps.length > 0 && (
-                    <div className="renewal-account-opps">
-                      {group.opps.map((opp, idx) => (
-                        <OpportunityCard
-                          key={opp.id}
-                          opp={opp}
-                          index={idx}
-                          expanded={expandedOppId === opp.id}
-                          onToggle={() => setExpandedOppId(expandedOppId === opp.id ? null : opp.id)}
-                          mode="closed-won"
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            }}
+          <RenewalAccountTree
+            opps={sorted}
+            mode="closed-won"
+            expandedOppId={expandedOppId}
+            setExpandedOppId={setExpandedOppId}
           />
         </div>
       )}
