@@ -93,6 +93,11 @@ export function CustomerPage() {
   const accountCount = useMemo(() => countAccounts(portfolio), [portfolio]);
   const filteredPortfolio = useMemo(() => filterAccounts(portfolio, search), [portfolio, search]);
   const filteredCount = useMemo(() => countAccounts(filteredPortfolio), [filteredPortfolio]);
+  const letterGroups = useMemo(() => groupByFirstLetter(filteredPortfolio), [filteredPortfolio]);
+  const letterAvailability = useMemo(() => {
+    const set = new Set(letterGroups.map((g) => g.letter));
+    return set;
+  }, [letterGroups]);
 
   const toggle = (id: string) =>
     setExpanded({ ...expanded, [id]: !expanded[id] });
@@ -203,15 +208,28 @@ export function CustomerPage() {
         ) : search && filteredCount === 0 ? (
           <p className="portfolio-empty">No accounts match “{search}”.</p>
         ) : (
-          filteredPortfolio.map((account) => (
-            <CustomerAccountCard
-              key={account.id}
-              account={account}
-              depth={0}
-              expanded={expanded}
-              onToggle={toggle}
-            />
-          ))
+          <>
+            <AlphaJumper available={letterAvailability} />
+            {letterGroups.map((group) => (
+              <div key={group.letter} className="customer-letter-group">
+                <h3
+                  id={`customer-letter-${group.letter}`}
+                  className="customer-letter-header"
+                >
+                  {group.letter}
+                </h3>
+                {group.accounts.map((account) => (
+                  <CustomerAccountCard
+                    key={account.id}
+                    account={account}
+                    depth={0}
+                    expanded={expanded}
+                    onToggle={toggle}
+                  />
+                ))}
+              </div>
+            ))}
+          </>
         )}
       </section>
     </Page>
@@ -304,6 +322,68 @@ function CustomerAccountCard({
         </div>
       )}
     </div>
+  );
+}
+
+// Bucket the (already filtered) root accounts by first letter of their name.
+// Numbers / symbols collapse into "#". Children stay nested under their parent
+// — only the roots get grouped. Letters with no accounts are omitted from the
+// output (the jumper handles "missing letter" UI separately).
+function groupByFirstLetter(
+  accounts: MockPortfolioAccount[]
+): Array<{ letter: string; accounts: MockPortfolioAccount[] }> {
+  const buckets = new Map<string, MockPortfolioAccount[]>();
+  for (const acc of accounts) {
+    const first = (acc.name || "").trim().charAt(0).toUpperCase();
+    const letter = /[A-Z]/.test(first) ? first : "#";
+    const list = buckets.get(letter) || [];
+    list.push(acc);
+    buckets.set(letter, list);
+  }
+  return Array.from(buckets.entries())
+    .sort(([a], [b]) => {
+      if (a === "#") return 1;
+      if (b === "#") return -1;
+      return a.localeCompare(b);
+    })
+    .map(([letter, accounts]) => ({ letter, accounts }));
+}
+
+const ALPHA_LETTERS: string[] = [
+  ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i)),
+  "#",
+];
+
+function AlphaJumper({ available }: { available: Set<string> }) {
+  return (
+    <nav className="customer-alpha-jumper" aria-label="Jump to letter">
+      {ALPHA_LETTERS.map((l) => {
+        const has = available.has(l);
+        return (
+          <a
+            key={l}
+            href={has ? `#customer-letter-${l}` : undefined}
+            className={`customer-alpha-letter${has ? "" : " disabled"}`}
+            aria-disabled={!has}
+            tabIndex={has ? 0 : -1}
+            onClick={(e) => {
+              if (!has) {
+                e.preventDefault();
+                return;
+              }
+              // Native anchor scrolling works, but smooth-scroll feels nicer.
+              e.preventDefault();
+              document.getElementById(`customer-letter-${l}`)?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              });
+            }}
+          >
+            {l}
+          </a>
+        );
+      })}
+    </nav>
   );
 }
 
