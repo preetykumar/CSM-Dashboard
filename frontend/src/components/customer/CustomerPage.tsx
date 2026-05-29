@@ -13,7 +13,7 @@
 // accounts only.
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Users, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronRight, Users, AlertTriangle, Search, X } from "lucide-react";
 import {
   countAccounts,
   MOCK_USERS,
@@ -62,6 +62,7 @@ export function CustomerPage() {
   const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   // Scope the effect to params that actually change the API call.
   const apiRole: Role = isAdmin ? "admin" : nonAdminRole;
@@ -90,6 +91,8 @@ export function CustomerPage() {
   }, [fetchKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const accountCount = useMemo(() => countAccounts(portfolio), [portfolio]);
+  const filteredPortfolio = useMemo(() => filterAccounts(portfolio, search), [portfolio, search]);
+  const filteredCount = useMemo(() => countAccounts(filteredPortfolio), [filteredPortfolio]);
 
   const toggle = (id: string) =>
     setExpanded({ ...expanded, [id]: !expanded[id] });
@@ -154,6 +157,34 @@ export function CustomerPage() {
           count={loading ? undefined : `${accountCount} ${accountCount === 1 ? "account" : "accounts"}`}
         />
 
+        {!loading && !error && portfolio.length > 0 && (
+          <div className="portfolio-search">
+            <Search size={14} aria-hidden />
+            <input
+              type="search"
+              placeholder="Search accounts…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Filter accounts by name"
+            />
+            {search && (
+              <>
+                <span className="portfolio-search-count">
+                  {filteredCount} of {accountCount}
+                </span>
+                <button
+                  type="button"
+                  className="portfolio-search-clear"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search"
+                >
+                  <X size={12} />
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
         {loading ? (
           <Card><LoadingRow>Loading customers…</LoadingRow></Card>
         ) : error ? (
@@ -169,8 +200,10 @@ export function CustomerPage() {
               }
             />
           </Card>
+        ) : search && filteredCount === 0 ? (
+          <p className="portfolio-empty">No accounts match “{search}”.</p>
         ) : (
-          portfolio.map((account) => (
+          filteredPortfolio.map((account) => (
             <CustomerAccountCard
               key={account.id}
               account={account}
@@ -271,6 +304,29 @@ function CustomerAccountCard({
       )}
     </div>
   );
+}
+
+// Recursive name filter — keeps a parent in the tree if it matches OR any
+// descendant matches, so searching for a child name doesn't strip its parent.
+// Matches PortfolioContent's filterPortfolio behavior.
+function filterAccounts(
+  accounts: MockPortfolioAccount[],
+  query: string
+): MockPortfolioAccount[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return accounts;
+  const out: MockPortfolioAccount[] = [];
+  for (const acc of accounts) {
+    const filteredChildren = acc.children ? filterAccounts(acc.children, q) : [];
+    const selfMatches = acc.name.toLowerCase().includes(q);
+    if (selfMatches || filteredChildren.length > 0) {
+      out.push({
+        ...acc,
+        children: filteredChildren.length > 0 ? filteredChildren : acc.children,
+      });
+    }
+  }
+  return out;
 }
 
 // Compact ARR display: $1.2M / $850k / $0. Plain numbers below $1k.
