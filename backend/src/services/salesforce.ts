@@ -902,6 +902,82 @@ export class SalesforceService {
     return out;
   }
 
+  // Admin "all portfolios" universe — returns every Account that has any
+  // post-sales signal: a CSM, a PRS (Customer_Success_Specialist__c), an
+  // active ARR, or an open renewal opp. The DB CSM cache is the historical
+  // source for admin's seed set, but it only contains the ~301 accounts with
+  // a CSM populated — so accounts owned by PRS/AE only (e.g. "Arm") never
+  // showed up anywhere. One SOQL covers all four signals.
+  //
+  // Returns the metadata inline (name + parentId + CSM info) so the resolver
+  // doesn't need to backfill from a cache that may not contain these IDs.
+  async getAdminAccountSeeds(): Promise<Array<{
+    id: string;
+    name: string;
+    parentId: string | null;
+    csmEmail: string | null;
+    csmName: string | null;
+  }>> {
+    type Row = {
+      Id: string;
+      Name: string;
+      ParentId: string | null;
+      Customer_Success_Manager_csm__r: { Name: string | null; Email: string | null } | null;
+    };
+    // SOQL won't allow semi-join sub-selects combined with OR, so do two
+    // queries and union in JS:
+    //   (1) Account fields: CSM, PRS, or ARR > 0
+    //   (2) Accounts referenced by an open Renewal opp in the current window
+    const [byAccountFields, oppRows] = await Promise.all([
+      this.queryAll<Row>(`
+        SELECT Id, Name, ParentId,
+               Customer_Success_Manager_csm__r.Name,
+               Customer_Success_Manager_csm__r.Email
+        FROM Account
+        WHERE Customer_Success_Manager_csm__c != null
+           OR Customer_Success_Specialist__c != null
+           OR ARR__c > 0
+      `),
+      this.queryAll<{ AccountId: string | null }>(`
+        SELECT AccountId
+        FROM Opportunity
+        WHERE Type = 'Renewal' AND CloseDate >= 2026-01-01
+      `),
+    ]);
+
+    const out = new Map<string, Row>();
+    for (const r of byAccountFields) out.set(r.Id, r);
+
+    // For opp-only accounts, hydrate Name/Parent/CSM in one chunk query.
+    const oppIds = new Set<string>();
+    for (const o of oppRows) {
+      if (o.AccountId && !out.has(o.AccountId)) oppIds.add(o.AccountId);
+    }
+    if (oppIds.size > 0) {
+      const CHUNK = 200;
+      const all = Array.from(oppIds);
+      for (let i = 0; i < all.length; i += CHUNK) {
+        const inList = all.slice(i, i + CHUNK).map((id) => `'${id}'`).join(",");
+        const rows = await this.queryAll<Row>(`
+          SELECT Id, Name, ParentId,
+                 Customer_Success_Manager_csm__r.Name,
+                 Customer_Success_Manager_csm__r.Email
+          FROM Account
+          WHERE Id IN (${inList})
+        `);
+        for (const r of rows) out.set(r.Id, r);
+      }
+    }
+
+    return Array.from(out.values()).map((r) => ({
+      id: r.Id,
+      name: r.Name,
+      parentId: r.ParentId,
+      csmEmail: r.Customer_Success_Manager_csm__r?.Email ?? null,
+      csmName: r.Customer_Success_Manager_csm__r?.Name ?? null,
+    }));
+  }
+
   async getAccountsWithActiveSubscriptions(): Promise<string[]> {
     console.log("Fetching all accounts with active subscriptions...");
 

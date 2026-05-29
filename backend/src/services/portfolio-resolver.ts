@@ -85,7 +85,7 @@ export async function resolvePortfolio(
 
   // Step 1: get the account IDs the user is assigned to.
   let s = Date.now();
-  const assignedIds = await getAssignedAccountIds(role, email, db, salesforce, warnings);
+  const { ids: assignedIds, preseedMeta } = await getAssignedAccountIds(role, email, db, salesforce, warnings);
   lap("1_assignedIds", s);
 
   // Step 2: walk hierarchy to pull in parents and siblings.
@@ -94,8 +94,10 @@ export async function resolvePortfolio(
   lap("2_walkHierarchy", s);
 
   // Step 3a: account metadata from caches (names for health lookup, CSM info).
+  // Admin path supplies preseedMeta sourced directly from SF for accounts not
+  // in the DB CSM/hierarchy caches (e.g. Arm, which has PRS but no CSM).
   s = Date.now();
-  const metadata = await fetchAccountMetadata(allIds, db);
+  const metadata = await fetchAccountMetadata(allIds, db, preseedMeta);
   lap("3a_metadata", s);
   const accountNames = new Map<string, string>();
   for (const [id, m] of metadata.entries()) {
@@ -176,14 +178,41 @@ async function getAssignedAccountIds(
   db: IDatabaseService,
   salesforce: SalesforceService | null,
   warnings: string[]
-): Promise<string[]> {
+): Promise<{ ids: string[]; preseedMeta?: Map<string, AccountMeta> }> {
   if (role === "admin") {
+    // Admin universe = any account with a post-sales signal: CSM, PRS, active
+    // ARR, or open renewal. Single SF query, returns name + parent + CSM info
+    // so we don't depend on the CSM cache (which would miss e.g. PRS-only
+    // accounts like Arm).
+    if (salesforce) {
+      try {
+        const seeds = await salesforce.getAdminAccountSeeds();
+        const ids = new Set<string>();
+        const preseedMeta = new Map<string, AccountMeta>();
+        for (const seed of seeds) {
+          ids.add(seed.id);
+          preseedMeta.set(seed.id, {
+            name: seed.name,
+            parentId: seed.parentId,
+            csmEmail: seed.csmEmail,
+            csmName: seed.csmName,
+            prsEmail: null,
+          });
+        }
+        return { ids: Array.from(ids), preseedMeta };
+      } catch (err) {
+        warnings.push(
+          `Admin universe SF query failed: ${(err as Error).message}. Falling back to CSM cache.`
+        );
+      }
+    }
+    // Fallback: CSM cache only (legacy behavior).
     const csmAssignments = await db.getCSMAssignments();
     const ids = new Set<string>();
     for (const a of csmAssignments) {
       if (a.account_id) ids.add(a.account_id);
     }
-    return Array.from(ids);
+    return { ids: Array.from(ids) };
   }
 
   if (role === "csm") {
@@ -193,26 +222,26 @@ async function getAssignedAccountIds(
       .filter((a: CachedCSMAssignment) => a.csm_email?.toLowerCase() === lower)
       .map((a) => a.account_id)
       .filter((id): id is string => !!id);
-    return Array.from(new Set(ids));
+    return { ids: Array.from(new Set(ids)) };
   }
 
   // TSA + IE: SF query against Account-level role-assignment lookup fields.
   if (role === "tsa" || role === "ie") {
     if (!salesforce) {
       warnings.push(`Role "${role}" portfolio empty: Salesforce service unavailable.`);
-      return [];
+      return { ids: [] };
     }
     try {
       const ids =
         role === "tsa"
           ? await salesforce.getAccountIdsAssignedToTSA(email)
           : await salesforce.getAccountIdsAssignedToIE(email);
-      return Array.from(new Set(ids));
+      return { ids: Array.from(new Set(ids)) };
     } catch (err) {
       warnings.push(
         `Role "${role}" scoping query failed: ${(err as Error).message}. Returning empty portfolio.`
       );
-      return [];
+      return { ids: [] };
     }
   }
 
@@ -223,7 +252,7 @@ async function getAssignedAccountIds(
   warnings.push(
     `Role "${role}" doesn't use the portfolio view. PRS users land on the Renewals Pipeline (/renewals-pipeline) directly.`
   );
-  return [];
+  return { ids: [] };
 }
 
 // ─── Step 2: hierarchy walk ────────────────────────────────────────────────
@@ -264,7 +293,8 @@ interface AccountMeta {
 
 async function fetchAccountMetadata(
   accountIds: string[],
-  db: IDatabaseService
+  db: IDatabaseService,
+  preseedMeta?: Map<string, AccountMeta>
 ): Promise<Map<string, AccountMeta>> {
   const meta = new Map<string, AccountMeta>();
   if (accountIds.length === 0) return meta;
@@ -296,6 +326,20 @@ async function fetchAccountMetadata(
     entry.csmName = a.csm_name || null;
     if (!entry.name) entry.name = a.account_name || a.account_id;
     meta.set(a.account_id, entry);
+  }
+
+  // Preseed: any fields the SF admin-universe query already filled. Only fills
+  // gaps — won't clobber values already present from the caches.
+  if (preseedMeta) {
+    for (const [id, seed] of preseedMeta.entries()) {
+      if (!idSet.has(id)) continue;
+      const entry = meta.get(id) || { name: id, parentId: null, csmEmail: null, csmName: null, prsEmail: null };
+      if (!entry.name || entry.name === id) entry.name = seed.name;
+      if (entry.parentId == null) entry.parentId = seed.parentId;
+      if (!entry.csmEmail) entry.csmEmail = seed.csmEmail;
+      if (!entry.csmName) entry.csmName = seed.csmName;
+      meta.set(id, entry);
+    }
   }
 
   // Backfill any account IDs we have no metadata for at all (name = id).
