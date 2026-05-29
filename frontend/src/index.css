@@ -11643,6 +11643,29 @@ header .hint {
   border-top: 1px solid var(--border-subtle, #e5e7eb);
   padding-top: 12px;
 }
+.customer-drilldown-banner {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 8px 12px 12px;
+  margin-bottom: 4px;
+}
+.customer-drilldown-banner-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--deque-dark, #2a2826);
+}
+.customer-drilldown-banner-arr {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--deque-teal, #2e5f7a);
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
 .customer-drilldown-tabs {
   display: flex;
   gap: 4px;

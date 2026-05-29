@@ -283,6 +283,7 @@ function CustomerAccountCard({
               accountId={account.id}
               accountName={account.name}
               zendeskOrgIds={j.zendeskOrgIds}
+              subscriptionArr={j.subscriptionArr}
             />
           </div>
         )}

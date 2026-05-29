@@ -34,9 +34,12 @@ interface Props {
   // Zendesk org IDs for this account (passed in from parent to avoid
   // refetching the org list; null = backend couldn't find a linked org).
   zendeskOrgIds: number[] | null;
+  // Current ARR from Account.ARR__c — passed in from the portfolio response so
+  // we don't re-query SF. null/undefined = no ARR data; banner hides the pill.
+  subscriptionArr?: number | null;
 }
 
-export function CustomerDrilldown({ accountId, accountName, zendeskOrgIds }: Props) {
+export function CustomerDrilldown({ accountId, accountName, zendeskOrgIds, subscriptionArr }: Props) {
   const [activeTab, setActiveTab] = useState<TabId>("health");
   const [subs, setSubs] = useState<EnterpriseSubscription[] | null>(null);
   const [subsLoading, setSubsLoading] = useState(true);
@@ -67,8 +70,23 @@ export function CustomerDrilldown({ accountId, accountName, zendeskOrgIds }: Pro
   const enterpriseUuid = subs?.find((s) => s.enterpriseUuid)?.enterpriseUuid;
   const monitorDomain = subs?.find((s) => s.enterpriseDomain)?.enterpriseDomain?.split(".")[0];
 
+  const arrLabel =
+    subscriptionArr != null && subscriptionArr > 0 ? formatArrBanner(subscriptionArr) : null;
+
   return (
     <div className="customer-drilldown">
+      <div className="customer-drilldown-banner">
+        <span className="customer-drilldown-banner-name">{accountName}</span>
+        {arrLabel && (
+          <span
+            className="customer-drilldown-banner-arr"
+            title="Current ARR — Account.ARR__c in Salesforce"
+          >
+            ARR {arrLabel}
+          </span>
+        )}
+      </div>
+
       <div className="customer-drilldown-tabs" role="tablist">
         {(Object.keys(TAB_LABELS) as TabId[]).map((id) => (
           <button
@@ -239,4 +257,11 @@ function DeploymentsTab({ accountId }: { accountId: string }) {
 function fmtMoney(n: number | null | undefined): string {
   if (n === null || n === undefined) return "—";
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
+// Compact ARR for the drilldown banner: $1.2M / $850k / $42.
+function formatArrBanner(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `$${Math.round(n / 1_000)}k`;
+  return `$${Math.round(n)}`;
 }
