@@ -2,12 +2,15 @@
 // where the playbook tree can be edited inline.
 
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { Plus } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import {
   listAdminTemplates,
   updateAdminTemplate,
+  createAdminTemplate,
   type AdminTemplate,
+  type AdminDeploymentType,
 } from "../../services/api";
 import {
   Page,
@@ -28,11 +31,13 @@ const DEPLOYMENT_LABELS: Record<string, string> = {
 
 export function DeploymentTemplatesView() {
   const { isAdmin, login } = useAuth();
+  const navigate = useNavigate();
   const [templates, setTemplates] = useState<AdminTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [toggling, setToggling] = useState<number | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     if (!isAdmin) {
@@ -97,6 +102,11 @@ export function DeploymentTemplatesView() {
         eyebrow="Admin"
         title="Deployment Templates"
         subtitle="Implementation playbooks per product and deployment type. Versioned — creating a new version deactivates the previous."
+        actions={
+          <Button size="sm" onClick={() => setShowCreate(true)}>
+            <Plus size={14} /> New template
+          </Button>
+        }
       />
 
       {loading ? (
@@ -117,7 +127,12 @@ export function DeploymentTemplatesView() {
         <Card>
           <EmptyState
             title="No templates yet"
-            detail="Run the seed script to import from xlsx, or build one from scratch (upload coming soon)."
+            detail="Build one from scratch using the button below, or run the seed script to import from xlsx."
+            action={
+              <Button size="sm" onClick={() => setShowCreate(true)}>
+                <Plus size={14} /> New template
+              </Button>
+            }
           />
         </Card>
       ) : (
@@ -183,6 +198,145 @@ export function DeploymentTemplatesView() {
           ))}
         </>
       )}
+
+      {showCreate && (
+        <NewTemplateModal
+          onClose={() => setShowCreate(false)}
+          onCreated={(tpl) => {
+            setShowCreate(false);
+            setTemplates((prev) => [tpl, ...prev]);
+            // Drop the admin straight into the detail view so they can
+            // start adding milestones / epics / tasks immediately.
+            navigate(`/admin/deployment-templates/${tpl.id}`);
+          }}
+        />
+      )}
     </Page>
+  );
+}
+
+// ─── New template modal ────────────────────────────────────────────────────
+
+const PRODUCT_OPTIONS: Array<{ slug: string; label: string }> = [
+  { slug: "axe-monitor", label: "axe Monitor" },
+  { slug: "axe-devtools", label: "axe DevTools" },
+  { slug: "axe-reports", label: "axe Reports" },
+  { slug: "axe-account-portal", label: "axe Accounts" },
+  { slug: "axe-assistant", label: "axe Assistant" },
+  { slug: "deque-university", label: "Deque University" },
+];
+
+function NewTemplateModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (tpl: AdminTemplate) => void;
+}) {
+  const [product, setProduct] = useState(PRODUCT_OPTIONS[0].slug);
+  const [deploymentType, setDeploymentType] = useState<AdminDeploymentType>("cloud");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canSubmit = product.trim() && name.trim() && !submitting;
+
+  const handleCreate = async () => {
+    if (!canSubmit) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const tpl = await createAdminTemplate({
+        product,
+        deployment_type: deploymentType,
+        name: name.trim(),
+        description: description.trim() || null,
+      });
+      onCreated(tpl);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create template");
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="template-picker-overlay" onClick={onClose}>
+      <div
+        className="template-picker-modal admin-create-plan-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="template-picker-header">
+          <h2>New Deployment Template</h2>
+          <button
+            type="button"
+            className="template-picker-close"
+            onClick={onClose}
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="template-picker-body">
+          <p className="admin-create-plan-help">
+            A new template is created with zero items. You'll be taken to the
+            detail view to add Milestones, Epics, and Tasks. Saving here
+            deactivates any existing active version for this (product,
+            deployment type) combo and starts a new version chain.
+          </p>
+
+          <div className="admin-create-plan-grid">
+            <label>
+              Product *
+              <select value={product} onChange={(e) => setProduct(e.target.value)}>
+                {PRODUCT_OPTIONS.map((p) => (
+                  <option key={p.slug} value={p.slug}>{p.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Deployment type *
+              <select
+                value={deploymentType}
+                onChange={(e) => setDeploymentType(e.target.value as AdminDeploymentType)}
+              >
+                <option value="cloud">SaaS / Cloud</option>
+                <option value="on_prem">On-Premises</option>
+              </select>
+            </label>
+            <label className="admin-create-plan-full">
+              Name *
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Axe Monitor SaaS Playbook v2"
+                autoFocus
+              />
+            </label>
+            <label className="admin-create-plan-full">
+              Description
+              <textarea
+                rows={2}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Short notes about what this version changes — shown in the template list"
+              />
+            </label>
+          </div>
+
+          {error && <div className="template-picker-error">{error}</div>}
+        </div>
+
+        <div className="template-picker-footer">
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button onClick={handleCreate} disabled={!canSubmit}>
+            {submitting ? "Creating…" : "Create template"}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

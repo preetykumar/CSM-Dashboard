@@ -1675,6 +1675,39 @@ export async function getAdminTemplate(id: number): Promise<{
   return res.json();
 }
 
+export async function createAdminTemplate(body: {
+  product: string;
+  deployment_type: AdminDeploymentType;
+  name: string;
+  description?: string | null;
+}): Promise<AdminTemplate> {
+  // We always create with zero items — the admin builds the tree from the
+  // detail view's add-item buttons immediately after.
+  const res = await fetch(ADMIN_BASE, {
+    ...fetchOptions,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      template: {
+        product: body.product,
+        deployment_type: body.deployment_type,
+        name: body.name,
+        description: body.description || null,
+      },
+      items: [],
+    }),
+  });
+  if (!res.ok) {
+    if (res.status === 403) {
+      throw new Error("session_expired: admin session not recognized — log out and back in");
+    }
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.error || `Failed to create template: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.template;
+}
+
 export async function updateAdminTemplate(
   id: number,
   updates: { name?: string; description?: string | null; is_active?: boolean }
