@@ -1,6 +1,12 @@
 import { Router, Request, Response } from "express";
 import { ZendeskService } from "../services/zendesk.js";
 import { SalesforceService } from "../services/salesforce.js";
+import { MemoryCache } from "../services/cache.js";
+
+// 90s TTL — CSM assignments rarely change mid-session; this endpoint was the
+// largest unmitigated cost on home + admin view-as flows because it fanned
+// out a Salesforce SOQL fetch + Zendesk rollup for every page load.
+const csmPortfoliosCache = new MemoryCache(90);
 
 export function createCSMRoutes(zendesk: ZendeskService, salesforce: SalesforceService | null): Router {
   const router = Router();
@@ -8,20 +14,27 @@ export function createCSMRoutes(zendesk: ZendeskService, salesforce: SalesforceS
   // Get all CSM portfolios (using Salesforce for assignments if available)
   router.get("/portfolios", async (_req: Request, res: Response) => {
     try {
-      let portfolios;
+      const cacheKey = salesforce ? "csm-portfolios:sf" : "csm-portfolios:zd";
+      const cached = csmPortfoliosCache.get<{ portfolios: unknown[]; count: number }>(cacheKey);
+      if (cached) {
+        res.set("Cache-Control", "public, max-age=60");
+        return res.json({ ...cached, cacheHit: true });
+      }
 
+      let portfolios;
       if (salesforce) {
-        // Use Salesforce for authoritative CSM assignments
         console.log("Fetching CSM portfolios using Salesforce assignments...");
         const csmAssignments = await salesforce.getCSMAssignments();
         portfolios = await zendesk.getCSMPortfoliosFromSalesforce(csmAssignments);
       } else {
-        // Fall back to ticket-based CSM detection
         console.log("Salesforce not configured, using ticket-based CSM detection...");
         portfolios = await zendesk.getCSMPortfolios();
       }
 
-      res.json({ portfolios, count: portfolios.length });
+      const payload = { portfolios, count: portfolios.length };
+      csmPortfoliosCache.set(cacheKey, payload);
+      res.set("Cache-Control", "public, max-age=60");
+      res.json({ ...payload, cacheHit: false });
     } catch (error) {
       console.error("Error fetching CSM portfolios:", error);
       res.status(500).json({ error: "Failed to fetch CSM portfolios" });

@@ -12067,6 +12067,34 @@ header .hint {
   font-style: italic;
 }
 
+/* Home page two-column layout — portfolio main, widgets in right rail */
+.home-main-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+  align-items: start;
+  margin-top: 16px;
+}
+.home-main-col {
+  min-width: 0;
+}
+.home-side-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 16px;
+  align-self: start;
+}
+@media (max-width: 1024px) {
+  .home-main-layout {
+    grid-template-columns: 1fr;
+  }
+  .home-side-rail {
+    position: static;
+  }
+}
+
 /* Plan detail page-header actions row */
 .plan-header-actions {
   display: inline-flex;

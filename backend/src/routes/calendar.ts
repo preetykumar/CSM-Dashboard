@@ -1,4 +1,10 @@
 import { Router, Request, Response } from "express";
+import { MemoryCache } from "../services/cache.js";
+
+// 5 min TTL — Google's quota is generous but the home page fires this on
+// every mount, including navigations back to /home, so dedupe in-process.
+// Keyed by user email + date so each user gets their own slot.
+const calendarCache = new MemoryCache(300);
 
 export function createCalendarRoutes(): Router {
   const router = Router();
@@ -11,7 +17,6 @@ export function createCalendarRoutes(): Router {
     }
 
     const accessToken = user.googleAccessToken;
-    console.log(`Calendar request from ${user.email}: accessToken=${accessToken ? "present" : "missing"}, refreshToken=${user.googleRefreshToken ? "present" : "missing"}`);
     if (!accessToken) {
       return res.status(403).json({
         error: "Calendar access not granted. Please log out and log back in to grant calendar permissions.",
@@ -26,6 +31,18 @@ export function createCalendarRoutes(): Router {
     timeMin.setHours(0, 0, 0, 0);
     const timeMax = new Date(targetDate);
     timeMax.setHours(23, 59, 59, 999);
+
+    // Cache key matches the day window so a user navigating away and back to
+    // /home gets an instant response. We skip the cache when an access token
+    // refresh happens mid-request to avoid serving stale token-flow output.
+    const userKey = (user.email || user.id || "anon").toLowerCase();
+    const dayKey = timeMin.toISOString().slice(0, 10);
+    const cacheKey = `cal:${userKey}:${dayKey}`;
+    const cached = calendarCache.get<{ events: unknown[] }>(cacheKey);
+    if (cached) {
+      res.set("Cache-Control", "private, max-age=60");
+      return res.json({ ...cached, cacheHit: true });
+    }
 
     const fetchCalendarEvents = async (token: string) => {
       return fetch(
@@ -75,7 +92,10 @@ export function createCalendarRoutes(): Router {
     }
 
     const data = await response.json() as any;
-    res.json({ events: data.items || [] });
+    const payload = { events: data.items || [] };
+    calendarCache.set(cacheKey, payload);
+    res.set("Cache-Control", "private, max-age=60");
+    res.json(payload);
   });
 
   return router;

@@ -1,6 +1,7 @@
-// Merged Home page: personal context (greeting + calendar + todos) on top,
-// portfolio cards below. Built on the shared UI primitives so it shares the
-// same visual language as Renewals / Customer / Product / Deployments.
+// Merged Home page: portfolio cards in the main column with a right rail of
+// supplementary widgets (calendar, personal todos). Built on the shared UI
+// primitives so it shares the same visual language as Renewals / Customer /
+// Product / Deployments.
 //
 // Data path:
 //   1. fetch /api/portfolio?role=...&email=... (real backend)
@@ -10,7 +11,7 @@
 //      call (admin previewing different roles re-renders without refetching)
 
 import { useEffect, useMemo, useState } from "react";
-import { Users, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import { Users, AlertTriangle } from "lucide-react";
 import {
   countAccounts,
   MOCK_USERS,
@@ -75,7 +76,6 @@ export function HomeView() {
   const [isAdmin, setIsAdmin] = useStickyState<boolean>("home:isAdmin", true);
   const [adminRole, setAdminRole] = useStickyState<Role>("home:adminRole", "admin");
   const [nonAdminRole, setNonAdminRole] = useStickyState<Role>("home:nonAdminRole", "csm");
-  const [widgetsOpen, setWidgetsOpen] = useStickyState<boolean>("home:widgetsOpen", true);
 
   const role: Role = isAdmin ? adminRole : nonAdminRole;
   const userEmail = MOCK_USERS[role];
@@ -191,25 +191,6 @@ export function HomeView() {
         actions={headerActions}
       />
 
-      {/* Widget strip — collapsible so it doesn't crowd deep portfolio review */}
-      <Card variant="ghost" className="home-widget-card">
-        <button
-          type="button"
-          className="home-widget-toggle"
-          onClick={() => setWidgetsOpen(!widgetsOpen)}
-          aria-expanded={widgetsOpen}
-        >
-          {widgetsOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          <span>{widgetsOpen ? "Hide" : "Show"} calendar & todos</span>
-        </button>
-        {widgetsOpen && (
-          <div className="home-widget-grid">
-            <div className="home-widget-col"><CalendarWidget /></div>
-            <div className="home-widget-col"><PersonalTodoWidget /></div>
-          </div>
-        )}
-      </Card>
-
       {warnings.length > 0 && (
         <Banner tone="warning" icon={<AlertTriangle size={16} />}>
           <ul className="home-warning-list">
@@ -218,38 +199,47 @@ export function HomeView() {
         </Banner>
       )}
 
-      {/* Portfolio cards ─────────────────────────────────────────────── */}
-      <section>
-        <SectionHeader
-          title="My Portfolio"
-          count={loading ? undefined : `${accountCount} ${accountCount === 1 ? "account" : "accounts"}`}
-        />
-
-        {loading ? (
-          <Card><LoadingRow>Loading portfolio…</LoadingRow></Card>
-        ) : error ? (
-          <Card>
-            <EmptyState
-              title="Couldn't load portfolio"
-              detail={error}
-            />
-          </Card>
-        ) : accountCount === 0 ? (
-          <Card>
-            <EmptyState
-              title={isAdmin ? "No accounts found" : `No accounts assigned to ${userEmail}`}
-              detail="If this looks wrong, check Salesforce assignment fields for this user."
-            />
-          </Card>
-        ) : (
-          <PortfolioContent
-            role={role}
-            isAdmin={isAdmin}
-            portfolio={portfolio}
-            userEmail={userEmail}
+      {/* Two-column layout: portfolio cards in the main column, calendar +
+          personal todos in the right rail. Widgets stack vertically on
+          narrow screens (see .home-main-layout breakpoint). */}
+      <div className="home-main-layout">
+        <main className="home-main-col">
+          <SectionHeader
+            title="My Portfolio"
+            count={loading ? undefined : `${accountCount} ${accountCount === 1 ? "account" : "accounts"}`}
           />
-        )}
-      </section>
+
+          {loading ? (
+            <Card><LoadingRow>Loading portfolio…</LoadingRow></Card>
+          ) : error ? (
+            <Card>
+              <EmptyState
+                title="Couldn't load portfolio"
+                detail={error}
+              />
+            </Card>
+          ) : accountCount === 0 ? (
+            <Card>
+              <EmptyState
+                title={isAdmin ? "No accounts found" : `No accounts assigned to ${userEmail}`}
+                detail="If this looks wrong, check Salesforce assignment fields for this user."
+              />
+            </Card>
+          ) : (
+            <PortfolioContent
+              role={role}
+              isAdmin={isAdmin}
+              portfolio={portfolio}
+              userEmail={userEmail}
+            />
+          )}
+        </main>
+
+        <aside className="home-side-rail" aria-label="Calendar and tasks">
+          <CalendarWidget />
+          <PersonalTodoWidget />
+        </aside>
+      </div>
     </Page>
   );
 }
