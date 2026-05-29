@@ -24,9 +24,11 @@ import { DeploymentTemplateDetailView } from "./components/admin/DeploymentTempl
 import { CustomerPage } from "./components/customer/CustomerPage";
 import { PlansPage } from "./components/deployments/plans/PlansPage";
 import { PlanDetailPage } from "./components/deployments/plans/PlanDetailPage";
+import { CommandPalette } from "./components/search/CommandPalette";
 import { useAuth } from "./contexts/AuthContext";
 import { ChatProvider } from "./contexts/ChatContext";
 import { ToastProvider } from "./components/renewal/ToastProvider";
+import { useEffect, useState } from "react";
 
 // Route configuration for easy reference
 const ROUTES = {
@@ -63,6 +65,22 @@ const ROUTES = {
 // Dashboard with routing
 function Dashboard() {
   const location = useLocation();
+
+  // Global Cmd-K (Mac) / Ctrl-K (others) opens the command palette.
+  // Mounted on Dashboard rather than App so we know the user is past the
+  // login wall before binding the listener.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isCmdK = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k";
+      if (isCmdK) {
+        e.preventDefault();
+        setPaletteOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // Determine active main tab based on current path
   const getActiveMainTab = () => {
@@ -328,10 +346,22 @@ function Dashboard() {
       {/* AI Chat Assistant */}
       <ChatWidget />
 
+      {/* Global search palette — opens on Cmd-K / Ctrl-K */}
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+
       {/* Footer */}
       <footer className="app-footer">
         <div className="footer-content">
           <span>Customer 360° v2.3.0</span>
+          <span className="footer-separator">|</span>
+          <button
+            type="button"
+            className="footer-link footer-cmdk"
+            onClick={() => setPaletteOpen(true)}
+            title="Open search (⌘K)"
+          >
+            Search <kbd>⌘K</kbd>
+          </button>
           <span className="footer-separator">|</span>
           <a
             href="https://github.com/preetykumar/CSM-Dashboard/blob/main/RELEASE_NOTES.md"

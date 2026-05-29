@@ -38,6 +38,7 @@ import { createPortfolioRoutes } from "./routes/portfolio.js";
 import { createDeploymentsRoutes } from "./routes/deployments.js";
 import { createDeploymentPlansRoutes } from "./routes/deployment-plans.js";
 import { createAdminTemplatesRoutes } from "./routes/admin-templates.js";
+import { createSearchRoutes } from "./routes/search.js";
 import { createHealthRoutes } from "./routes/health.js";
 
 dotenv.config();
@@ -530,6 +531,7 @@ async function startServer() {
     app.use("/api/deployments/plans", optionalAuth, createDeploymentPlansRoutes(db));
     app.use("/api/deployments", optionalAuth, createDeploymentsRoutes(db, salesforce, kantata));
     app.use("/api/admin/deployment-templates", optionalAuth, createAdminTemplatesRoutes(db));
+    app.use("/api/search", optionalAuth, createSearchRoutes(db, salesforce, kantata));
     if (agent) {
       app.use("/api/agent", optionalAuth, createAgentRoutes(agent));
     }

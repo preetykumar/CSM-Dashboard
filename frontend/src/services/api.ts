@@ -3,6 +3,59 @@ import type { MockPortfolioAccount, HealthScore, HealthDimension, Role } from ".
 
 const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
+// ─── Global search (Cmd-K) ──────────────────────────────────────────────
+// Lives here at the top so the CommandPalette can import a single function
+// without spelunking the file.
+
+export type SearchResultType = "account" | "opportunity" | "plan" | "template" | "org";
+
+export interface SearchResult {
+  type: SearchResultType;
+  id: string;
+  label: string;
+  sublabel?: string;
+  url: string;
+  score: number;
+  matches?: Array<[number, number]>;
+}
+
+// In-flight request controller so a new keystroke aborts the previous one.
+let activeSearchAbort: AbortController | null = null;
+
+export async function searchGlobal(
+  q: string,
+  options?: { types?: SearchResultType[]; limit?: number }
+): Promise<SearchResult[]> {
+  if (!q.trim()) return [];
+  if (activeSearchAbort) activeSearchAbort.abort();
+  const ctrl = new AbortController();
+  activeSearchAbort = ctrl;
+
+  const params = new URLSearchParams({ q: q.trim() });
+  if (options?.types?.length) params.set("types", options.types.join(","));
+  if (options?.limit) params.set("limit", String(options.limit));
+
+  // We resolve API_BASE below — this function is hoisted so the constant
+  // isn't in scope yet. Build the URL relative to /api which Vite proxies in
+  // dev and which is same-origin in prod.
+  const url = `/api/search?${params.toString()}`;
+
+  try {
+    const res = await fetch(url, { credentials: "include", signal: ctrl.signal });
+    if (!res.ok) {
+      if (res.status === 401) return [];
+      throw new Error(`Search failed: ${res.status}`);
+    }
+    const data = await res.json();
+    return data.results || [];
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") return [];
+    throw e;
+  } finally {
+    if (activeSearchAbort === ctrl) activeSearchAbort = null;
+  }
+}
+
 // Default fetch options for cross-origin requests with credentials
 const fetchOptions: RequestInit = {
   credentials: "include",

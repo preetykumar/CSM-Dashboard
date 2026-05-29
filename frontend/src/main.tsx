@@ -7,6 +7,7 @@ import "./styles/ui.css";
 import "./styles/portfolio.css";
 import "./styles/deployments.css";
 import "./styles/admin-templates.css";
+import "./styles/command-palette.css";
 import "./index.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
