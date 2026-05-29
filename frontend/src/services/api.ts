@@ -1647,7 +1647,20 @@ export async function listAdminTemplates(filter?: {
   if (filter?.is_active !== undefined) params.set("is_active", String(filter.is_active));
   const qs = params.toString();
   const res = await fetch(`${ADMIN_BASE}${qs ? "?" + qs : ""}`, fetchOptions);
-  if (!res.ok) throw new Error(`Failed to list templates: ${res.status}`);
+  if (!res.ok) {
+    // A 403 here is almost always a stale session — the cached.ts admin
+    // check in the backend rejects requests whose passport session has
+    // expired or was invalidated by a backend restart. Surface that case
+    // distinctly so the UI can offer a re-login prompt.
+    if (res.status === 403) {
+      throw new Error("session_expired: admin session not recognized — log out and back in");
+    }
+    if (res.status === 401) {
+      throw new Error("not_authenticated: please log in");
+    }
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Failed to list templates: ${res.status}`);
+  }
   const data = await res.json();
   return data.templates;
 }

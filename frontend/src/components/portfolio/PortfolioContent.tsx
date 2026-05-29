@@ -5,7 +5,7 @@
 // switcher controls. Parents pass in the resolved role + portfolio data.
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import {
   groupPortfolioByOwner,
   countAccounts,
@@ -26,10 +26,74 @@ interface Props {
 }
 
 export function PortfolioContent({ role, isAdmin, portfolio, userEmail }: Props) {
-  if (!isAdmin) {
-    return <SingleListView portfolio={portfolio} userEmail={userEmail} />;
-  }
-  return <AdminPreviewView role={role} portfolio={portfolio} />;
+  const [search, setSearch] = useState("");
+
+  // Recursive name filter. A parent stays in the tree if (a) it matches, OR
+  // (b) any descendant matches — that way searching for a subsidiary name
+  // doesn't strip its parent header.
+  const filtered = useMemo(() => filterPortfolio(portfolio, search), [portfolio, search]);
+  const totalAfter = useMemo(() => countAccounts(filtered), [filtered]);
+  const totalBefore = useMemo(() => countAccounts(portfolio), [portfolio]);
+
+  return (
+    <>
+      <div className="portfolio-search">
+        <Search size={14} aria-hidden />
+        <input
+          type="search"
+          placeholder="Search accounts…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          aria-label="Filter accounts by name"
+        />
+        {search && (
+          <>
+            <span className="portfolio-search-count">
+              {totalAfter} of {totalBefore}
+            </span>
+            <button
+              type="button"
+              className="portfolio-search-clear"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+            >
+              <X size={12} />
+            </button>
+          </>
+        )}
+      </div>
+
+      {search && totalAfter === 0 ? (
+        <p className="portfolio-empty">No accounts match “{search}”.</p>
+      ) : !isAdmin ? (
+        <SingleListView portfolio={filtered} userEmail={userEmail} />
+      ) : (
+        <AdminPreviewView role={role} portfolio={filtered} />
+      )}
+    </>
+  );
+}
+
+// Walk the tree and keep an account if its name matches OR any descendant
+// matches. Match is case-insensitive substring; children are filtered too.
+function filterPortfolio(
+  portfolio: MockPortfolioAccount[],
+  query: string
+): MockPortfolioAccount[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return portfolio;
+  const walk = (accounts: MockPortfolioAccount[]): MockPortfolioAccount[] => {
+    const out: MockPortfolioAccount[] = [];
+    for (const acc of accounts) {
+      const children = acc.children ? walk(acc.children) : [];
+      const selfMatches = acc.name.toLowerCase().includes(q);
+      if (selfMatches || children.length > 0) {
+        out.push({ ...acc, children: children.length > 0 ? children : acc.children });
+      }
+    }
+    return out;
+  };
+  return walk(portfolio);
 }
 
 function SingleListView({ portfolio, userEmail }: { portfolio: MockPortfolioAccount[]; userEmail: string }) {

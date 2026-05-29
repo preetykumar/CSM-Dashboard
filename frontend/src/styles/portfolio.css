@@ -111,6 +111,60 @@
   gap: var(--space-1);
 }
 
+/* ── Portfolio search ─────────────────────────────────────────────────── */
+.portfolio-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 8px 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-default, var(--border-subtle));
+  border-radius: var(--radius-lg, 8px);
+  box-shadow: var(--shadow-xs, var(--shadow-sm));
+  margin-bottom: var(--space-3);
+  color: var(--text-secondary);
+  transition: border-color var(--motion-fast, 120ms) ease;
+}
+.portfolio-search:focus-within {
+  border-color: var(--color-brand-500);
+  box-shadow: 0 0 0 3px rgba(46, 95, 122, 0.12);
+}
+.portfolio-search input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+.portfolio-search input::placeholder {
+  color: var(--text-secondary);
+}
+.portfolio-search-count {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.portfolio-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-neutral-100);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+}
+.portfolio-search-clear:hover {
+  background: var(--color-neutral-200);
+  color: var(--text-primary);
+}
+
 /* ── Portfolio cards (CustomerCard) ──────────────────────────────────── */
 .portfolio-cards {
   display: grid;

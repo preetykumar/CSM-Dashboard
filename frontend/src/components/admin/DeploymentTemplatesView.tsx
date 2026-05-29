@@ -27,10 +27,11 @@ const DEPLOYMENT_LABELS: Record<string, string> = {
 };
 
 export function DeploymentTemplatesView() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, login } = useAuth();
   const [templates, setTemplates] = useState<AdminTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [toggling, setToggling] = useState<number | null>(null);
 
   useEffect(() => {
@@ -44,7 +45,15 @@ export function DeploymentTemplatesView() {
         setLoading(false);
       })
       .catch((e) => {
-        setError(e instanceof Error ? e.message : "Failed to load templates");
+        const msg = e instanceof Error ? e.message : "Failed to load templates";
+        // "session_expired:" prefix comes from api.ts when the server returns
+        // 403 even though useAuth thinks we're an admin. The user's passport
+        // session has lapsed — log back in.
+        if (msg.startsWith("session_expired:") || msg.startsWith("not_authenticated:")) {
+          setSessionExpired(true);
+        } else {
+          setError(msg);
+        }
         setLoading(false);
       });
   }, [isAdmin]);
@@ -92,6 +101,16 @@ export function DeploymentTemplatesView() {
 
       {loading ? (
         <Card><LoadingRow>Loading templates…</LoadingRow></Card>
+      ) : sessionExpired ? (
+        <Card>
+          <EmptyState
+            title="Session expired"
+            detail="Your sign-in is no longer valid. This usually happens after the backend restarts or your cookie ages out. Sign in again to continue."
+            action={
+              <Button size="sm" onClick={login}>Sign in again</Button>
+            }
+          />
+        </Card>
       ) : error ? (
         <Banner tone="danger">{error}</Banner>
       ) : templates.length === 0 ? (
