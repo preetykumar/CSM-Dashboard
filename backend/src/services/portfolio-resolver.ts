@@ -455,5 +455,6 @@ function emptyEnrichment(accountId: string): PortfolioJoinedData {
     amplitudeTotalUsersInSF: null,
     kantataProjects: null,
     healthScore: null,
+    subscriptionArr: null,
   };
 }

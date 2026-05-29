@@ -212,6 +212,10 @@ function CustomerAccountCard({
     j.amplitudeActiveUsers90d === null
       ? null
       : `${j.amplitudeActiveUsers90d} active users`;
+  const arrSummary =
+    j.subscriptionArr === undefined || j.subscriptionArr === null
+      ? null
+      : `ARR ${formatArr(j.subscriptionArr)}`;
 
   return (
     <div
@@ -232,6 +236,8 @@ function CustomerAccountCard({
             <Badge tone="info">+{children.length} {children.length === 1 ? "child" : "children"}</Badge>
           )}
           <span className="customer-account-summary">
+            {arrSummary && <span className="customer-account-arr">{arrSummary}</span>}
+            {arrSummary && (supportSummary || usageSummary) && <span aria-hidden> · </span>}
             {supportSummary && <span>{supportSummary}</span>}
             {supportSummary && usageSummary && <span aria-hidden> · </span>}
             {usageSummary && <span>{usageSummary}</span>}
@@ -265,4 +271,11 @@ function CustomerAccountCard({
       )}
     </div>
   );
+}
+
+// Compact ARR display: $1.2M / $850k / $0. Plain numbers below $1k.
+function formatArr(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `$${Math.round(n / 1_000)}k`;
+  return `$${Math.round(n)}`;
 }

@@ -161,6 +161,10 @@ export interface EnterpriseSubscription {
   monitorProjectCount?: number;
   enterpriseUuid?: string;
   enterpriseDomain?: string;
+  // Annualized revenue for this single subscription line, from
+  // Enterprise_Subscription__c.Subscription_Total__c. Sum per account = the
+  // account's current ARR.
+  subscriptionTotal?: number;
 }
 
 export interface RenewalOpportunity {
@@ -300,6 +304,7 @@ interface SFEnterpriseSubscription {
   Monitor_Project_Count__c?: number;
   Enterprise_UUID__c?: string;
   Enterprise_Domain__c?: string;
+  Subscription_Total__c?: number;
 }
 
 // Per-account role assignment tuple — used in getAccountRoleAssignments.
@@ -526,60 +531,13 @@ export class SalesforceService {
         ownerName: (account as any).Owner?.Name || "",
       }));
 
-      // Collect known CSM emails for EM fallback matching
-      const knownCSMEmails = new Set(assignments.map(a => a.csmEmail.toLowerCase()).filter(Boolean));
-      const assignedAccountIds = new Set(assignments.map(a => a.accountId));
-
-      // EM fallback: find accounts with no CSM but an Engagement Manager who is a known CSM
-      try {
-        const emAccounts = await this.query<SFAccount>(`
-          SELECT Id, Name,
-                 Engagement_Manager__c, Engagement_Manager__r.Id,
-                 Engagement_Manager__r.Name, Engagement_Manager__r.Email,
-                 Engagement_Manager2__c, Engagement_Manager2__r.Id,
-                 Engagement_Manager2__r.Name, Engagement_Manager2__r.Email
-          FROM Account
-          WHERE Customer_Success_Manager_csm__c = null
-            AND (Engagement_Manager__c != null OR Engagement_Manager2__c != null)
-        `);
-
-        let emFallbackCount = 0;
-        for (const account of emAccounts) {
-          if (assignedAccountIds.has(account.Id)) continue;
-
-          // Check EM1, then EM2 for a known CSM
-          const em1Email = account.Engagement_Manager__r?.Email?.toLowerCase();
-          const em2Email = account.Engagement_Manager2__r?.Email?.toLowerCase();
-
-          if (em1Email && knownCSMEmails.has(em1Email)) {
-            assignments.push({
-              accountId: account.Id,
-              accountName: account.Name,
-              csmId: account.Engagement_Manager__r?.Id || account.Engagement_Manager__c || "",
-              csmName: account.Engagement_Manager__r?.Name || "",
-              csmEmail: account.Engagement_Manager__r?.Email || "",
-            });
-            assignedAccountIds.add(account.Id);
-            emFallbackCount++;
-          } else if (em2Email && knownCSMEmails.has(em2Email)) {
-            assignments.push({
-              accountId: account.Id,
-              accountName: account.Name,
-              csmId: account.Engagement_Manager2__r?.Id || account.Engagement_Manager2__c || "",
-              csmName: account.Engagement_Manager2__r?.Name || "",
-              csmEmail: account.Engagement_Manager2__r?.Email || "",
-            });
-            assignedAccountIds.add(account.Id);
-            emFallbackCount++;
-          }
-        }
-        if (emFallbackCount > 0) {
-          console.log(`Added ${emFallbackCount} accounts via EM field fallback`);
-        }
-      } catch (emError) {
-        console.warn("EM fallback query failed (fields may not exist):", emError);
-      }
-
+      // CSM assignments come exclusively from Customer_Success_Manager_csm__c.
+      // The Engagement_Manager / Engagement_Manager2 fields used to provide a
+      // fallback for accounts whose CSM was null but whose EM happened to be
+      // a known CSM. Those fields are being deprecated, so we now treat
+      // "no Customer_Success_Manager_csm__c" as "not a CSM-assigned account."
+      // This keeps each CSM's portfolio honest — they only see accounts that
+      // explicitly list them as the CSM in Salesforce.
       return assignments;
     } catch (error) {
       console.error("Error fetching CSM assignments, trying alternative field names...", error);
@@ -847,7 +805,8 @@ export class SalesforceService {
       const subscriptions = await this.query<SFEnterpriseSubscription>(`
         SELECT Id, Name, Account__c, Product_Type__c, License_Count__c, Assigned_Seats__c,
                Percentage_Assigned__c, Environment__c, Type__c, Start_Date__c, End_Date__c,
-               Monitor_Page_Count__c, Monitor_Project_Count__c, Enterprise_UUID__c, Enterprise_Domain__c
+               Monitor_Page_Count__c, Monitor_Project_Count__c, Enterprise_UUID__c, Enterprise_Domain__c,
+               Subscription_Total__c
         FROM Enterprise_Subscription__c
         WHERE Account__r.Name = '${escapedName}'
         AND Type__c = 'paid'
@@ -873,6 +832,7 @@ export class SalesforceService {
         monitorProjectCount: sub.Monitor_Project_Count__c,
         enterpriseUuid: sub.Enterprise_UUID__c,
         enterpriseDomain: sub.Enterprise_Domain__c,
+        subscriptionTotal: sub.Subscription_Total__c ?? undefined,
       }));
     } catch (error) {
       console.error(`Error fetching subscriptions for ${accountName}:`, error);
@@ -887,7 +847,8 @@ export class SalesforceService {
       const subscriptions = await this.query<SFEnterpriseSubscription>(`
         SELECT Id, Name, Account__c, Product_Type__c, License_Count__c, Assigned_Seats__c,
                Percentage_Assigned__c, Environment__c, Type__c, Start_Date__c, End_Date__c,
-               Monitor_Page_Count__c, Monitor_Project_Count__c, Enterprise_UUID__c, Enterprise_Domain__c
+               Monitor_Page_Count__c, Monitor_Project_Count__c, Enterprise_UUID__c, Enterprise_Domain__c,
+               Subscription_Total__c
         FROM Enterprise_Subscription__c
         WHERE Account__c = '${accountId}'
         AND Type__c = 'paid'
@@ -913,11 +874,51 @@ export class SalesforceService {
         monitorProjectCount: sub.Monitor_Project_Count__c,
         enterpriseUuid: sub.Enterprise_UUID__c,
         enterpriseDomain: sub.Enterprise_Domain__c,
+        subscriptionTotal: sub.Subscription_Total__c ?? undefined,
       }));
     } catch (error) {
       console.error(`Error fetching subscriptions for account ${accountId}:`, error);
       throw error;
     }
+  }
+
+  // Bulk fetch: ARR per account, computed as SUM(Subscription_Total__c) over
+  // every active paid subscription line for each requested account. Returns a
+  // Map keyed by Account__c. Accounts with no active subs are simply absent
+  // from the map (not zero — callers can distinguish "no data" from "$0").
+  //
+  // Used by the portfolio enrichment (customer banner ARR) and the renewals
+  // batch endpoint (per-row ARR context).
+  async getAccountArrTotals(accountIds: string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (accountIds.length === 0) return out;
+
+    const CHUNK = 200;
+    for (let i = 0; i < accountIds.length; i += CHUNK) {
+      const chunk = accountIds.slice(i, i + CHUNK);
+      const inList = chunk.map((id) => `'${id}'`).join(",");
+      try {
+        // Per-line query rather than SUM aggregation — easier to reason about
+        // null Subscription_Total__c values (treat as 0) without dealing
+        // with SOQL aggregate result quirks.
+        type Row = { Account__c: string; Subscription_Total__c: number | null };
+        const rows = await this.queryAll<Row>(`
+          SELECT Account__c, Subscription_Total__c
+          FROM Enterprise_Subscription__c
+          WHERE Account__c IN (${inList})
+            AND Type__c = 'paid'
+            AND End_Date__c >= TODAY
+        `);
+        for (const r of rows) {
+          if (!r.Account__c) continue;
+          const amt = r.Subscription_Total__c || 0;
+          out.set(r.Account__c, (out.get(r.Account__c) || 0) + amt);
+        }
+      } catch (e) {
+        console.error("getAccountArrTotals chunk failed:", e);
+      }
+    }
+    return out;
   }
 
   async getAccountsWithActiveSubscriptions(): Promise<string[]> {

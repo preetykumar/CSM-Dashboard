@@ -56,6 +56,21 @@ export async function searchGlobal(
   }
 }
 
+// Bulk ARR lookup. Returns `{ accountId: arr }` for every account that has
+// at least one active paid subscription with Subscription_Total__c set.
+// Used by the renewal-card views to surface "current ARR" alongside the
+// renewal opp amount. Cached server-side for 10 minutes.
+export async function fetchAccountArrBatch(accountIds: string[]): Promise<Record<string, number>> {
+  if (accountIds.length === 0) return {};
+  const ids = accountIds.filter(Boolean);
+  if (ids.length === 0) return {};
+  const params = new URLSearchParams({ ids: ids.join(",") });
+  const res = await fetch(`/api/salesforce/account-arr?${params.toString()}`, { credentials: "include" });
+  if (!res.ok) return {};
+  const data = await res.json();
+  return data.arrByAccount || {};
+}
+
 // Default fetch options for cross-origin requests with credentials
 const fetchOptions: RequestInit = {
   credentials: "include",

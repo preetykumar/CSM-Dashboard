@@ -121,6 +121,10 @@ export interface MockJoinedData {
   amplitudeTotalUsersInSF: number | null;
   kantataProjects: Array<{ id: string; name: string; status: string; eta: string | null; category: string }> | null;
   healthScore: HealthScore | null;
+  // SUM(Subscription_Total__c) across active paid subs for this account.
+  // null when SF didn't return data; 0 when the account exists but has no
+  // active paid subscriptions.
+  subscriptionArr?: number | null;
 }
 
 export interface MockPortfolioAccount extends MockSFAccount {

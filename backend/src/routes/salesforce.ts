@@ -93,6 +93,38 @@ export function createSalesforceRoutes(salesforce: SalesforceService): Router {
     }
   });
 
+  // Bulk ARR per account — returns Map<accountId, totalArr> for the requested
+  // ids. Cached 10 min like the per-subscription endpoints.
+  // Usage: GET /api/salesforce/account-arr?ids=id1,id2,id3
+  router.get("/account-arr", async (req: Request, res: Response) => {
+    try {
+      const raw = typeof req.query.ids === "string" ? req.query.ids : "";
+      const ids = raw
+        .split(/[,;]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (ids.length === 0) {
+        return res.json({ arrByAccount: {}, count: 0 });
+      }
+      // Cap to avoid runaway batches.
+      const limited = ids.slice(0, 500);
+      // Cache per id-set. Sort first so {a,b} and {b,a} hit the same cache slot.
+      const cacheKey = `arr:${[...limited].sort().join(",")}`;
+      const cached = salesforceCache.get<{ arrByAccount: Record<string, number>; count: number }>(cacheKey);
+      if (cached) return res.json(cached);
+
+      const map = await salesforce.getAccountArrTotals(limited);
+      const arrByAccount: Record<string, number> = {};
+      for (const [k, v] of map) arrByAccount[k] = v;
+      const result = { arrByAccount, count: map.size };
+      salesforceCache.set(cacheKey, result);
+      res.json(result);
+    } catch (error) {
+      console.error("Error computing account ARR totals:", error);
+      res.status(500).json({ error: "Failed to compute account ARR" });
+    }
+  });
+
   // Get all account names with active subscriptions (cached 10 min)
   router.get("/accounts-with-subscriptions", async (_req: Request, res: Response) => {
     try {

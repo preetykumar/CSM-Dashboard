@@ -14,6 +14,16 @@ interface OpportunityCardProps {
   onToggle: () => void;
   onDraftEmail?: (opp: Opportunity, action: RequiredAction) => void;
   mode?: OpportunityCardMode;
+  // Customer's current ARR from Enterprise_Subscription__c.Subscription_Total__c.
+  // Optional — fetched in bulk by the parent tree. Undefined means "no data";
+  // we don't render the chip rather than show a stale or zero value.
+  customerArr?: number;
+}
+
+function formatArrCompact(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1_000) return `$${Math.round(n / 1_000)}k`;
+  return `$${Math.round(n)}`;
 }
 
 function formatDate(iso: string): string {
@@ -31,6 +41,7 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({
   onToggle,
   onDraftEmail,
   mode = 'active',
+  customerArr,
 }) => {
   const actions = WorkflowEngine.getRequiredActions(opp);
   const primaryAction = actions[0];
@@ -83,6 +94,14 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({
         </div>
         <div className="renewal-opp-header-right">
           <span className="renewal-opp-amount">{formatCurrency(opp.amount || 0)}</span>
+          {typeof customerArr === "number" && customerArr > 0 && (
+            <span
+              className="renewal-opp-arr"
+              title={`Customer's current ARR — sum of Subscription_Total across active paid subscriptions (${formatCurrency(customerArr)})`}
+            >
+              ARR {formatArrCompact(customerArr)}
+            </span>
+          )}
           <span className="renewal-opp-date">{dateLabel}</span>
         </div>
       </div>

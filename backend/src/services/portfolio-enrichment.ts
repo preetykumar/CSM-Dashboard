@@ -39,6 +39,9 @@ export interface PortfolioJoinedData {
   }> | null;
   // Health score (full HealthScoreResponse shape from /api/health/batch)
   healthScore: HealthScoreResponse | null;
+  // Current ARR — SUM(Subscription_Total__c) across active paid subs for
+  // this account. null = SF query failed or account has zero active subs.
+  subscriptionArr: number | null;
 }
 
 /**
@@ -63,7 +66,7 @@ export async function enrichAccountsBatch(
   if (accountIds.length === 0) return result;
 
   // ─── Fan-out: gather everything we need in parallel ─────────────────────
-  const [zendesk, sfContacts, activeUsers, kantataByAccount, healthByAccount] = await Promise.all([
+  const [zendesk, sfContacts, activeUsers, kantataByAccount, healthByAccount, arrByAccount] = await Promise.all([
     fetchZendeskJoin(accountIds, db, accountNames),
     fetchSFContactCount(accountIds, db),
     db.getActiveUserCountsByAccountIds(accountIds),
@@ -73,6 +76,12 @@ export async function enrichAccountsBatch(
     includeHealth && salesforce && accountNames.size > 0
       ? fetchHealthScores(accountIds, accountNames, db, salesforce)
       : Promise.resolve(new Map<string, HealthScoreResponse>()),
+    salesforce
+      ? salesforce.getAccountArrTotals(accountIds).catch((e) => {
+          console.warn("ARR totals fetch failed:", e);
+          return new Map<string, number>();
+        })
+      : Promise.resolve(new Map<string, number>()),
   ]);
 
   // ─── Merge ──────────────────────────────────────────────────────────────
@@ -95,6 +104,7 @@ export async function enrichAccountsBatch(
       amplitudeTotalUsersInSF: sc?.contactCount ?? null,
       kantataProjects: kProjects ?? null,
       healthScore: health ?? null,
+      subscriptionArr: arrByAccount.has(id) ? arrByAccount.get(id)! : null,
     });
   }
 

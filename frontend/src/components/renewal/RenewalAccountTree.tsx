@@ -12,13 +12,14 @@
 // the dataset, per the user's "show empty parents as grouping headers"
 // product decision.
 
-import { useState, useMemo, useCallback, type ReactNode } from "react";
+import { useEffect, useState, useMemo, useCallback, type ReactNode } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { useAccountHierarchy } from "../../hooks/useAccountHierarchy";
 import { nestOppsByAccount } from "../../lib/nestOppsByAccount";
 import { HierarchyList } from "../HierarchyList";
 import { OpportunityCard } from "./OpportunityCard";
 import { formatCurrency } from "../../utils/format";
+import { fetchAccountArrBatch } from "../../services/api";
 import type { Opportunity } from "../../types/renewal";
 
 interface Props {
@@ -43,6 +44,30 @@ export function RenewalAccountTree({
 }: Props) {
   const { hierarchy } = useAccountHierarchy();
   const accountTree = useMemo(() => nestOppsByAccount(opps, hierarchy), [opps, hierarchy]);
+
+  // Bulk-fetch current ARR for every account in view so each opp card can
+  // show "current ARR" alongside the renewal opp Amount. One call per
+  // distinct accountId set per mount; cached server-side for 10 min.
+  const accountIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const opp of opps) if (opp.accountId) ids.add(opp.accountId);
+    return Array.from(ids);
+  }, [opps]);
+  const [arrByAccount, setArrByAccount] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (accountIds.length === 0) return;
+    let cancelled = false;
+    fetchAccountArrBatch(accountIds)
+      .then((data) => {
+        if (!cancelled) setArrByAccount(data);
+      })
+      .catch(() => {
+        // Quiet fallback — empty map means cards just won't show ARR.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountIds]);
 
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
   const toggleAccount = useCallback(
@@ -97,6 +122,7 @@ export function RenewalAccountTree({
                     expanded={expandedOppId === opp.id}
                     onToggle={() => setExpandedOppId(expandedOppId === opp.id ? null : opp.id)}
                     mode={mode}
+                    customerArr={opp.accountId ? arrByAccount[opp.accountId] : undefined}
                   />
                 ))}
               </div>

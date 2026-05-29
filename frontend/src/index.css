@@ -10549,6 +10549,18 @@ header .hint {
   font-variant-numeric: tabular-nums;
 }
 
+.renewal-opp-arr {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-brand-700, #244a60);
+  background: var(--color-brand-50, #eef4f8);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--color-brand-100, #d5e4ed);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
 .renewal-opp-body {
   border-top: 1px solid #e2e8f0;
   padding: 1rem;
@@ -11613,6 +11625,10 @@ header .hint {
 .customer-account-summary {
   font-size: 13px;
   color: var(--text-secondary, #6b7280);
+}
+.customer-account-arr {
+  color: var(--color-brand-700, #244a60);
+  font-weight: 600;
 }
 .customer-account-body {
   padding: 0 14px 14px;
