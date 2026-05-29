@@ -25,7 +25,6 @@ import type {
 
 // Admin allow-list (mirrored from auth.ts — keep in sync if that list changes).
 const ADMIN_EMAILS = [
-  "michelle.viguerie@deque.com",
   "katile.olsen@deque.com",
   "neel.sinha@deque.com",
   "preety.kumar@deque.com",
@@ -33,6 +32,8 @@ const ADMIN_EMAILS = [
   "anik.ganguly@deque.com",
   "dylan.barrell@deque.com",
   "mike.farrell@deque.com",
+  "eric.padron@deque.com",
+  "ian.flanagan@deque.com",
 ];
 
 function isAdmin(email: string | undefined): boolean {

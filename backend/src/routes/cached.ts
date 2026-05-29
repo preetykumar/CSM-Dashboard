@@ -4,7 +4,6 @@ import type { CustomerSummary, CSMPortfolio, PMPortfolio, CSMCustomerSummary, Ti
 
 // Admin users who can see all CSM portfolios
 const ADMIN_EMAILS = [
-  "michelle.viguerie@deque.com",
   "katile.olsen@deque.com",
   "neel.sinha@deque.com",
   "preety.kumar@deque.com",
@@ -12,6 +11,8 @@ const ADMIN_EMAILS = [
   "anik.ganguly@deque.com",
   "dylan.barrell@deque.com",
   "mike.farrell@deque.com",
+  "eric.padron@deque.com",
+  "ian.flanagan@deque.com",
 ];
 
 function isAdmin(email: string | undefined): boolean {
