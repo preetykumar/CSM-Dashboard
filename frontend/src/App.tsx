@@ -125,8 +125,16 @@ function Dashboard() {
       <header>
         <div className="header-top">
           <div className="app-brand">
+            <img
+              src="/deque-logo.svg"
+              alt="Deque"
+              className="app-brand-logo"
+              width={140}
+              height={50}
+            />
+            <span className="app-brand-divider" aria-hidden="true" />
             <span className="app-brand-name">Customer 360°</span>
-            <span className="app-brand-tagline">Deque's Customer Intelligence Platform</span>
+            <span className="app-brand-tagline">Customer Intelligence Platform</span>
           </div>
           <div className="header-actions">
             <SyncButton />

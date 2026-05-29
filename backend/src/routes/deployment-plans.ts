@@ -472,14 +472,21 @@ export function createDeploymentPlansRoutes(db: IDatabaseService): Router {
   // ─── GET /api/deployments/plans/:planId/audit ────────────────────────────
   // Returns audit history for a plan. Optional ?item_id=NN to scope to one task
   // (still includes the plan_create event so the timeline has a baseline).
-  router.get("/:planId/audit", async (req: Request, res: Response) => {
+  // Visibility rule: caller must be the TSA, IE, or an admin. Anonymous
+  // readers and other authenticated users get 403 — the audit log can
+  // include reassignment history that we don't want to leak.
+  router.get("/:planId/audit", requireAuthenticated, async (req: Request, res: Response) => {
     try {
       const planId = parseInt(req.params.planId, 10);
       if (isNaN(planId)) return res.status(400).json({ error: "Invalid plan id" });
       const plan = await db.getDeploymentPlan(planId);
       if (!plan) return res.status(404).json({ error: "Plan not found" });
-      // Audit history is visible to anyone who can see the plan. We don't
-      // gate by canEdit since reading history isn't a mutation.
+      const actor = actorEmail(req);
+      if (!canEditPlan(actor, plan)) {
+        return res.status(403).json({
+          error: "You don't have permission to view history for this plan.",
+        });
+      }
       const itemIdRaw = typeof req.query.item_id === "string" ? req.query.item_id : undefined;
       const limit = typeof req.query.limit === "string" ? Math.min(parseInt(req.query.limit, 10) || 200, 500) : 200;
 

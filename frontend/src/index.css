@@ -1,3 +1,91 @@
+/* ─── Deque brand palette ────────────────────────────────────────────────
+   Source: SVG fills from www.deque.com horizontal color logo (Dec 2025).
+   Primary teal, secondary mauve, dark charcoal, cream. Brand scales below
+   are tonal ramps derived from those anchors. */
+:root {
+  --deque-teal: #2e5f7a;
+  --deque-mauve: #b25295;
+  --deque-dark: #2a2826;
+  --deque-cream: #f6f3ed;
+
+  /* Brand ramp — teal-based (used by --color-brand-* tokens throughout) */
+  --color-brand-50:  #eef4f8;
+  --color-brand-100: #d5e4ed;
+  --color-brand-200: #abc8db;
+  --color-brand-300: #82adc8;
+  --color-brand-400: #5891b6;
+  --color-brand-500: #3e7895;
+  --color-brand-600: #2e5f7a;
+  --color-brand-700: #244a60;
+  --color-brand-800: #1a3445;
+  --color-brand-900: #102232;
+
+  /* Primary / secondary semantic */
+  --color-primary: var(--deque-teal);
+  --color-primary-hover: #244a60;
+  --color-secondary: var(--deque-mauve);
+
+  /* Backwards-compat with code that still uses --color-info-* (it maps to
+     the same teal so info badges read as brand) */
+  --color-info-50:  #eef4f8;
+  --color-info-100: #d5e4ed;
+  --color-info-300: #82adc8;
+  --color-info-500: #3e7895;
+  --color-info-600: #2e5f7a;
+  --color-info-700: #244a60;
+
+  /* Neutrals — warmer grays so they sit alongside the cream */
+  --color-neutral-50:  #faf9f6;
+  --color-neutral-100: #f1efe9;
+  --color-neutral-200: #e3e0d6;
+  --color-neutral-300: #c8c4b7;
+  --color-neutral-400: #9a978c;
+  --color-neutral-500: #6f6c63;
+  --color-neutral-600: #524f48;
+  --color-neutral-700: #3b3934;
+  --color-neutral-800: #2a2826;
+  --color-neutral-900: #1c1a18;
+
+  /* Status — kept on standard scales for accessibility (contrast on warm bg) */
+  --color-success-50:  #ecfdf5;
+  --color-success-100: #d1fae5;
+  --color-success-300: #6ee7b7;
+  --color-success-500: #10b981;
+  --color-success-600: #059669;
+  --color-success-700: #047857;
+
+  --color-warning-50:  #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-300: #fcd34d;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+
+  --color-danger-50:  #fef2f2;
+  --color-danger-100: #fee2e2;
+  --color-danger-300: #fca5a5;
+  --color-danger-500: #ef4444;
+  --color-danger-600: #dc2626;
+  --color-danger-700: #b91c1c;
+
+  /* Surfaces & text */
+  --surface-page: #faf9f6;
+  --surface-default: #ffffff;
+  --surface-elevated: #ffffff;
+  --bg-hover: #f1efe9;
+  --bg-hover-strong: #e3e0d6;
+  --bg-muted: #faf9f6;
+  --bg-accent-subtle: #eef4f8;
+  --text-primary: var(--deque-dark);
+  --text-secondary: #6f6c63;
+  --color-text-primary: var(--deque-dark);
+  --color-text-secondary: #6f6c63;
+  --color-bg-subtle: #f1efe9;
+  --color-border: #e3e0d6;
+  --border-default: #d8d4c8;
+  --border-subtle: #ece9df;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -6,11 +94,29 @@
 
 body {
   font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif);
-  background-color: var(--surface-page, #f8fafc);
-  color: var(--text-primary, #0f172a);
+  background-color: var(--surface-page);
+  color: var(--text-primary);
   line-height: var(--leading-normal, 1.5);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Deque logo + brand divider in app header ─── */
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.app-brand-logo {
+  height: 36px;
+  width: auto;
+  display: block;
+}
+.app-brand-divider {
+  display: inline-block;
+  width: 1px;
+  height: 28px;
+  background: var(--color-neutral-300);
 }
 
 .app {
@@ -11751,6 +11857,86 @@ header .hint {
 .plan-tree-row.editing {
   background: var(--bg-accent-subtle, #eff6ff);
   outline: 1px solid var(--color-brand-300, #93c5fd);
+}
+.plan-tree-row.focused {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: -2px;
+}
+.plan-tree-row.focused.editing {
+  outline-color: var(--color-brand-700);
+}
+
+/* Filter toolbar above the tree */
+.plan-tree-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+.plan-tree-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.plan-tree-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: white;
+  color: var(--text-secondary);
+}
+.plan-tree-search input {
+  border: none;
+  outline: none;
+  font-size: 13px;
+  min-width: 220px;
+  background: transparent;
+  font-family: inherit;
+  color: var(--text-primary);
+}
+.plan-tree-search input::placeholder {
+  color: var(--text-secondary);
+}
+.plan-tree-toolbar select,
+.plan-tree-resp-filter {
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: white;
+  color: var(--text-primary);
+  font-family: inherit;
+}
+.plan-tree-resp-filter {
+  min-width: 200px;
+}
+.plan-tree-toolbar-spacer {
+  flex: 1;
+}
+.plan-tree-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.plan-tree-hint kbd {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  padding: 1px 5px;
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  background: var(--bg-muted);
+  color: var(--text-primary);
 }
 .plan-tree-desc-btn {
   background: none;

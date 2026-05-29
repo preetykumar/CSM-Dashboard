@@ -4,7 +4,7 @@
 // 3c: per-row history button + plan-level edit panel + admin
 //     "Refresh from template" action.
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
   ChevronDown,
@@ -18,6 +18,8 @@ import {
   Clock,
   RefreshCw,
   Settings,
+  Search,
+  Download,
 } from "lucide-react";
 import {
   getDeploymentPlan,
@@ -139,6 +141,7 @@ export function PlanDetailPage() {
 
   const [data, setData] = useState<{
     plan: DeploymentPlan;
+    items: DeploymentPlanItem[];
     tree: DeploymentPlanItemTree[];
     canEdit: boolean;
   } | null>(null);
@@ -154,12 +157,19 @@ export function PlanDetailPage() {
   const [planEditing, setPlanEditing] = useState<PlanEditState | null>(null);
   const [auditFor, setAuditFor] = useState<{ itemId?: number; itemLabel?: string } | null>(null);
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
+  // Phase 3d: filters + keyboard focus + CSV
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ProgressStatus | "all">("all");
+  const [responsibleFilter, setResponsibleFilter] = useState("");
+  const [focusedId, setFocusedId] = useState<number | null>(null);
+  // ref to the scrollable tree container so we can scroll focused row into view.
+  const treeRef = useRef<HTMLDivElement | null>(null);
 
   const reload = async () => {
     if (isNaN(id)) return;
     try {
       const res = await getDeploymentPlan(id);
-      setData({ plan: res.plan, tree: res.tree, canEdit: res.canEdit });
+      setData({ plan: res.plan, items: res.items, tree: res.tree, canEdit: res.canEdit });
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load plan");
@@ -335,6 +345,192 @@ export function PlanDetailPage() {
     }
   };
 
+  // Filter the tree by search + status + responsible. A node is visible if
+  // it matches the filter OR has a visible descendant — ancestors are kept
+  // so the hierarchy stays intelligible.
+  const filteredTree = useMemo(() => {
+    if (!data) return [];
+    const lcSearch = search.trim().toLowerCase();
+    const lcResp = responsibleFilter.trim().toLowerCase();
+    if (!lcSearch && statusFilter === "all" && !lcResp) return data.tree;
+
+    const matchesSelf = (n: DeploymentPlanItem): boolean => {
+      if (statusFilter !== "all" && n.progress_status !== statusFilter) return false;
+      if (lcResp) {
+        const d = n.deque_responsible?.toLowerCase() || "";
+        const c = n.customer_responsible?.toLowerCase() || "";
+        if (!d.includes(lcResp) && !c.includes(lcResp)) return false;
+      }
+      if (lcSearch) {
+        const hay = [
+          n.description,
+          n.target_outcome,
+          n.notes,
+          n.item_id,
+          n.deque_responsible,
+          n.customer_responsible,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!hay.includes(lcSearch)) return false;
+      }
+      return true;
+    };
+
+    const walk = (nodes: DeploymentPlanItemTree[]): DeploymentPlanItemTree[] => {
+      const out: DeploymentPlanItemTree[] = [];
+      for (const n of nodes) {
+        const childMatches = walk(n.children);
+        if (matchesSelf(n) || childMatches.length > 0) {
+          out.push({ ...n, children: childMatches });
+        }
+      }
+      return out;
+    };
+    return walk(data.tree);
+  }, [data, search, statusFilter, responsibleFilter]);
+
+  // Flat list of visible item ids, in tree order, respecting collapsed state.
+  // Used for j/k navigation.
+  const flatVisibleIds = useMemo(() => {
+    const out: number[] = [];
+    const walk = (nodes: DeploymentPlanItemTree[]) => {
+      for (const n of nodes) {
+        out.push(n.id);
+        if (!collapsed.has(n.id)) walk(n.children);
+      }
+    };
+    walk(filteredTree);
+    return out;
+  }, [filteredTree, collapsed]);
+
+  // Keyboard nav. Only fires when no input is focused.
+  useEffect(() => {
+    if (!data) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      if (target?.isContentEditable) return;
+      if (editing || adding || planEditing || auditFor) return; // modals own keys
+      if (flatVisibleIds.length === 0) return;
+
+      // Resolve current index — if no row is focused yet, start at the top
+      // for j/down and the bottom for k/up.
+      const currentIdx = focusedId === null ? -1 : flatVisibleIds.indexOf(focusedId);
+
+      const flatItems = (data.items || []);
+      const byId = new Map<number, DeploymentPlanItem>(flatItems.map((it) => [it.id, it]));
+      const focusedItem = focusedId !== null ? byId.get(focusedId) : null;
+
+      if (e.key === "j" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = currentIdx < 0 ? flatVisibleIds[0] : flatVisibleIds[Math.min(currentIdx + 1, flatVisibleIds.length - 1)];
+        setFocusedId(next);
+      } else if (e.key === "k" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const prev = currentIdx < 0 ? flatVisibleIds[flatVisibleIds.length - 1] : flatVisibleIds[Math.max(currentIdx - 1, 0)];
+        setFocusedId(prev);
+      } else if (e.key === " " && focusedId !== null) {
+        e.preventDefault();
+        toggleCollapse(focusedId);
+      } else if (e.key === "Enter" && focusedItem && canEdit) {
+        e.preventDefault();
+        beginEdit(focusedItem);
+      } else if (e.key === "h" && focusedItem) {
+        e.preventDefault();
+        setAuditFor({
+          itemId: focusedItem.id,
+          itemLabel: `${focusedItem.item_id || ""} ${focusedItem.description}`.trim(),
+        });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // We intentionally re-bind whenever the visible set or focus changes so
+    // the handler closes over fresh state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatVisibleIds, focusedId, editing, adding, planEditing, auditFor, data]);
+
+  // Scroll the focused row into view when it changes.
+  useEffect(() => {
+    if (focusedId === null || !treeRef.current) return;
+    const el = treeRef.current.querySelector<HTMLElement>(`[data-row-id="${focusedId}"]`);
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }, [focusedId]);
+
+  // CSV export — flat dump of every item with hierarchy context columns.
+  // Uses the unfiltered items list so the export is the full plan, not a
+  // filtered view. (Users expect "export" to be canonical.)
+  const handleExportCsv = () => {
+    if (!data) return;
+    const headers = [
+      "item_id",
+      "level",
+      "activity_type",
+      "description",
+      "progress_status",
+      "deque_responsible",
+      "customer_responsible",
+      "start_date",
+      "end_date",
+      "estimated_days",
+      "actual_days",
+      "target_outcome",
+      "notes",
+    ];
+    const depthOf = new Map<number, number>();
+    const fillDepth = (nodes: DeploymentPlanItemTree[], d: number) => {
+      for (const n of nodes) {
+        depthOf.set(n.id, d);
+        fillDepth(n.children, d + 1);
+      }
+    };
+    fillDepth(data.tree, 0);
+
+    const escape = (v: unknown) => {
+      if (v === null || v === undefined) return "";
+      const s = String(v);
+      if (s.includes('"') || s.includes(",") || s.includes("\n")) {
+        return `"${s.replace(/"/g, '""')}"`;
+      }
+      return s;
+    };
+    const lines = [headers.join(",")];
+    for (const it of data.items) {
+      lines.push(
+        [
+          escape(it.item_id),
+          depthOf.get(it.id) ?? "",
+          it.activity_type,
+          escape(it.description),
+          it.progress_status,
+          escape(it.deque_responsible),
+          escape(it.customer_responsible),
+          escape(it.start_date),
+          escape(it.end_date),
+          it.estimated_days ?? "",
+          it.actual_days ?? "",
+          escape(it.target_outcome),
+          escape(it.notes),
+        ].join(",")
+      );
+    }
+    const csv = lines.join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `plan-${data.plan.id}-${data.plan.product}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) {
     return (
       <Page>
@@ -421,6 +617,57 @@ export function PlanDetailPage() {
 
       <section style={{ marginTop: 16 }}>
         <Card>
+          {totalItems > 0 && (
+            <div className="plan-tree-toolbar">
+              <div className="plan-tree-filters">
+                <div className="plan-tree-search">
+                  <Search size={14} />
+                  <input
+                    type="search"
+                    placeholder="Search description, owner, notes…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    aria-label="Filter tasks"
+                  />
+                </div>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as ProgressStatus | "all")}
+                  aria-label="Filter by status"
+                >
+                  <option value="all">All statuses</option>
+                  {PROGRESS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>{PROGRESS_LABELS[s]}</option>
+                  ))}
+                </select>
+                <input
+                  type="search"
+                  placeholder="Owner (Deque or customer)"
+                  value={responsibleFilter}
+                  onChange={(e) => setResponsibleFilter(e.target.value)}
+                  aria-label="Filter by responsible"
+                  className="plan-tree-resp-filter"
+                />
+                {(search || statusFilter !== "all" || responsibleFilter) && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setSearch("");
+                      setStatusFilter("all");
+                      setResponsibleFilter("");
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+              <div className="plan-tree-toolbar-spacer" />
+              <Button size="sm" variant="ghost" onClick={handleExportCsv}>
+                <Download size={14} /> Export CSV
+              </Button>
+            </div>
+          )}
           {totalItems === 0 ? (
             <EmptyState
               title="No tasks in this plan"
@@ -433,9 +680,27 @@ export function PlanDetailPage() {
                 ) : null
               }
             />
+          ) : filteredTree.length === 0 ? (
+            <EmptyState
+              title="No matches"
+              detail="No tasks match the current filters."
+              action={
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setSearch("");
+                    setStatusFilter("all");
+                    setResponsibleFilter("");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              }
+            />
           ) : (
-            <div className="plan-tree">
-              {tree.map((node) => (
+            <div className="plan-tree" ref={treeRef}>
+              {filteredTree.map((node) => (
                 <PlanItemRow
                   key={node.id}
                   node={node}
@@ -444,6 +709,7 @@ export function PlanDetailPage() {
                   onToggleCollapse={toggleCollapse}
                   canEdit={canEdit}
                   editingId={editing?.itemId ?? null}
+                  focusedId={focusedId}
                   busy={busy}
                   onEdit={beginEdit}
                   onAddChild={(parent) => beginAdd(parent)}
@@ -451,6 +717,7 @@ export function PlanDetailPage() {
                   onShowHistory={(it) =>
                     setAuditFor({ itemId: it.id, itemLabel: `${it.item_id || ""} ${it.description}`.trim() })
                   }
+                  onFocus={setFocusedId}
                 />
               ))}
               {canEdit && (
@@ -460,6 +727,11 @@ export function PlanDetailPage() {
                   </Button>
                 </div>
               )}
+            </div>
+          )}
+          {totalItems > 0 && (
+            <div className="plan-tree-hint" aria-hidden="true">
+              <kbd>j</kbd>/<kbd>k</kbd> move · <kbd>space</kbd> toggle · <kbd>enter</kbd> edit · <kbd>h</kbd> history
             </div>
           )}
         </Card>
@@ -516,11 +788,13 @@ interface RowProps {
   onToggleCollapse: (id: number) => void;
   canEdit: boolean;
   editingId: number | null;
+  focusedId: number | null;
   busy: boolean;
   onEdit: (it: DeploymentPlanItem) => void;
   onAddChild: (parent: DeploymentPlanItem) => void;
   onDelete: (it: DeploymentPlanItem) => void;
   onShowHistory: (it: DeploymentPlanItem) => void;
+  onFocus: (id: number) => void;
 }
 
 function PlanItemRow({
@@ -530,20 +804,28 @@ function PlanItemRow({
   onToggleCollapse,
   canEdit,
   editingId,
+  focusedId,
   busy,
   onEdit,
   onAddChild,
   onDelete,
   onShowHistory,
+  onFocus,
 }: RowProps) {
   const isCollapsed = collapsed.has(node.id);
   const hasChildren = node.children.length > 0;
   const indent: CSSProperties = { paddingLeft: 16 + depth * 24 };
   const isEditing = editingId === node.id;
+  const isFocused = focusedId === node.id;
 
   return (
     <>
-      <div className={`plan-tree-row${isEditing ? " editing" : ""}`} style={indent}>
+      <div
+        className={`plan-tree-row${isEditing ? " editing" : ""}${isFocused ? " focused" : ""}`}
+        style={indent}
+        data-row-id={node.id}
+        onClick={() => onFocus(node.id)}
+      >
         {hasChildren ? (
           <button
             type="button"
@@ -617,11 +899,13 @@ function PlanItemRow({
             onToggleCollapse={onToggleCollapse}
             canEdit={canEdit}
             editingId={editingId}
+            focusedId={focusedId}
             busy={busy}
             onEdit={onEdit}
             onAddChild={onAddChild}
             onDelete={onDelete}
             onShowHistory={onShowHistory}
+            onFocus={onFocus}
           />
         ))}
     </>
