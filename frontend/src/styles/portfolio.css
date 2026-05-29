@@ -142,6 +142,11 @@
   background: linear-gradient(180deg, rgba(254, 242, 242, 0.6), var(--surface-card));
 }
 
+.portfolio-card-overdue {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: linear-gradient(180deg, rgba(255, 251, 235, 0.7), var(--surface-card));
+}
+
 /* Card header: clickable expand row */
 .portfolio-card-header {
   display: flex;
@@ -251,6 +256,13 @@
   background: var(--color-danger-50);
 }
 
+.portfolio-pill-overdue {
+  color: var(--color-warning-700);
+  border-color: rgba(245, 158, 11, 0.35);
+  background: var(--color-warning-50);
+}
+.portfolio-pill-overdue:hover { background: var(--color-warning-100); }
+
 .portfolio-pill-deployment {
   color: var(--color-info-700);
   border-color: rgba(59, 130, 246, 0.3);
@@ -274,6 +286,23 @@
 }
 
 .portfolio-churned-badge:hover { background: var(--color-danger-700); }
+
+.portfolio-overdue-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--space-2);
+  background: var(--color-warning-500);
+  color: white;
+  border: none;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.portfolio-overdue-badge:hover { background: var(--color-warning-700); }
 
 /* Card body (expanded content) */
 .portfolio-card-body {

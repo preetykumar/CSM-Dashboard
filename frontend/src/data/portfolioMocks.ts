@@ -37,7 +37,7 @@ export interface ClosedWonOpp {
 //   - "churned" : no open opp BUT there's a past closed-won with a relevant product
 //                 family — show as churned for revival workflow
 //   - "none"    : no open opp and no past closed-won with relevant family — hide tab
-export type RenewalState = "active" | "churned" | "none";
+export type RenewalState = "active" | "overdue" | "churned" | "none";
 
 export interface HealthSignal {
   name: string;
@@ -85,8 +85,20 @@ export interface MockSFAccount {
 }
 
 // Pure function — derive renewal state from the data, don't store it.
+//   active  : has an OPEN renewal opp with date in the future
+//   overdue : has an OPEN renewal opp whose date has already passed (the
+//             account hasn't closed-won or closed-lost yet — someone needs
+//             to chase it). The backend's fetchOpenRenewals filters out
+//             closed stages already, so any opp surfacing here is still
+//             open.
+//   churned : no open renewal AND at least one past Closed Won in a
+//             renewal-relevant product family
+//   none    : no renewal history at all
 export function getRenewalState(account: MockSFAccount): RenewalState {
-  if (account.upcomingRenewalDate) return "active";
+  if (account.upcomingRenewalDate) {
+    const today = new Date().toISOString().slice(0, 10);
+    return account.upcomingRenewalDate < today ? "overdue" : "active";
+  }
   const relevant = account.closedWonOpps.filter((o) =>
     (RENEWAL_RELEVANT_PRODUCT_FAMILIES as readonly string[]).includes(o.productFamily)
   );

@@ -15,6 +15,7 @@ import {
   Calendar,
   Rocket,
   AlertOctagon,
+  AlertTriangle,
 } from "lucide-react";
 import {
   type MockPortfolioAccount,
@@ -35,6 +36,15 @@ export function CustomerCard({ account, depth = 0 }: Props) {
   const renewalState = getRenewalState(account);
   const lastWon = getLastRelevantClosedWon(account);
   const isChurned = renewalState === "churned";
+  const isOverdue = renewalState === "overdue";
+
+  // Days past due for the overdue tooltip (only meaningful when isOverdue).
+  let daysPastDue = 0;
+  if (isOverdue && account.upcomingRenewalDate) {
+    const today = new Date();
+    const due = new Date(account.upcomingRenewalDate);
+    daysPastDue = Math.max(0, Math.floor((today.getTime() - due.getTime()) / 86400000));
+  }
 
   const [expanded, setExpanded] = useState(depth === 0);
   const [healthOpen, setHealthOpen] = useState(false);
@@ -58,7 +68,7 @@ export function CustomerCard({ account, depth = 0 }: Props) {
 
   return (
     <div
-      className={`portfolio-card ${isChild ? "portfolio-card-child" : ""} ${isChurned ? "portfolio-card-churned" : ""}`}
+      className={`portfolio-card ${isChild ? "portfolio-card-child" : ""} ${isChurned ? "portfolio-card-churned" : ""} ${isOverdue ? "portfolio-card-overdue" : ""}`}
       style={{ marginLeft: depth * 24 }}
     >
       {/* Header row is a div + onClick (not <button>) so nested pill/chip
@@ -87,6 +97,17 @@ export function CustomerCard({ account, depth = 0 }: Props) {
             onClick={goToRenewalsPipeline}
           >
             <AlertOctagon size={12} aria-hidden /> CHURNED
+          </button>
+        )}
+
+        {isOverdue && (
+          <button
+            type="button"
+            className="portfolio-overdue-badge"
+            title={`Renewal date ${account.upcomingRenewalDate} passed ${daysPastDue}d ago · ${account.renewalStage || "still open"} · Click to open in Renewals Pipeline`}
+            onClick={goToRenewalsPipeline}
+          >
+            <AlertTriangle size={12} aria-hidden /> OVERDUE
           </button>
         )}
 
@@ -130,6 +151,16 @@ export function CustomerCard({ account, depth = 0 }: Props) {
               title={`${account.renewalStage || ""} · Click to open in Renewals Pipeline`}
             >
               <Calendar size={11} aria-hidden /> Renews {account.upcomingRenewalDate}
+            </button>
+          )}
+          {renewalState === "overdue" && account.upcomingRenewalDate && (
+            <button
+              type="button"
+              className="portfolio-pill portfolio-pill-overdue"
+              onClick={goToRenewalsPipeline}
+              title={`${account.renewalStage || "open"} · ${daysPastDue}d past due · Click to open in Renewals Pipeline`}
+            >
+              <Calendar size={11} aria-hidden /> Due {account.upcomingRenewalDate} ({daysPastDue}d ago)
             </button>
           )}
           {renewalState === "churned" && lastWon && (

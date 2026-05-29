@@ -64,7 +64,7 @@ export async function enrichAccountsBatch(
 
   // ─── Fan-out: gather everything we need in parallel ─────────────────────
   const [zendesk, sfContacts, activeUsers, kantataByAccount, healthByAccount] = await Promise.all([
-    fetchZendeskJoin(accountIds, db),
+    fetchZendeskJoin(accountIds, db, accountNames),
     fetchSFContactCount(accountIds, db),
     db.getActiveUserCountsByAccountIds(accountIds),
     kantata && salesforce
@@ -269,7 +269,8 @@ interface ZendeskAggregate {
 
 async function fetchZendeskJoin(
   accountIds: string[],
-  db: IDatabaseService
+  db: IDatabaseService,
+  accountNames: Map<string, string>
 ): Promise<Map<string, ZendeskAggregate>> {
   const result = new Map<string, ZendeskAggregate>();
 
@@ -277,15 +278,30 @@ async function fetchZendeskJoin(
   // Zendesk orgs so this is cheaper than per-account queries.
   const allOrgs = await db.getOrganizations();
   const orgsByAccountId = new Map<string, number[]>();
+  // Fallback map keyed by normalized SF Account NAME — populated from
+  // sync.ts's 8-strategy fuzzy matcher, which persists its winning match
+  // into salesforce_account_name. Without this fallback, every org whose
+  // salesforce_id custom field is empty (the majority of orgs that the
+  // fuzzy matcher rescued by name/domain/acronym) shows as "no Zendesk
+  // match" on the home page even though sync already knows the answer.
+  const orgsByAccountName = new Map<string, number[]>();
+  const norm = (s: string) => s.toLowerCase().trim();
 
   for (const org of allOrgs) {
-    if (!org.salesforce_id) continue;
-    // SF returns 18-char Account IDs but Zendesk's salesforce_id custom field
-    // typically holds 15-char. Match by 15-char prefix for safety.
-    const sfPrefix = org.salesforce_id.substring(0, 15);
-    const existing = orgsByAccountId.get(sfPrefix) || [];
-    existing.push(org.id);
-    orgsByAccountId.set(sfPrefix, existing);
+    if (org.salesforce_id) {
+      // SF returns 18-char Account IDs but Zendesk's salesforce_id custom
+      // field typically holds 15-char. Match by 15-char prefix for safety.
+      const sfPrefix = org.salesforce_id.substring(0, 15);
+      const existing = orgsByAccountId.get(sfPrefix) || [];
+      existing.push(org.id);
+      orgsByAccountId.set(sfPrefix, existing);
+    }
+    if (org.salesforce_account_name) {
+      const nameKey = norm(org.salesforce_account_name);
+      const existing = orgsByAccountName.get(nameKey) || [];
+      existing.push(org.id);
+      orgsByAccountName.set(nameKey, existing);
+    }
   }
 
   // For each requested account, find matching orgs and aggregate ticket counts
@@ -294,7 +310,20 @@ async function fetchZendeskJoin(
 
   for (const accountId of accountIds) {
     const accountPrefix = accountId.substring(0, 15);
-    const orgIds = orgsByAccountId.get(accountPrefix);
+    let orgIds = orgsByAccountId.get(accountPrefix);
+
+    // Name-fallback: if the SF ID lookup missed, try the fuzzy-matched name
+    // that sync.ts persisted. The resolver passes us each account's display
+    // name so we can do this without a second DB query.
+    if ((!orgIds || orgIds.length === 0)) {
+      const accountName = accountNames.get(accountId);
+      if (accountName) {
+        const fallback = orgsByAccountName.get(norm(accountName));
+        if (fallback && fallback.length > 0) {
+          orgIds = fallback;
+        }
+      }
+    }
 
     if (!orgIds || orgIds.length === 0) {
       // No Zendesk match — leave out of result so caller sets zendeskOrgIds=null
