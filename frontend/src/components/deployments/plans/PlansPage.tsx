@@ -30,6 +30,7 @@ import {
   Button,
 } from "../../ui";
 import { TemplatePickerModal } from "./TemplatePickerModal";
+import { AdminCreatePlanModal } from "./AdminCreatePlanModal";
 
 const STATUS_LABELS: Record<string, string> = {
   not_started: "Not Started",
@@ -79,6 +80,8 @@ export function PlansPage() {
     accountId: string;
     accountName: string;
   } | null>(null);
+  // Admin manual create modal — for plans outside the auto-suggested tree.
+  const [showAdminCreate, setShowAdminCreate] = useState(false);
 
   // Load plans + tree in parallel.
   useEffect(() => {
@@ -209,6 +212,13 @@ export function PlansPage() {
             ? `${plans.length} ${plans.length === 1 ? "plan" : "plans"} across all TSAs`
             : `${plans.length} ${plans.length === 1 ? "plan" : "plans"} for ${user?.email || "you"}`
         }
+        actions={
+          isAdmin ? (
+            <Button size="sm" onClick={() => setShowAdminCreate(true)}>
+              Admin: Create plan manually
+            </Button>
+          ) : null
+        }
       />
 
       {error && (
@@ -228,8 +238,15 @@ export function PlansPage() {
               title="No deployment plans yet"
               detail={
                 isAdmin
-                  ? "No plans have been created in the database."
+                  ? "No plans exist yet, and the deployment tree isn't auto-scoped for admins. Use the button above to create one manually."
                   : "You don't own any plans yet. Go to the Tree tab to find a deployment project, then create a plan from a template."
+              }
+              action={
+                isAdmin ? (
+                  <Button size="sm" onClick={() => setShowAdminCreate(true)}>
+                    Create plan manually
+                  </Button>
+                ) : null
               }
             />
           </Card>
@@ -250,6 +267,17 @@ export function PlansPage() {
             setPicker(null);
             setPlans((prev) => [plan, ...prev]);
             // Navigate straight into the new plan.
+            navigate(`/deployments/plans/${plan.id}`);
+          }}
+        />
+      )}
+
+      {showAdminCreate && (
+        <AdminCreatePlanModal
+          onClose={() => setShowAdminCreate(false)}
+          onCreated={(plan) => {
+            setShowAdminCreate(false);
+            setPlans((prev) => [plan, ...prev]);
             navigate(`/deployments/plans/${plan.id}`);
           }}
         />

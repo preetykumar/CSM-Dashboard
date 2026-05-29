@@ -289,6 +289,34 @@ export interface IDatabaseService {
   ): Promise<void>;
   deleteDeploymentPlan(id: number): Promise<void>;
   listDeploymentPlanItems(planId: number): Promise<DeploymentPlanItem[]>;
+  getDeploymentPlanItem(id: number): Promise<DeploymentPlanItem | null>;
+  // Update editable fields on a plan item. Returns the updated row so the
+  // caller can diff for audit logging and recompute parent status if needed.
+  updateDeploymentPlanItem(
+    id: number,
+    updates: Partial<Pick<
+      DeploymentPlanItem,
+      | "description"
+      | "target_outcome"
+      | "progress_status"
+      | "notes"
+      | "deque_responsible"
+      | "customer_responsible"
+      | "start_date"
+      | "end_date"
+      | "estimated_days"
+      | "actual_days"
+    >>
+  ): Promise<DeploymentPlanItem | null>;
+  // Append a new task to a plan. parent_id may reference any existing item in
+  // the same plan; position defaults to (max position among siblings) + 1.
+  addDeploymentPlanItem(
+    item: Omit<DeploymentPlanItem, "id" | "updated_at" | "position" | "template_item_id"> & {
+      template_item_id?: number | null;
+      position?: number;
+    }
+  ): Promise<number>;
+  deleteDeploymentPlanItem(id: number): Promise<void>;
 
   // Deployment Audit (Phase 2: writes only; reads added when audit-viewing UI lands)
   logDeploymentAudit(entry: Omit<DeploymentAuditEntry, "id" | "created_at">): Promise<void>;

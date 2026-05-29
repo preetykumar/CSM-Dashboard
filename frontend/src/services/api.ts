@@ -1360,6 +1360,81 @@ export async function createDeploymentPlan(body: {
   return data.plan;
 }
 
+// Editable fields on a plan item. Pass only the fields you want to change.
+// Empty string is treated as null on the server.
+export type DeploymentPlanItemUpdate = Partial<{
+  progress_status: ProgressStatus;
+  description: string;
+  target_outcome: string | null;
+  notes: string | null;
+  deque_responsible: string | null;
+  customer_responsible: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  estimated_days: number | null;
+  actual_days: number | null;
+}>;
+
+export async function updateDeploymentPlanItem(
+  planId: number,
+  itemId: number,
+  updates: DeploymentPlanItemUpdate
+): Promise<DeploymentPlanItem> {
+  const res = await fetch(`${API_BASE}/deployments/plans/${planId}/items/${itemId}`, {
+    ...fetchOptions,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error || `Failed to update item: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.item;
+}
+
+export async function addDeploymentPlanItem(
+  planId: number,
+  body: {
+    parent_id: number | null;
+    activity_type: "milestone" | "epic" | "task";
+    description: string;
+    item_id?: string | null;
+    target_outcome?: string | null;
+    notes?: string | null;
+    deque_responsible?: string | null;
+    customer_responsible?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    estimated_days?: number | null;
+  }
+): Promise<DeploymentPlanItem> {
+  const res = await fetch(`${API_BASE}/deployments/plans/${planId}/items`, {
+    ...fetchOptions,
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error || `Failed to add item: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.item;
+}
+
+export async function deleteDeploymentPlanItem(planId: number, itemId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/deployments/plans/${planId}/items/${itemId}`, {
+    ...fetchOptions,
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error || `Failed to delete item: ${res.status}`);
+  }
+}
+
 // Walk the account tree (parents + children) and collect distinct names suitable
 // for /api/health/batch. We pass names, not IDs, because the health batch
 // endpoint is keyed by accountName.

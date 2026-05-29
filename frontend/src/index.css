@@ -11738,7 +11738,7 @@ header .hint {
 }
 .plan-tree-row {
   display: grid;
-  grid-template-columns: 24px 64px 90px 1fr auto;
+  grid-template-columns: 24px 64px 90px 1fr auto auto;
   gap: 12px;
   align-items: center;
   padding: 8px 12px;
@@ -11747,6 +11747,106 @@ header .hint {
 }
 .plan-tree-row:hover {
   background: var(--bg-hover, #f9fafb);
+}
+.plan-tree-row.editing {
+  background: var(--bg-accent-subtle, #eff6ff);
+  outline: 1px solid var(--color-brand-300, #93c5fd);
+}
+.plan-tree-desc-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  font-family: inherit;
+}
+.plan-tree-desc-btn:disabled {
+  cursor: default;
+}
+.plan-tree-desc-btn:hover:not(:disabled) {
+  color: var(--color-brand-600, #2563eb);
+}
+.plan-tree-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.plan-tree-add-root {
+  padding: 12px;
+  border-top: 1px solid var(--border-subtle, #f3f4f6);
+}
+
+/* Plan edit / add panel — appears at bottom of viewport like admin templates */
+.plan-edit-panel {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  padding: 12px 16px;
+  background: var(--surface-elevated, #ffffff);
+  border-top: 1px solid var(--border-default, #e5e7eb);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.08);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+.plan-edit-panel > * {
+  max-width: 960px;
+  margin: 0 auto;
+}
+.plan-edit-header {
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+  padding-bottom: 8px;
+}
+.plan-edit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 16px;
+}
+.plan-edit-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+}
+.plan-edit-grid input,
+.plan-edit-grid select,
+.plan-edit-grid textarea {
+  font-size: 14px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 6px;
+  background: white;
+  color: var(--text-primary, #111827);
+  font-family: inherit;
+  resize: vertical;
+}
+.plan-edit-grid input:focus,
+.plan-edit-grid select:focus,
+.plan-edit-grid textarea:focus {
+  outline: 2px solid var(--color-brand-500, #3b82f6);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+.plan-edit-full {
+  grid-column: 1 / -1;
+}
+.plan-edit-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 12px;
+}
+@media (max-width: 720px) {
+  .plan-edit-grid {
+    grid-template-columns: 1fr;
+  }
 }
 .plan-tree-chev {
   background: none;
@@ -11779,6 +11879,54 @@ header .hint {
   color: var(--text-secondary, #6b7280);
   font-size: 13px;
   font-style: italic;
+}
+
+/* Admin: create plan manually — wider modal with form grid */
+.admin-create-plan-modal {
+  max-width: 720px !important;
+}
+.admin-create-plan-help {
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+  margin: 0 0 12px;
+  line-height: 1.5;
+}
+.admin-create-plan-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+}
+.admin-create-plan-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+}
+.admin-create-plan-grid input,
+.admin-create-plan-grid select {
+  font-size: 14px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-default, #d1d5db);
+  border-radius: 6px;
+  background: white;
+  color: var(--text-primary, #111827);
+  font-family: inherit;
+}
+.admin-create-plan-grid input:focus,
+.admin-create-plan-grid select:focus {
+  outline: 2px solid var(--color-brand-500, #3b82f6);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+.admin-create-plan-full {
+  grid-column: 1 / -1;
+}
+@media (max-width: 600px) {
+  .admin-create-plan-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Template picker modal */

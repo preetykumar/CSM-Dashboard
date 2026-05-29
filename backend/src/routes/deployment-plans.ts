@@ -13,6 +13,7 @@ import type {
   DeploymentPlan,
   DeploymentPlanItem,
   ActivityType,
+  ProgressStatus,
 } from "../services/database-interface.js";
 import { MemoryCache } from "../services/cache.js";
 
@@ -238,8 +239,281 @@ export function createDeploymentPlansRoutes(db: IDatabaseService): Router {
     }
   });
 
+  // ─── Helper: load plan + check edit perms ────────────────────────────────
+  async function loadPlanWithPerm(
+    planId: number,
+    actor: string
+  ): Promise<{ plan: DeploymentPlan } | { error: string; status: number }> {
+    if (isNaN(planId)) return { error: "Invalid plan id", status: 400 };
+    const plan = await db.getDeploymentPlan(planId);
+    if (!plan) return { error: "Plan not found", status: 404 };
+    if (!canEditPlan(actor, plan)) {
+      return {
+        error: "You don't have permission to edit this plan (must be TSA, IE, or admin).",
+        status: 403,
+      };
+    }
+    return { plan };
+  }
+
+  // Recompute the parent's progress_status from its children. Walks bottom-up
+  // so deeper ancestors settle before their parents are evaluated.
+  // Roll-up rule:
+  //   - 0 children → leave as-is
+  //   - all children "complete" → "complete"
+  //   - any child blocked/at_risk/delayed → bubble that worst signal up
+  //   - any child in_progress → "in_progress"
+  //   - all children "not_started" → "not_started"
+  async function recomputeAncestors(planId: number, startFromParentId: number | null) {
+    if (startFromParentId === null) return;
+    const all = await db.listDeploymentPlanItems(planId);
+    const byId = new Map<number, DeploymentPlanItem>();
+    const childrenOf = new Map<number, DeploymentPlanItem[]>();
+    for (const it of all) {
+      byId.set(it.id, it);
+      if (it.parent_id !== null) {
+        const arr = childrenOf.get(it.parent_id) || [];
+        arr.push(it);
+        childrenOf.set(it.parent_id, arr);
+      }
+    }
+    const rollup = (children: DeploymentPlanItem[]): ProgressStatus | null => {
+      if (children.length === 0) return null;
+      const statuses = children.map((c) => c.progress_status);
+      if (statuses.includes("blocked")) return "blocked";
+      if (statuses.includes("at_risk")) return "at_risk";
+      if (statuses.includes("delayed")) return "delayed";
+      if (statuses.every((s) => s === "complete")) return "complete";
+      if (statuses.some((s) => s === "in_progress" || s === "complete")) return "in_progress";
+      return "not_started";
+    };
+    let cursor: number | null = startFromParentId;
+    while (cursor !== null) {
+      const parent = byId.get(cursor);
+      if (!parent) break;
+      const kids = childrenOf.get(cursor) || [];
+      const next = rollup(kids);
+      if (next && next !== parent.progress_status) {
+        await db.updateDeploymentPlanItem(cursor, { progress_status: next });
+        parent.progress_status = next;
+      }
+      cursor = parent.parent_id;
+    }
+  }
+
+  // ─── PATCH /api/deployments/plans/:planId/items/:itemId ──────────────────
+  // Edit task fields. Body may include any subset of:
+  //   progress_status, description, target_outcome, notes,
+  //   deque_responsible, customer_responsible,
+  //   start_date, end_date, estimated_days, actual_days
+  // Empty strings are coerced to null. Status changes also propagate up.
+  router.patch(
+    "/:planId/items/:itemId",
+    requireAuthenticated,
+    async (req: Request, res: Response) => {
+      try {
+        const planId = parseInt(req.params.planId, 10);
+        const itemId = parseInt(req.params.itemId, 10);
+        if (isNaN(itemId)) return res.status(400).json({ error: "Invalid item id" });
+        const actor = actorEmail(req);
+        const guard = await loadPlanWithPerm(planId, actor);
+        if ("error" in guard) return res.status(guard.status).json({ error: guard.error });
+
+        const before = await db.getDeploymentPlanItem(itemId);
+        if (!before || before.plan_id !== planId) {
+          return res.status(404).json({ error: "Item not found in this plan" });
+        }
+
+        const b = req.body || {};
+        const norm = (v: any) => (v === "" ? null : v);
+        const updates: Parameters<typeof db.updateDeploymentPlanItem>[1] = {};
+        if (b.progress_status !== undefined) updates.progress_status = b.progress_status;
+        if (b.description !== undefined) updates.description = b.description;
+        if (b.target_outcome !== undefined) updates.target_outcome = norm(b.target_outcome);
+        if (b.notes !== undefined) updates.notes = norm(b.notes);
+        if (b.deque_responsible !== undefined) updates.deque_responsible = norm(b.deque_responsible);
+        if (b.customer_responsible !== undefined) updates.customer_responsible = norm(b.customer_responsible);
+        if (b.start_date !== undefined) updates.start_date = norm(b.start_date);
+        if (b.end_date !== undefined) updates.end_date = norm(b.end_date);
+        if (b.estimated_days !== undefined)
+          updates.estimated_days = b.estimated_days === "" || b.estimated_days === null ? null : Number(b.estimated_days);
+        if (b.actual_days !== undefined)
+          updates.actual_days = b.actual_days === "" || b.actual_days === null ? null : Number(b.actual_days);
+
+        const updated = await db.updateDeploymentPlanItem(itemId, updates);
+        if (!updated) return res.status(404).json({ error: "Item disappeared during update" });
+
+        // Build a diff for the audit log. Only record fields that actually changed.
+        const changed: Record<string, { from: unknown; to: unknown }> = {};
+        for (const k of Object.keys(updates) as Array<keyof typeof updates>) {
+          if ((before as any)[k] !== (updated as any)[k]) {
+            changed[k] = { from: (before as any)[k], to: (updated as any)[k] };
+          }
+        }
+        const statusChanged = "progress_status" in changed;
+
+        if (Object.keys(changed).length > 0) {
+          await db.logDeploymentAudit({
+            plan_id: planId,
+            plan_item_id: itemId,
+            template_id: null,
+            template_item_id: null,
+            actor_email: actor,
+            action: statusChanged ? "plan_item_status_change" : "plan_item_edit",
+            details_json: JSON.stringify({
+              item_id: updated.item_id,
+              description: updated.description,
+              changed,
+            }),
+          });
+        }
+
+        if (statusChanged) {
+          await recomputeAncestors(planId, updated.parent_id);
+        }
+
+        plansCache.clear();
+        res.json({ item: updated, changed });
+      } catch (e) {
+        console.error("updateDeploymentPlanItem failed:", e);
+        res.status(500).json({ error: e instanceof Error ? e.message : "Update failed" });
+      }
+    }
+  );
+
+  // ─── POST /api/deployments/plans/:planId/items ───────────────────────────
+  // Add a new task to a plan. Body:
+  //   {
+  //     parent_id: number | null,  // null = top-level item
+  //     activity_type: 'milestone' | 'epic' | 'task',
+  //     description: string,        // required
+  //     item_id?: string,           // optional display id like "4.2"
+  //     target_outcome?, notes?, deque_responsible?, customer_responsible?,
+  //     start_date?, end_date?, estimated_days?
+  //   }
+  router.post(
+    "/:planId/items",
+    requireAuthenticated,
+    async (req: Request, res: Response) => {
+      try {
+        const planId = parseInt(req.params.planId, 10);
+        const actor = actorEmail(req);
+        const guard = await loadPlanWithPerm(planId, actor);
+        if ("error" in guard) return res.status(guard.status).json({ error: guard.error });
+
+        const b = req.body || {};
+        if (!b.description || typeof b.description !== "string") {
+          return res.status(400).json({ error: "description is required" });
+        }
+        const activity_type: ActivityType =
+          b.activity_type === "milestone" || b.activity_type === "epic" || b.activity_type === "task"
+            ? b.activity_type
+            : "task";
+
+        const parent_id = b.parent_id === null || b.parent_id === undefined ? null : Number(b.parent_id);
+        if (parent_id !== null) {
+          const parent = await db.getDeploymentPlanItem(parent_id);
+          if (!parent || parent.plan_id !== planId) {
+            return res.status(400).json({ error: "parent_id does not belong to this plan" });
+          }
+        }
+
+        const norm = (v: any) => (v === undefined || v === "" ? null : v);
+        const newId = await db.addDeploymentPlanItem({
+          plan_id: planId,
+          template_item_id: null,
+          parent_id,
+          item_id: norm(b.item_id),
+          activity_type,
+          description: b.description,
+          target_outcome: norm(b.target_outcome),
+          progress_status: "not_started",
+          notes: norm(b.notes),
+          deque_responsible: norm(b.deque_responsible),
+          customer_responsible: norm(b.customer_responsible),
+          start_date: norm(b.start_date),
+          end_date: norm(b.end_date),
+          estimated_days:
+            b.estimated_days === undefined || b.estimated_days === null || b.estimated_days === ""
+              ? null
+              : Number(b.estimated_days),
+          actual_days: null,
+        });
+
+        const created = await db.getDeploymentPlanItem(newId);
+        await db.logDeploymentAudit({
+          plan_id: planId,
+          plan_item_id: newId,
+          template_id: null,
+          template_item_id: null,
+          actor_email: actor,
+          action: "plan_item_create",
+          details_json: JSON.stringify({
+            parent_id,
+            item_id: created?.item_id,
+            activity_type,
+            description: b.description,
+          }),
+        });
+
+        // Adding a not_started leaf can only lower parent progress, never raise it.
+        // Recompute anyway so a previously "complete" parent gets downgraded.
+        await recomputeAncestors(planId, parent_id);
+
+        plansCache.clear();
+        res.status(201).json({ item: created });
+      } catch (e) {
+        console.error("addDeploymentPlanItem failed:", e);
+        res.status(500).json({ error: e instanceof Error ? e.message : "Add failed" });
+      }
+    }
+  );
+
+  // ─── DELETE /api/deployments/plans/:planId/items/:itemId ─────────────────
+  // Deletes the item and all descendants (CASCADE in schema). The parent's
+  // progress_status is recomputed after removal.
+  router.delete(
+    "/:planId/items/:itemId",
+    requireAuthenticated,
+    async (req: Request, res: Response) => {
+      try {
+        const planId = parseInt(req.params.planId, 10);
+        const itemId = parseInt(req.params.itemId, 10);
+        if (isNaN(itemId)) return res.status(400).json({ error: "Invalid item id" });
+        const actor = actorEmail(req);
+        const guard = await loadPlanWithPerm(planId, actor);
+        if ("error" in guard) return res.status(guard.status).json({ error: guard.error });
+
+        const before = await db.getDeploymentPlanItem(itemId);
+        if (!before || before.plan_id !== planId) {
+          return res.status(404).json({ error: "Item not found in this plan" });
+        }
+
+        await db.deleteDeploymentPlanItem(itemId);
+        await db.logDeploymentAudit({
+          plan_id: planId,
+          plan_item_id: null, // row is gone — store the id in details_json instead
+          template_id: null,
+          template_item_id: null,
+          actor_email: actor,
+          action: "plan_item_delete",
+          details_json: JSON.stringify({
+            deleted_item_id: itemId,
+            item_id: before.item_id,
+            description: before.description,
+            activity_type: before.activity_type,
+          }),
+        });
+
+        await recomputeAncestors(planId, before.parent_id);
+        plansCache.clear();
+        res.json({ deleted: true, id: itemId });
+      } catch (e) {
+        console.error("deleteDeploymentPlanItem failed:", e);
+        res.status(500).json({ error: e instanceof Error ? e.message : "Delete failed" });
+      }
+    }
+  );
+
   return router;
 }
-
-// Keep ActivityType import live (used by future PATCH/POST item routes).
-void (null as ActivityType | null);

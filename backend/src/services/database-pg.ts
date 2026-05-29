@@ -1670,6 +1670,108 @@ export class DatabaseServicePg implements IDatabaseService {
     return r.rows.map(rowToPlanItemPg);
   }
 
+  async getDeploymentPlanItem(id: number): Promise<DeploymentPlanItem | null> {
+    const r = await this.pool.query("SELECT * FROM deployment_plan_items WHERE id = $1", [id]);
+    return r.rows.length > 0 ? rowToPlanItemPg(r.rows[0]) : null;
+  }
+
+  async updateDeploymentPlanItem(
+    id: number,
+    updates: Partial<Pick<
+      DeploymentPlanItem,
+      | "description"
+      | "target_outcome"
+      | "progress_status"
+      | "notes"
+      | "deque_responsible"
+      | "customer_responsible"
+      | "start_date"
+      | "end_date"
+      | "estimated_days"
+      | "actual_days"
+    >>
+  ): Promise<DeploymentPlanItem | null> {
+    const cols: Array<keyof typeof updates> = [
+      "description",
+      "target_outcome",
+      "progress_status",
+      "notes",
+      "deque_responsible",
+      "customer_responsible",
+      "start_date",
+      "end_date",
+      "estimated_days",
+      "actual_days",
+    ];
+    const sets: string[] = [];
+    const params: any[] = [];
+    for (const c of cols) {
+      if (updates[c] !== undefined) {
+        params.push(updates[c]);
+        sets.push(`${c} = $${params.length}`);
+      }
+    }
+    if (sets.length === 0) return this.getDeploymentPlanItem(id);
+    sets.push("updated_at = CURRENT_TIMESTAMP");
+    params.push(id);
+    await this.pool.query(
+      `UPDATE deployment_plan_items SET ${sets.join(", ")} WHERE id = $${params.length}`,
+      params
+    );
+    return this.getDeploymentPlanItem(id);
+  }
+
+  async addDeploymentPlanItem(
+    item: Omit<DeploymentPlanItem, "id" | "updated_at" | "position" | "template_item_id"> & {
+      template_item_id?: number | null;
+      position?: number;
+    }
+  ): Promise<number> {
+    let position = item.position;
+    if (position === undefined) {
+      const r = await this.pool.query(
+        `SELECT COALESCE(MAX(position), -1) + 1 AS next_pos
+           FROM deployment_plan_items
+          WHERE plan_id = $1 AND parent_id IS NOT DISTINCT FROM $2`,
+        [item.plan_id, item.parent_id]
+      );
+      position = r.rows[0]?.next_pos ?? 0;
+    }
+    const r = await this.pool.query(
+      `INSERT INTO deployment_plan_items
+         (plan_id, template_item_id, parent_id, item_id, position, activity_type,
+          description, target_outcome, progress_status, notes,
+          deque_responsible, customer_responsible,
+          start_date, end_date, estimated_days, actual_days)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+       RETURNING id`,
+      [
+        item.plan_id,
+        item.template_item_id ?? null,
+        item.parent_id,
+        item.item_id,
+        position,
+        item.activity_type,
+        item.description,
+        item.target_outcome,
+        item.progress_status,
+        item.notes,
+        item.deque_responsible,
+        item.customer_responsible,
+        item.start_date,
+        item.end_date,
+        item.estimated_days,
+        item.actual_days,
+      ]
+    );
+    const raw = r.rows[0].id;
+    return typeof raw === "string" ? parseInt(raw, 10) : raw;
+  }
+
+  async deleteDeploymentPlanItem(id: number): Promise<void> {
+    await this.pool.query("DELETE FROM deployment_plan_items WHERE id = $1", [id]);
+  }
+
   async logDeploymentAudit(entry: Omit<DeploymentAuditEntry, "id" | "created_at">): Promise<void> {
     await this.pool.query(
       `INSERT INTO deployment_audit

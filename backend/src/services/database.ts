@@ -1466,6 +1466,103 @@ export class DatabaseService implements IDatabaseService {
     return rows.map(rowToPlanItem);
   }
 
+  async getDeploymentPlanItem(id: number): Promise<DeploymentPlanItem | null> {
+    const row = this.db.prepare("SELECT * FROM deployment_plan_items WHERE id = ?").get(id) as any;
+    return row ? rowToPlanItem(row) : null;
+  }
+
+  async updateDeploymentPlanItem(
+    id: number,
+    updates: Partial<Pick<
+      DeploymentPlanItem,
+      | "description"
+      | "target_outcome"
+      | "progress_status"
+      | "notes"
+      | "deque_responsible"
+      | "customer_responsible"
+      | "start_date"
+      | "end_date"
+      | "estimated_days"
+      | "actual_days"
+    >>
+  ): Promise<DeploymentPlanItem | null> {
+    const cols: Array<keyof typeof updates> = [
+      "description",
+      "target_outcome",
+      "progress_status",
+      "notes",
+      "deque_responsible",
+      "customer_responsible",
+      "start_date",
+      "end_date",
+      "estimated_days",
+      "actual_days",
+    ];
+    const sets: string[] = [];
+    const params: any[] = [];
+    for (const c of cols) {
+      if (updates[c] !== undefined) {
+        sets.push(`${c} = ?`);
+        params.push(updates[c]);
+      }
+    }
+    if (sets.length === 0) return this.getDeploymentPlanItem(id);
+    sets.push("updated_at = CURRENT_TIMESTAMP");
+    params.push(id);
+    this.db.prepare(`UPDATE deployment_plan_items SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+    return this.getDeploymentPlanItem(id);
+  }
+
+  async addDeploymentPlanItem(
+    item: Omit<DeploymentPlanItem, "id" | "updated_at" | "position" | "template_item_id"> & {
+      template_item_id?: number | null;
+      position?: number;
+    }
+  ): Promise<number> {
+    let position = item.position;
+    if (position === undefined) {
+      const row = this.db
+        .prepare(
+          "SELECT COALESCE(MAX(position), -1) + 1 AS next_pos FROM deployment_plan_items WHERE plan_id = ? AND (parent_id IS ? OR parent_id = ?)"
+        )
+        .get(item.plan_id, item.parent_id, item.parent_id) as any;
+      position = row?.next_pos ?? 0;
+    }
+    const result = this.db
+      .prepare(
+        `INSERT INTO deployment_plan_items
+           (plan_id, template_item_id, parent_id, item_id, position, activity_type,
+            description, target_outcome, progress_status, notes,
+            deque_responsible, customer_responsible,
+            start_date, end_date, estimated_days, actual_days)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
+        item.plan_id,
+        item.template_item_id ?? null,
+        item.parent_id,
+        item.item_id,
+        position,
+        item.activity_type,
+        item.description,
+        item.target_outcome,
+        item.progress_status,
+        item.notes,
+        item.deque_responsible,
+        item.customer_responsible,
+        item.start_date,
+        item.end_date,
+        item.estimated_days,
+        item.actual_days
+      );
+    return Number(result.lastInsertRowid);
+  }
+
+  async deleteDeploymentPlanItem(id: number): Promise<void> {
+    this.db.prepare("DELETE FROM deployment_plan_items WHERE id = ?").run(id);
+  }
+
   async logDeploymentAudit(entry: Omit<DeploymentAuditEntry, "id" | "created_at">): Promise<void> {
     this.db
       .prepare(
