@@ -1,5 +1,87 @@
 # Post-sales Customer Team Portal - Release Notes
 
+## Version 2.3.0
+
+**Release Date:** May 28, 2026
+
+### Deployment Plans, Customer 360° Page, Account Hierarchy, Deque Brand
+
+**Deployment Plans (Phase 3 — full lifecycle):**
+- New **Plans** sub-tab under Deployments, listing every plan grouped by customer with the same SF account hierarchy nesting used everywhere else
+- **Create from template**: every deployment opp without a plan shows a "Create plan" row; opens a template picker that auto-suggests by product + deployment type (cloud / on-prem)
+- **Admin manual create**: escape-hatch form for admins to spin up a plan outside their TSA tree (any account / opp / product / template combo)
+- **Editable task tree**: click any row to open an inline edit panel — status (Not Started / In Progress / Complete / Delayed / At Risk / Blocked), start/end dates, Deque + customer responsibles, estimated/actual days, description, target outcome, notes. Saves immediately on click
+- **Server-side parent status roll-up**: when a child status changes, the parent recomputes by worst-signal rule (Blocked > At Risk > Delayed > Complete-if-all > In Progress > Not Started). Walks bottom-up so multi-level plans settle correctly
+- **Add / delete tasks**: +/× buttons on every row (cascade delete on subtree)
+- **Plan-level edits**: change status or reassign TSA / IE (with a guard so non-admins can't accidentally lock themselves out)
+- **Refresh from template (admin)**: pull in items added to the source template since the plan was created, preserving in-progress work — only items whose `template_item_id` isn't already in the plan get copied, with the parent chain preserved
+- **Per-task audit history drawer**: clock icon on every row opens a right-side drawer showing who changed what when, rendered as a from→to diff per field. Plan-level audit available from the header
+- **Filters above the tree**: free-text search across description / owner / notes, status dropdown, owner contains-match, clear button. Recursive filter keeps ancestors of matching rows so the hierarchy stays readable
+- **Keyboard navigation**: `j` / `k` to walk rows, `space` to expand/collapse, `enter` to edit, `h` to open history. Suppressed when an input is focused or a modal is open
+- **CSV export**: full-tree dump with hierarchy depth as a column, all editable fields, downloads as `plan-<id>-<product>.csv`
+- **Permissions**: every mutation is gated to TSA / IE / admin; non-admin users see a "Read-only" badge instead of edit buttons. Audit history GET now also requires plan visibility (no leaking reassignment history to other authenticated users)
+
+**Deployment Templates (admin):**
+- New `/admin/deployment-templates` view with seed templates imported from xlsx — Milestone → Epic → Task tree per (product, deployment_type)
+- Inline edit / add / delete on every template row; immediate audit-log writes
+- "Session expired" recovery — admin pages now detect stale passport sessions (common after a backend restart) and offer a one-click "Sign in again" instead of a bare 403 banner
+
+**Customer 360° page:**
+- Unified **Customer** view replacing the four legacy sub-tabs — click any account to open a 4-tab drill-down: Health · Support · Usage · Active Deployments
+- Active Deployments tab shows the account's SF deploy opps + line items alongside the matching Kantata workspaces
+- Health / Support / Usage removed from the Deployments view; Kantata stays there for now (deployment-management tooling will grow on top of it)
+- Customer page is scoped by role + logged-in user's email — TSAs see their accounts, CSMs see theirs, admins see all
+- Admin sticky toggle + role selector so admins can simulate what each team will see
+
+**Account hierarchy nesting (everywhere):**
+- Parent → child SF account nesting rolled out across **every** view — Renewals (all 8 sub-views including Closed Won prototype), Deployments tree, Customer, Product, Plans, Portfolio
+- Hierarchy is strict to portfolio scope — a parent only nests if it is also in the user's scope, so admins see full families and TSAs see only their own accounts
+- "Phantom parent" rows when a parent has no own opps but anchors children below it (so hierarchy reads cleanly)
+- Per-account rows in Support + Usage views show parent and children separately rather than merged
+
+**Renewals — account-primary grouping:**
+- Renewals views (Upcoming, By Month, By Quarter, Overdue, Closed Won, Closed Lost, By CSM, By PRS) now group by SF account first; the legacy month/quarter/CSM groupings nest inside
+- Each row shows its own stats only — no rollup math across siblings, so the numbers stay easy to defend
+- Closed Won + Closed Lost views use the same account-tree component so behavior is consistent
+
+**Portfolio (Home) improvements:**
+- New **right-rail layout** — portfolio cards take the full main column, calendar + personal todos stack in a 320px sticky right rail (collapses below cards on narrow screens)
+- **Account search** at the top of the portfolio (substring match, recursive — searching for a subsidiary keeps its parent header visible) with live "N of M" count and X-to-clear
+- **Renewal state classification** expanded from 3 buckets to 4:
+  - **active** — open renewal with future date
+  - **overdue** — open renewal whose date has passed (someone needs to chase it)
+  - **churned** — no open renewal and had past Closed Won in renewal-relevant product family
+  - **none** — no renewal history
+  Overdue cards get an amber badge + pill ("Due 2026-04-15 (43d ago)") and a soft amber gradient background, sitting between active green and churned red
+- **Zendesk match coverage fix** — the Home portfolio enrichment was only joining by SF ID prefix, ignoring the `salesforce_account_name` field that the sync's 8-strategy fuzzy matcher populates. Now falls back to the fuzzy-matched name, so accounts whose Zendesk org didn't have a `salesforce_id` set but were name-matched during sync no longer show as "no Zendesk match"
+- **Support + Usage panels** wired into every CustomerCard (lazy-loaded behind "Load ticket list →" / "Load per-product usage →" buttons to avoid Amplitude rate limits on auto-expanded cards)
+
+**Deployments (TSA Phase 1 + Phase 2):**
+- Phase 1: TSA-scoped tree of customer → opportunity → product → Kantata workspace, with Kantata status filter and sticky preferences
+- Phase 2: per-customer detail panel originally bundling Health / Support / Usage / Kantata (Health/Support/Usage subsequently moved into the Customer 360° page)
+- Amplitude UUID + Monitor domain now derived from the customer's actual subscriptions (more reliable than name match)
+- Support tab uses sync-time fuzzy-matched org names
+
+**Amplitude (Axe Monitor + Axe Reports):**
+- Both products switched to `gp:enterpriseId` exact-UUID match (was: Monitor on initial-referring-domain fallback, Reports on `gp:organization` name). Match rate jumps from ~30% to near-100% for accounts with a UUID
+
+**Performance:**
+- `/api/csm/portfolios` was uncached, the audit's largest unmitigated cost — now wrapped with a 90s MemoryCache, so home + admin "View as" picker feel instant on repeat clicks
+- `/api/calendar/events` now cached in-process for 5 min, keyed by user email + day window. Navigating away from `/home` and back no longer re-hits Google
+- Both endpoints set `Cache-Control` so browsers can short-circuit too
+
+**Brand identity:**
+- Deque horizontal logo (SVG) in the app header next to "Customer 360°"
+- Brand palette pulled from the SVG fills — primary teal #2e5f7a, secondary mauve #b25295, dark #2a2826, cream #f6f3ed
+- `:root` token block in `index.css` retargets `--color-brand-*` scale at the Deque teal, neutrals shift to warm grays that sit alongside the cream surface, surfaces / borders / text colors all swap to brand tokens. Every existing `var(...)` reference now resolves to the real Deque palette instead of generic blue / cool gray fallbacks
+- Header tagline updated to **Customer 360° — Deque's Customer Intelligence Platform**
+
+**Authentication:**
+- Session cookies extended to 30 days with rolling refresh — fewer "please log in again" interruptions during long working sessions
+- Admin allow-list updated: removed michelle.viguerie, added eric.padron + ian.flanagan
+
+---
+
 ## Version 2.2.0
 
 **Release Date:** May 26, 2026
