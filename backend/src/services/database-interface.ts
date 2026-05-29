@@ -318,8 +318,15 @@ export interface IDatabaseService {
   ): Promise<number>;
   deleteDeploymentPlanItem(id: number): Promise<void>;
 
-  // Deployment Audit (Phase 2: writes only; reads added when audit-viewing UI lands)
+  // Deployment Audit
   logDeploymentAudit(entry: Omit<DeploymentAuditEntry, "id" | "created_at">): Promise<void>;
+  // Read history for a plan, optionally narrowed to one item. Returns newest
+  // entries first, with an optional cap (default 200).
+  listDeploymentAudit(filter: {
+    plan_id: number;
+    plan_item_id?: number | null;
+    limit?: number;
+  }): Promise<DeploymentAuditEntry[]>;
 
   // Lifecycle
   close(): Promise<void> | void;

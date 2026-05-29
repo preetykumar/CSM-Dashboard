@@ -1435,6 +1435,86 @@ export async function deleteDeploymentPlanItem(planId: number, itemId: number): 
   }
 }
 
+export type DeploymentAuditAction =
+  | "template_create"
+  | "template_edit"
+  | "template_activate"
+  | "template_deactivate"
+  | "item_create"
+  | "item_edit"
+  | "item_delete"
+  | "plan_create"
+  | "plan_status_change"
+  | "plan_assign"
+  | "plan_item_status_change"
+  | "plan_item_edit"
+  | "plan_item_create"
+  | "plan_item_delete";
+
+export interface DeploymentAuditEntry {
+  id: number;
+  plan_id: number | null;
+  plan_item_id: number | null;
+  template_id: number | null;
+  template_item_id: number | null;
+  actor_email: string;
+  action: DeploymentAuditAction;
+  details_json: string | null;
+  created_at: string;
+}
+
+export async function listDeploymentAudit(
+  planId: number,
+  options?: { item_id?: number; limit?: number }
+): Promise<DeploymentAuditEntry[]> {
+  const params = new URLSearchParams();
+  if (options?.item_id !== undefined) params.set("item_id", String(options.item_id));
+  if (options?.limit !== undefined) params.set("limit", String(options.limit));
+  const qs = params.toString();
+  const res = await fetch(
+    `${API_BASE}/deployments/plans/${planId}/audit${qs ? "?" + qs : ""}`,
+    fetchOptions
+  );
+  if (!res.ok) throw new Error(`Failed to load audit: ${res.status}`);
+  const data = await res.json();
+  return data.entries;
+}
+
+export async function updateDeploymentPlan(
+  planId: number,
+  updates: Partial<{ status: PlanStatus; tsa_email: string | null; ie_email: string | null }>
+): Promise<DeploymentPlan> {
+  const res = await fetch(`${API_BASE}/deployments/plans/${planId}`, {
+    ...fetchOptions,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error || `Failed to update plan: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.plan;
+}
+
+export async function refreshPlanFromTemplate(planId: number): Promise<{
+  added_count: number;
+  added: Array<{ template_item_id: number; new_plan_item_id: number }>;
+  total_template_items: number;
+  total_plan_items: number;
+}> {
+  const res = await fetch(`${API_BASE}/deployments/plans/${planId}/refresh-from-template`, {
+    ...fetchOptions,
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error || `Failed to refresh: ${res.status}`);
+  }
+  return res.json();
+}
+
 // Walk the account tree (parents + children) and collect distinct names suitable
 // for /api/health/batch. We pass names, not IDs, because the health batch
 // endpoint is keyed by accountName.

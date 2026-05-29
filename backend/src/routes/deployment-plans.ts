@@ -469,6 +469,198 @@ export function createDeploymentPlansRoutes(db: IDatabaseService): Router {
     }
   );
 
+  // ─── GET /api/deployments/plans/:planId/audit ────────────────────────────
+  // Returns audit history for a plan. Optional ?item_id=NN to scope to one task
+  // (still includes the plan_create event so the timeline has a baseline).
+  router.get("/:planId/audit", async (req: Request, res: Response) => {
+    try {
+      const planId = parseInt(req.params.planId, 10);
+      if (isNaN(planId)) return res.status(400).json({ error: "Invalid plan id" });
+      const plan = await db.getDeploymentPlan(planId);
+      if (!plan) return res.status(404).json({ error: "Plan not found" });
+      // Audit history is visible to anyone who can see the plan. We don't
+      // gate by canEdit since reading history isn't a mutation.
+      const itemIdRaw = typeof req.query.item_id === "string" ? req.query.item_id : undefined;
+      const limit = typeof req.query.limit === "string" ? Math.min(parseInt(req.query.limit, 10) || 200, 500) : 200;
+
+      if (itemIdRaw !== undefined) {
+        const itemId = parseInt(itemIdRaw, 10);
+        if (isNaN(itemId)) return res.status(400).json({ error: "Invalid item_id" });
+        // Pull task-specific entries + plan-level entries together so the
+        // drawer can show "plan created" alongside per-task changes.
+        const [itemEntries, planEntries] = await Promise.all([
+          db.listDeploymentAudit({ plan_id: planId, plan_item_id: itemId, limit }),
+          db.listDeploymentAudit({ plan_id: planId, plan_item_id: null, limit: 20 }),
+        ]);
+        // Merge + sort newest-first by id.
+        const merged = [...itemEntries, ...planEntries].sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
+        return res.json({ entries: merged, count: merged.length });
+      }
+
+      const entries = await db.listDeploymentAudit({ plan_id: planId, limit });
+      res.json({ entries, count: entries.length });
+    } catch (e) {
+      console.error("listDeploymentAudit failed:", e);
+      res.status(500).json({ error: e instanceof Error ? e.message : "List failed" });
+    }
+  });
+
+  // ─── PATCH /api/deployments/plans/:planId ────────────────────────────────
+  // Plan-level edit (status, tsa_email, ie_email). Reassigning the TSA or IE
+  // counts as a "plan_assign" action; status changes are "plan_status_change".
+  router.patch("/:planId", requireAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const planId = parseInt(req.params.planId, 10);
+      const actor = actorEmail(req);
+      const guard = await loadPlanWithPerm(planId, actor);
+      if ("error" in guard) return res.status(guard.status).json({ error: guard.error });
+
+      const before = guard.plan;
+      const b = req.body || {};
+      const updates: Parameters<typeof db.updateDeploymentPlan>[1] = {};
+      if (b.status !== undefined) updates.status = b.status;
+      if (b.tsa_email !== undefined) updates.tsa_email = b.tsa_email || null;
+      if (b.ie_email !== undefined) updates.ie_email = b.ie_email || null;
+
+      // Reassigning yourself off a plan you only own as TSA/IE would lock you
+      // out. Block unless the actor is an admin.
+      if (!isAdmin(actor)) {
+        const wouldStillOwnAsTsa = (updates.tsa_email !== undefined ? updates.tsa_email : before.tsa_email)?.toLowerCase() === actor.toLowerCase();
+        const wouldStillOwnAsIe = (updates.ie_email !== undefined ? updates.ie_email : before.ie_email)?.toLowerCase() === actor.toLowerCase();
+        if (!wouldStillOwnAsTsa && !wouldStillOwnAsIe) {
+          return res.status(403).json({
+            error: "Reassigning would lock you out of this plan. Ask an admin to reassign.",
+          });
+        }
+      }
+
+      await db.updateDeploymentPlan(planId, updates);
+      const after = await db.getDeploymentPlan(planId);
+      if (!after) return res.status(404).json({ error: "Plan disappeared during update" });
+
+      const changed: Record<string, { from: unknown; to: unknown }> = {};
+      for (const k of Object.keys(updates) as Array<keyof typeof updates>) {
+        if ((before as any)[k] !== (after as any)[k]) {
+          changed[k] = { from: (before as any)[k], to: (after as any)[k] };
+        }
+      }
+      if (Object.keys(changed).length > 0) {
+        const isAssignment = "tsa_email" in changed || "ie_email" in changed;
+        await db.logDeploymentAudit({
+          plan_id: planId,
+          plan_item_id: null,
+          template_id: null,
+          template_item_id: null,
+          actor_email: actor,
+          action: isAssignment ? "plan_assign" : "plan_status_change",
+          details_json: JSON.stringify(changed),
+        });
+      }
+      plansCache.clear();
+      res.json({ plan: after, changed });
+    } catch (e) {
+      console.error("updateDeploymentPlan failed:", e);
+      res.status(500).json({ error: e instanceof Error ? e.message : "Update failed" });
+    }
+  });
+
+  // ─── POST /api/deployments/plans/:planId/refresh-from-template ───────────
+  // Admin-only. Compares the plan's items to its source template; copies any
+  // template items missing from the plan into the plan (preserving the
+  // parent_id chain via template_item_id lookups). Existing items are NOT
+  // touched — in-progress edits stay intact.
+  //
+  // "Missing" = no plan item has template_item_id equal to this template
+  // item's id. Items that were added manually to the plan (template_item_id
+  // IS NULL) are also untouched.
+  router.post(
+    "/:planId/refresh-from-template",
+    requireAuthenticated,
+    async (req: Request, res: Response) => {
+      try {
+        const planId = parseInt(req.params.planId, 10);
+        const actor = actorEmail(req);
+        if (!isAdmin(actor)) {
+          return res.status(403).json({ error: "Admin only" });
+        }
+        if (isNaN(planId)) return res.status(400).json({ error: "Invalid plan id" });
+        const plan = await db.getDeploymentPlan(planId);
+        if (!plan) return res.status(404).json({ error: "Plan not found" });
+
+        const [templateItems, planItems] = await Promise.all([
+          db.listDeploymentTemplateItems(plan.template_id),
+          db.listDeploymentPlanItems(planId),
+        ]);
+
+        // Map template_item_id → existing plan item id, so when we add a new
+        // template item whose template-parent already lives in the plan, we
+        // can wire its parent_id correctly.
+        const templateIdToPlanItemId = new Map<number, number>();
+        for (const pi of planItems) {
+          if (pi.template_item_id !== null) {
+            templateIdToPlanItemId.set(pi.template_item_id, pi.id);
+          }
+        }
+
+        const added: Array<{ template_item_id: number; new_plan_item_id: number }> = [];
+        // templateItems comes in tree order (parents before children) per the
+        // template list endpoint. Walking it in order means a child's parent
+        // is always resolvable in templateIdToPlanItemId by the time we hit it.
+        for (const ti of templateItems) {
+          if (templateIdToPlanItemId.has(ti.id)) continue; // already in plan
+          const parentPlanItemId =
+            ti.parent_id !== null ? templateIdToPlanItemId.get(ti.parent_id) ?? null : null;
+          const newId = await db.addDeploymentPlanItem({
+            plan_id: planId,
+            template_item_id: ti.id,
+            parent_id: parentPlanItemId,
+            item_id: ti.item_id,
+            activity_type: ti.activity_type,
+            description: ti.description,
+            target_outcome: ti.target_outcome,
+            progress_status: "not_started",
+            notes: ti.notes,
+            deque_responsible: ti.default_deque_role,
+            customer_responsible: null,
+            start_date: null,
+            end_date: null,
+            estimated_days: ti.default_estimated_days,
+            actual_days: null,
+          });
+          templateIdToPlanItemId.set(ti.id, newId);
+          added.push({ template_item_id: ti.id, new_plan_item_id: newId });
+        }
+
+        if (added.length > 0) {
+          await db.logDeploymentAudit({
+            plan_id: planId,
+            plan_item_id: null,
+            template_id: plan.template_id,
+            template_item_id: null,
+            actor_email: actor,
+            action: "plan_item_create",
+            details_json: JSON.stringify({
+              source: "refresh-from-template",
+              added_count: added.length,
+              added,
+            }),
+          });
+        }
+
+        plansCache.clear();
+        res.json({
+          added_count: added.length,
+          added,
+          total_template_items: templateItems.length,
+          total_plan_items: planItems.length + added.length,
+        });
+      } catch (e) {
+        console.error("refreshFromTemplate failed:", e);
+        res.status(500).json({ error: e instanceof Error ? e.message : "Refresh failed" });
+      }
+    }
+  );
+
   // ─── DELETE /api/deployments/plans/:planId/items/:itemId ─────────────────
   // Deletes the item and all descendants (CASCADE in schema). The parent's
   // progress_status is recomputed after removal.

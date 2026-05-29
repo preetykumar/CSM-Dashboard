@@ -1789,9 +1789,46 @@ export class DatabaseServicePg implements IDatabaseService {
     );
   }
 
+  async listDeploymentAudit(filter: {
+    plan_id: number;
+    plan_item_id?: number | null;
+    limit?: number;
+  }): Promise<DeploymentAuditEntry[]> {
+    const limit = filter.limit ?? 200;
+    const params: any[] = [filter.plan_id];
+    let sql = "SELECT * FROM deployment_audit WHERE plan_id = $1";
+    if (filter.plan_item_id !== undefined) {
+      if (filter.plan_item_id === null) {
+        sql += " AND plan_item_id IS NULL";
+      } else {
+        params.push(filter.plan_item_id);
+        sql += ` AND plan_item_id = $${params.length}`;
+      }
+    }
+    params.push(limit);
+    sql += ` ORDER BY id DESC LIMIT $${params.length}`;
+    const r = await this.pool.query(sql, params);
+    return r.rows.map(rowToAuditEntryPg);
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
   }
+}
+
+function rowToAuditEntryPg(row: any): DeploymentAuditEntry {
+  const i = (v: any) => (v === null || v === undefined ? null : typeof v === "string" ? parseInt(v, 10) : v);
+  return {
+    id: i(row.id) ?? undefined,
+    plan_id: i(row.plan_id),
+    plan_item_id: i(row.plan_item_id),
+    template_id: i(row.template_id),
+    template_item_id: i(row.template_item_id),
+    actor_email: row.actor_email,
+    action: row.action,
+    details_json: row.details_json,
+    created_at: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
+  };
 }
 
 function rowToTemplatePg(row: any): DeploymentTemplate {

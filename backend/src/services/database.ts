@@ -1581,6 +1581,31 @@ export class DatabaseService implements IDatabaseService {
       );
   }
 
+  async listDeploymentAudit(filter: {
+    plan_id: number;
+    plan_item_id?: number | null;
+    limit?: number;
+  }): Promise<DeploymentAuditEntry[]> {
+    const limit = filter.limit ?? 200;
+    const params: any[] = [filter.plan_id];
+    let sql = "SELECT * FROM deployment_audit WHERE plan_id = ?";
+    if (filter.plan_item_id !== undefined) {
+      // Match either explicit item id OR plan-level entries (item_id IS NULL)
+      // when filtering by item — useful when callers ask for one task's
+      // history but want to see the plan-create event too.
+      if (filter.plan_item_id === null) {
+        sql += " AND plan_item_id IS NULL";
+      } else {
+        sql += " AND plan_item_id = ?";
+        params.push(filter.plan_item_id);
+      }
+    }
+    sql += " ORDER BY id DESC LIMIT ?";
+    params.push(limit);
+    const rows = this.db.prepare(sql).all(...params) as any[];
+    return rows.map(rowToAuditEntry);
+  }
+
   close(): void {
     this.db.close();
   }
@@ -1658,5 +1683,19 @@ function rowToPlanItem(row: any): DeploymentPlanItem {
     estimated_days: row.estimated_days,
     actual_days: row.actual_days,
     updated_at: row.updated_at,
+  };
+}
+
+function rowToAuditEntry(row: any): DeploymentAuditEntry {
+  return {
+    id: row.id,
+    plan_id: row.plan_id,
+    plan_item_id: row.plan_item_id,
+    template_id: row.template_id,
+    template_item_id: row.template_item_id,
+    actor_email: row.actor_email,
+    action: row.action,
+    details_json: row.details_json,
+    created_at: row.created_at,
   };
 }

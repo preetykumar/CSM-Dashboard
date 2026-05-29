@@ -1,11 +1,8 @@
-// Plan detail view (Phase 3b — editable).
+// Plan detail view (Phase 3b–3c).
 //
-// - Click any row → opens inline edit panel with the full set of editable
-//   fields (status, dates, responsibles, notes, etc.).
-// - Edits save immediately on click of "Save"; the page refetches so parent
-//   status propagation (server-side) is reflected in the tree.
-// - Add child / Add sibling / Delete buttons appear per row when canEdit.
-// - Read-only badge + disabled mutations when canEdit is false.
+// 3b: inline edit panel (status / dates / responsibles / notes), per-row +/×.
+// 3c: per-row history button + plan-level edit panel + admin
+//     "Refresh from template" action.
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { useParams, Link } from "react-router-dom";
@@ -18,17 +15,24 @@ import {
   Trash2,
   Save,
   X,
+  Clock,
+  RefreshCw,
+  Settings,
 } from "lucide-react";
 import {
   getDeploymentPlan,
+  updateDeploymentPlan,
   updateDeploymentPlanItem,
   addDeploymentPlanItem,
   deleteDeploymentPlanItem,
+  refreshPlanFromTemplate,
   type DeploymentPlan,
   type DeploymentPlanItem,
   type DeploymentPlanItemTree,
+  type PlanStatus,
   type ProgressStatus,
 } from "../../../services/api";
+import { useAuth } from "../../../contexts/AuthContext";
 import {
   Page,
   PageHeader,
@@ -39,6 +43,7 @@ import {
   EmptyState,
   Button,
 } from "../../ui";
+import { AuditDrawer } from "./AuditDrawer";
 
 const PLAN_STATUS_LABELS: Record<string, string> = {
   not_started: "Not Started",
@@ -80,6 +85,14 @@ const PROGRESS_OPTIONS: ProgressStatus[] = [
   "at_risk",
   "blocked",
 ];
+
+const PLAN_STATUS_OPTIONS: PlanStatus[] = ["not_started", "in_progress", "completed", "paused"];
+
+interface PlanEditState {
+  status: PlanStatus;
+  tsa_email: string;
+  ie_email: string;
+}
 
 const ACTIVITY_TONE: Record<string, "neutral" | "info" | "warning" | "success" | "danger"> = {
   milestone: "info",
@@ -136,6 +149,11 @@ export function PlanDetailPage() {
   const [adding, setAdding] = useState<AddState | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Phase 3c additions
+  const { isAdmin } = useAuth();
+  const [planEditing, setPlanEditing] = useState<PlanEditState | null>(null);
+  const [auditFor, setAuditFor] = useState<{ itemId?: number; itemLabel?: string } | null>(null);
+  const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
 
   const reload = async () => {
     if (isNaN(id)) return;
@@ -254,6 +272,55 @@ export function PlanDetailPage() {
     }
   };
 
+  const beginPlanEdit = () => {
+    if (!data) return;
+    setActionError(null);
+    setPlanEditing({
+      status: data.plan.status,
+      tsa_email: data.plan.tsa_email || "",
+      ie_email: data.plan.ie_email || "",
+    });
+  };
+
+  const savePlanEdit = async () => {
+    if (!planEditing) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      await updateDeploymentPlan(id, {
+        status: planEditing.status,
+        tsa_email: planEditing.tsa_email || null,
+        ie_email: planEditing.ie_email || null,
+      });
+      setPlanEditing(null);
+      await reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Plan save failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRefreshFromTemplate = async () => {
+    if (!confirm("Pull any new items from the source template into this plan? Existing items are untouched.")) return;
+    setBusy(true);
+    setActionError(null);
+    setRefreshMsg(null);
+    try {
+      const result = await refreshPlanFromTemplate(id);
+      setRefreshMsg(
+        result.added_count === 0
+          ? "Plan is already in sync with the template."
+          : `${result.added_count} item${result.added_count === 1 ? "" : "s"} added from the template.`
+      );
+      await reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Refresh failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const deleteItem = async (it: DeploymentPlanItem) => {
     if (!confirm(`Delete "${it.description}" and all of its children?`)) return;
     setBusy(true);
@@ -309,11 +376,26 @@ export function PlanDetailPage() {
           </span>
         }
         actions={
-          !canEdit ? (
-            <span title="You can view this plan but cannot edit it. Editing is restricted to the assigned TSA / IE and admins.">
-              <Badge tone="neutral">Read-only</Badge>
-            </span>
-          ) : null
+          <span className="plan-header-actions">
+            <Button size="sm" variant="ghost" onClick={() => setAuditFor({})}>
+              <Clock size={14} /> History
+            </Button>
+            {canEdit && (
+              <Button size="sm" variant="ghost" onClick={beginPlanEdit}>
+                <Settings size={14} /> Edit plan
+              </Button>
+            )}
+            {isAdmin && (
+              <Button size="sm" variant="ghost" onClick={handleRefreshFromTemplate} disabled={busy}>
+                <RefreshCw size={14} /> Refresh from template
+              </Button>
+            )}
+            {!canEdit && (
+              <span title="You can view this plan but cannot edit it. Editing is restricted to the assigned TSA / IE and admins.">
+                <Badge tone="neutral">Read-only</Badge>
+              </span>
+            )}
+          </span>
         }
       />
 
@@ -328,6 +410,12 @@ export function PlanDetailPage() {
       {actionError && (
         <Banner tone="danger" icon={<AlertTriangle size={16} />}>
           {actionError}
+        </Banner>
+      )}
+
+      {refreshMsg && (
+        <Banner tone="success">
+          {refreshMsg}
         </Banner>
       )}
 
@@ -360,6 +448,9 @@ export function PlanDetailPage() {
                   onEdit={beginEdit}
                   onAddChild={(parent) => beginAdd(parent)}
                   onDelete={deleteItem}
+                  onShowHistory={(it) =>
+                    setAuditFor({ itemId: it.id, itemLabel: `${it.item_id || ""} ${it.description}`.trim() })
+                  }
                 />
               ))}
               {canEdit && (
@@ -380,6 +471,25 @@ export function PlanDetailPage() {
 
       {adding && (
         <AddPanel state={adding} setState={setAdding} onSave={saveAdd} onCancel={() => setAdding(null)} busy={busy} />
+      )}
+
+      {planEditing && (
+        <PlanEditPanel
+          state={planEditing}
+          setState={setPlanEditing}
+          onSave={savePlanEdit}
+          onCancel={() => setPlanEditing(null)}
+          busy={busy}
+        />
+      )}
+
+      {auditFor && (
+        <AuditDrawer
+          planId={id}
+          itemId={auditFor.itemId}
+          itemLabel={auditFor.itemLabel}
+          onClose={() => setAuditFor(null)}
+        />
       )}
     </Page>
   );
@@ -410,6 +520,7 @@ interface RowProps {
   onEdit: (it: DeploymentPlanItem) => void;
   onAddChild: (parent: DeploymentPlanItem) => void;
   onDelete: (it: DeploymentPlanItem) => void;
+  onShowHistory: (it: DeploymentPlanItem) => void;
 }
 
 function PlanItemRow({
@@ -423,6 +534,7 @@ function PlanItemRow({
   onEdit,
   onAddChild,
   onDelete,
+  onShowHistory,
 }: RowProps) {
   const isCollapsed = collapsed.has(node.id);
   const hasChildren = node.children.length > 0;
@@ -459,30 +571,41 @@ function PlanItemRow({
         <Badge tone={PROGRESS_TONE[node.progress_status]}>
           {PROGRESS_LABELS[node.progress_status] || node.progress_status}
         </Badge>
-        {canEdit && (
-          <span className="plan-tree-actions">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onAddChild(node)}
-              disabled={busy}
-              aria-label="Add child"
-              title="Add child task"
-            >
-              <Plus size={12} />
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => onDelete(node)}
-              disabled={busy}
-              aria-label="Delete"
-              title="Delete this item and its children"
-            >
-              <Trash2 size={12} />
-            </Button>
-          </span>
-        )}
+        <span className="plan-tree-actions">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onShowHistory(node)}
+            aria-label="History"
+            title="Show change history"
+          >
+            <Clock size={12} />
+          </Button>
+          {canEdit && (
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onAddChild(node)}
+                disabled={busy}
+                aria-label="Add child"
+                title="Add child task"
+              >
+                <Plus size={12} />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onDelete(node)}
+                disabled={busy}
+                aria-label="Delete"
+                title="Delete this item and its children"
+              >
+                <Trash2 size={12} />
+              </Button>
+            </>
+          )}
+        </span>
       </div>
       {!isCollapsed &&
         node.children.map((child) => (
@@ -498,6 +621,7 @@ function PlanItemRow({
             onEdit={onEdit}
             onAddChild={onAddChild}
             onDelete={onDelete}
+            onShowHistory={onShowHistory}
           />
         ))}
     </>
@@ -722,6 +846,75 @@ function AddPanel({ state, setState, onSave, onCancel, busy }: AddPanelProps) {
         <div className="plan-edit-actions">
           <Button onClick={onSave} disabled={busy || !state.description.trim()}>
             <Save size={14} /> Add
+          </Button>
+          <Button variant="ghost" onClick={onCancel} disabled={busy}>
+            <X size={14} /> Cancel
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Plan-level edit panel (Phase 3c) ───────────────────────────────────────
+
+const PLAN_STATUS_LABEL_MAP: Record<PlanStatus, string> = {
+  not_started: "Not Started",
+  in_progress: "In Progress",
+  completed: "Completed",
+  paused: "Paused",
+};
+
+interface PlanEditPanelProps {
+  state: PlanEditState;
+  setState: (s: PlanEditState) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  busy: boolean;
+}
+
+function PlanEditPanel({ state, setState, onSave, onCancel, busy }: PlanEditPanelProps) {
+  return (
+    <div className="plan-edit-panel">
+      <Card>
+        <div className="plan-edit-header">
+          <strong>Edit plan</strong> — change status or reassign owners. Non-admins must keep themselves as TSA or IE.
+        </div>
+        <div className="plan-edit-grid">
+          <label>
+            Status
+            <select
+              value={state.status}
+              onChange={(e) => setState({ ...state, status: e.target.value as PlanStatus })}
+              autoFocus
+            >
+              {PLAN_STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>{PLAN_STATUS_LABEL_MAP[s]}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            TSA email
+            <input
+              type="email"
+              value={state.tsa_email}
+              onChange={(e) => setState({ ...state, tsa_email: e.target.value })}
+              placeholder="tsa@deque.com"
+            />
+          </label>
+          <label>
+            IE email
+            <input
+              type="email"
+              value={state.ie_email}
+              onChange={(e) => setState({ ...state, ie_email: e.target.value })}
+              placeholder="ie@deque.com"
+            />
+          </label>
+        </div>
+        <div className="plan-edit-actions">
+          <Button onClick={onSave} disabled={busy}>
+            <Save size={14} /> Save
           </Button>
           <Button variant="ghost" onClick={onCancel} disabled={busy}>
             <X size={14} /> Cancel
