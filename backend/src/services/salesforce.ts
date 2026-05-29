@@ -161,10 +161,6 @@ export interface EnterpriseSubscription {
   monitorProjectCount?: number;
   enterpriseUuid?: string;
   enterpriseDomain?: string;
-  // Annualized revenue for this single subscription line, from
-  // Enterprise_Subscription__c.Subscription_Total__c. Sum per account = the
-  // account's current ARR.
-  subscriptionTotal?: number;
 }
 
 export interface RenewalOpportunity {
@@ -304,7 +300,6 @@ interface SFEnterpriseSubscription {
   Monitor_Project_Count__c?: number;
   Enterprise_UUID__c?: string;
   Enterprise_Domain__c?: string;
-  Subscription_Total__c?: number;
 }
 
 // Per-account role assignment tuple — used in getAccountRoleAssignments.
@@ -805,8 +800,7 @@ export class SalesforceService {
       const subscriptions = await this.query<SFEnterpriseSubscription>(`
         SELECT Id, Name, Account__c, Product_Type__c, License_Count__c, Assigned_Seats__c,
                Percentage_Assigned__c, Environment__c, Type__c, Start_Date__c, End_Date__c,
-               Monitor_Page_Count__c, Monitor_Project_Count__c, Enterprise_UUID__c, Enterprise_Domain__c,
-               Subscription_Total__c
+               Monitor_Page_Count__c, Monitor_Project_Count__c, Enterprise_UUID__c, Enterprise_Domain__c
         FROM Enterprise_Subscription__c
         WHERE Account__r.Name = '${escapedName}'
         AND Type__c = 'paid'
@@ -832,7 +826,6 @@ export class SalesforceService {
         monitorProjectCount: sub.Monitor_Project_Count__c,
         enterpriseUuid: sub.Enterprise_UUID__c,
         enterpriseDomain: sub.Enterprise_Domain__c,
-        subscriptionTotal: sub.Subscription_Total__c ?? undefined,
       }));
     } catch (error) {
       console.error(`Error fetching subscriptions for ${accountName}:`, error);
@@ -847,8 +840,7 @@ export class SalesforceService {
       const subscriptions = await this.query<SFEnterpriseSubscription>(`
         SELECT Id, Name, Account__c, Product_Type__c, License_Count__c, Assigned_Seats__c,
                Percentage_Assigned__c, Environment__c, Type__c, Start_Date__c, End_Date__c,
-               Monitor_Page_Count__c, Monitor_Project_Count__c, Enterprise_UUID__c, Enterprise_Domain__c,
-               Subscription_Total__c
+               Monitor_Page_Count__c, Monitor_Project_Count__c, Enterprise_UUID__c, Enterprise_Domain__c
         FROM Enterprise_Subscription__c
         WHERE Account__c = '${accountId}'
         AND Type__c = 'paid'
@@ -874,7 +866,6 @@ export class SalesforceService {
         monitorProjectCount: sub.Monitor_Project_Count__c,
         enterpriseUuid: sub.Enterprise_UUID__c,
         enterpriseDomain: sub.Enterprise_Domain__c,
-        subscriptionTotal: sub.Subscription_Total__c ?? undefined,
       }));
     } catch (error) {
       console.error(`Error fetching subscriptions for account ${accountId}:`, error);
@@ -882,37 +873,27 @@ export class SalesforceService {
     }
   }
 
-  // Bulk fetch: ARR per account, computed as SUM(Subscription_Total__c) over
-  // every active paid subscription line for each requested account. Returns a
-  // Map keyed by Account__c. Accounts with no active subs are simply absent
-  // from the map (not zero — callers can distinguish "no data" from "$0").
+  // Bulk fetch: ARR per account, sourced from Account.ARR__c (the SF-owned
+  // aggregate). Returns a Map keyed by Account.Id. Accounts with null or zero
+  // ARR are absent from the map so callers can distinguish "no data" from "$0".
   //
-  // Used by the portfolio enrichment (customer banner ARR) and the renewals
-  // batch endpoint (per-row ARR context).
+  // Prior implementation tried to roll up a Subscription_Total__c field on
+  // Enterprise_Subscription__c — that field does not exist on the object.
+  // Account.ARR__c is the source of truth used by AE/CSM org reports.
   async getAccountArrTotals(accountIds: string[]): Promise<Map<string, number>> {
     const out = new Map<string, number>();
     if (accountIds.length === 0) return out;
 
     const CHUNK = 200;
     for (let i = 0; i < accountIds.length; i += CHUNK) {
-      const chunk = accountIds.slice(i, i + CHUNK);
-      const inList = chunk.map((id) => `'${id}'`).join(",");
+      const inList = accountIds.slice(i, i + CHUNK).map((id) => `'${id}'`).join(",");
       try {
-        // Per-line query rather than SUM aggregation — easier to reason about
-        // null Subscription_Total__c values (treat as 0) without dealing
-        // with SOQL aggregate result quirks.
-        type Row = { Account__c: string; Subscription_Total__c: number | null };
-        const rows = await this.queryAll<Row>(`
-          SELECT Account__c, Subscription_Total__c
-          FROM Enterprise_Subscription__c
-          WHERE Account__c IN (${inList})
-            AND Type__c = 'paid'
-            AND End_Date__c >= TODAY
-        `);
+        type Row = { Id: string; ARR__c: number | null };
+        const rows = await this.queryAll<Row>(
+          `SELECT Id, ARR__c FROM Account WHERE Id IN (${inList})`
+        );
         for (const r of rows) {
-          if (!r.Account__c) continue;
-          const amt = r.Subscription_Total__c || 0;
-          out.set(r.Account__c, (out.get(r.Account__c) || 0) + amt);
+          if (r.ARR__c != null && r.ARR__c > 0) out.set(r.Id, r.ARR__c);
         }
       } catch (e) {
         console.error("getAccountArrTotals chunk failed:", e);

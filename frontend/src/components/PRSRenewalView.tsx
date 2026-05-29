@@ -24,7 +24,7 @@ export function PRSRenewalView() {
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
   const [currentTemplateKey, setCurrentTemplateKey] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'renewalDate', direction: 'asc' });
-  const [daysAhead, setDaysAhead] = useState<number>(60);
+  const [daysAhead, setDaysAhead] = useState<number>(365);
   const [filter, setFilter] = useState<'all' | 'urgent'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showNeedsActionModal, setShowNeedsActionModal] = useState(false);

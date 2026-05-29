@@ -1,5 +1,16 @@
 # Post-sales Customer Team Portal - Release Notes
 
+## Version 2.3.1
+
+**Release Date:** May 29, 2026
+
+### Hotfix: restore ARR + Usage tab, raise renewal default window
+
+- **ARR badges visible again** on the customer banner (My Customers) and on every renewal opp row. Source switched from a non-existent `Enterprise_Subscription__c.Subscription_Total__c` field to `Account.ARR__c` — the field SF reports already use as the ARR source of truth.
+- **Customer drilldown → Usage tab works again.** The same SOQL bug was blocking the subscriptions fetch, so the Usage tab could never get an Enterprise UUID. With subs flowing, exact-UUID products (DevTools Extension, Developer Hub, Deque University) match cleanly, and the existing name-contains fallback now actually fires for `axe-account-portal`, `axe-devtools-mobile`, and `axe-assistant`.
+- **Renewals default window raised 60 → 365 days** on Upcoming, By CSM, and By Specialist. The 60-day default was hiding most of an open pipeline (e.g. Mark Washburn went from 2 visible opps to all 11).
+- Schwarz Digits IT KG correctly shows no ARR pill — billing rolls up to the Schwarz Group parent in SF.
+
 ## Version 2.3.0
 
 **Release Date:** May 28, 2026

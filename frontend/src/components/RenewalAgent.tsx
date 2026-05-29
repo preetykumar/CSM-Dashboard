@@ -726,7 +726,7 @@ export default function RenewalAgent() {
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [currentEmailTemplate, setCurrentEmailTemplate] = useState<EmailTemplate | null>(null);
   const [sortConfig] = useState<SortConfig>({ field: 'renewalDate', direction: 'asc' });
-  const [daysAhead, setDaysAhead] = useState<number>(60);
+  const [daysAhead, setDaysAhead] = useState<number>(365);
 
   // Fetch renewal opportunities from API
   useEffect(() => {
