@@ -331,7 +331,7 @@ function Dashboard() {
       {/* Footer */}
       <footer className="app-footer">
         <div className="footer-content">
-          <span>Customer 360° v1.0.0 (MVP)</span>
+          <span>Customer 360° v2.3.0</span>
           <span className="footer-separator">|</span>
           <a
             href="https://github.com/preetykumar/CSM-Dashboard/blob/main/RELEASE_NOTES.md"

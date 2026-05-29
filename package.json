@@ -1,6 +1,6 @@
 {
   "name": "zendesk-dashboard",
-  "version": "1.0.0",
+  "version": "2.3.0",
   "description": "Full-stack Zendesk dashboard for customer ticket summaries",
   "private": true,
   "engines": {
