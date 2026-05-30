@@ -55,15 +55,35 @@ interface ProductSubsSummary {
   pagesUsed?: number;
   pagePct?: number;
   projects?: number;
+  // On-prem / offline / private-cloud subs are stripped from the SaaS totals
+  // above because they generate no Amplitude telemetry. We surface their seat
+  // counts here so the UI can show a "+N on-prem (no telemetry)" pill.
+  noTelemetrySeats?: number;
+  noTelemetryCount?: number;
+}
+
+// A subscription whose environment is on-prem or private-cloud sends no
+// telemetry to our Amplitude project, so its seats should be excluded from
+// usage-utilization math. Matches the same intent as
+// isNoTelemetryProductCode in CustomerDrilldown (productCode-based check).
+function isNoTelemetrySub(s: EnterpriseSubscription): boolean {
+  const env = (s.environment || "").toLowerCase();
+  return env === "on_prem" || env === "private_cloud" || env === "offline";
 }
 
 function getProductSubscriptionSummary(slug: string, subscriptions: EnterpriseSubscription[]): ProductSubsSummary | null {
   const types = PRODUCT_SUBSCRIPTION_TYPES[slug];
   if (!types || types.length === 0) return null;
-  const matching = subscriptions.filter((s) => types.includes(s.productType.toLowerCase()));
-  if (matching.length === 0) return null;
+  const matchingAll = subscriptions.filter((s) => types.includes(s.productType.toLowerCase()));
+  if (matchingAll.length === 0) return null;
 
-  // Monitor uses pages, not seats
+  const noTelemetrySubs = matchingAll.filter(isNoTelemetrySub);
+  const matching = matchingAll.filter((s) => !isNoTelemetrySub(s));
+  const noTelemetrySeats = noTelemetrySubs.reduce((sum, s) => sum + s.licenseCount, 0);
+  const noTelemetryCount = noTelemetrySubs.length;
+
+  // Monitor uses pages, not seats — same rule: on-prem deployments don't
+  // contribute to the SaaS page tier / pages-used calculation.
   if (slug === "axe-monitor") {
     const pageCapacity = matching.reduce((sum, s) => sum + s.licenseCount, 0);
     const pagesUsed = matching.reduce((sum, s) => sum + (s.monitorPageCount || 0), 0);
@@ -76,13 +96,15 @@ function getProductSubscriptionSummary(slug: string, subscriptions: EnterpriseSu
       pagesUsed,
       pagePct: isUnlimited ? 0 : (pageCapacity > 0 ? Math.round((pagesUsed / pageCapacity) * 100) : 0),
       projects,
+      noTelemetrySeats,
+      noTelemetryCount,
     };
   }
 
   const licensed = matching.reduce((sum, s) => sum + s.licenseCount, 0);
   const assigned = matching.reduce((sum, s) => sum + s.assignedSeats, 0);
   const pct = licensed > 0 ? Math.round((assigned / licensed) * 100) : 0;
-  return { licensed, assigned, pct };
+  return { licensed, assigned, pct, noTelemetrySeats, noTelemetryCount };
 }
 
 function TrendIndicator({ current, previous }: { current: number; previous: number }) {
@@ -457,6 +479,14 @@ export function UnifiedUsageSection({ enterpriseUuid, accountName, salesforceAcc
                 ) : (
                   <span className="unified-product-badge inactive">No data</span>
                 )}
+                {subsSummary?.noTelemetryCount ? (
+                  <span
+                    className="no-telemetry-pill"
+                    title={`${subsSummary.noTelemetryCount} on-prem/offline subscription(s) (${(subsSummary.noTelemetrySeats || 0).toLocaleString()} seats) are excluded from the totals above because on-prem/offline deployments do not report usage telemetry.`}
+                  >
+                    +{(subsSummary.noTelemetrySeats || 0).toLocaleString()} on-prem · no data
+                  </span>
+                ) : null}
               </div>
               <span className="expand-icon">{expanded ? "\u25BC" : "\u25B6"}</span>
             </div>

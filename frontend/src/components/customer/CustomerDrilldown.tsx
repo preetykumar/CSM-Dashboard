@@ -180,6 +180,13 @@ function DeploymentsTab({ accountId }: { accountId: string }) {
     <div className="customer-deployments">
       {data.opps.map((opp) => {
         const k = opp.kantata;
+        // OnPrem / Offline product SKUs never report to Amplitude — hide their
+        // rows from the line-items table and surface a single summary pill so
+        // the customer's deploy footprint stays visible without polluting the
+        // usage view with no-telemetry products.
+        const allLineItems = opp.lineItems || [];
+        const visibleLineItems = allLineItems.filter((li) => !isNoTelemetryProductCode(li.productCode));
+        const hiddenNoTelemetry = allLineItems.filter((li) => isNoTelemetryProductCode(li.productCode));
         return (
           <div key={opp.oppId} className="customer-deployment-opp">
             <div className="customer-deployment-opp-header">
@@ -191,6 +198,14 @@ function DeploymentsTab({ accountId }: { accountId: string }) {
               )}
               {k && k.status && (
                 <Badge tone={k.overBudget ? "danger" : "info"}>{k.status}</Badge>
+              )}
+              {hiddenNoTelemetry.length > 0 && (
+                <span
+                  className="no-telemetry-pill"
+                  title={`Hidden from usage views: ${hiddenNoTelemetry.map((li) => li.productCode).join(", ")}`}
+                >
+                  {hiddenNoTelemetry.length} on-prem/offline · no usage data
+                </span>
               )}
             </div>
 
@@ -236,7 +251,7 @@ function DeploymentsTab({ accountId }: { accountId: string }) {
                 </tr>
               </thead>
               <tbody>
-                {opp.lineItems.map((li, idx) => (
+                {visibleLineItems.map((li, idx) => (
                   <tr key={idx}>
                     <td className="mono">{li.productCode}</td>
                     <td>{li.productName || "—"}</td>
@@ -245,6 +260,13 @@ function DeploymentsTab({ accountId }: { accountId: string }) {
                     <td style={{ textAlign: "right" }}>{fmtMoney(li.totalPrice)}</td>
                   </tr>
                 ))}
+                {visibleLineItems.length === 0 && hiddenNoTelemetry.length > 0 && (
+                  <tr>
+                    <td colSpan={5} className="muted" style={{ textAlign: "center", padding: 8 }}>
+                      All line items on this opp are on-prem / offline — no usage data tracked.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -257,6 +279,16 @@ function DeploymentsTab({ accountId }: { accountId: string }) {
 function fmtMoney(n: number | null | undefined): string {
   if (n === null || n === undefined) return "—";
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
+// True when a product code is for an on-prem or offline SKU (e.g.
+// AXEDTPRO-ONPREM, AXEDTHTML-SINGLE-OFFLINE). These products run on
+// customer infrastructure, never report telemetry to Amplitude, and
+// would otherwise show as "0% activity" on usage views.
+export function isNoTelemetryProductCode(code: string | null | undefined): boolean {
+  if (!code) return false;
+  const lower = code.toLowerCase();
+  return lower.includes("onprem") || lower.includes("on-prem") || lower.includes("offline");
 }
 
 // Compact ARR for the drilldown banner: $1.2M / $850k / $42.

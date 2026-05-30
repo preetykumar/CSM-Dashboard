@@ -11666,6 +11666,24 @@ header .hint {
   border-radius: 999px;
   letter-spacing: 0.02em;
 }
+/* Pill used on Active Deployments line-items header and on Usage product
+   cards to flag on-prem / offline subscriptions whose seats and rows are
+   intentionally excluded from usage totals (no Amplitude telemetry). */
+.no-telemetry-pill {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #7a4a07;
+  background: #fbeacb;
+  border: 1px solid #f2d18b;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+  cursor: help;
+  white-space: nowrap;
+}
 .customer-drilldown-tabs {
   display: flex;
   gap: 4px;
