@@ -48,6 +48,7 @@ export function useEmailComposer() {
   const composer = isOpen ? (
     <EmailComposer
       template={template}
+      templateKey={templateKey}
       opportunity={opp}
       prsName={userName}
       onClose={close}

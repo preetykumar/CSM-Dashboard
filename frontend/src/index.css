@@ -9847,6 +9847,29 @@ header .hint {
   margin-bottom: 0.25rem;
 }
 
+/* Inline pill next to the Template label showing whether the dropdown
+   reflects the SF-status-derived pick (auto) or a user override. */
+.renewal-email-auto-pick {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #14532d;
+  background: #d1fae5;
+  border: 1px solid #a7f3d0;
+  border-radius: 999px;
+  cursor: help;
+}
+.renewal-email-auto-pick.overridden {
+  color: #7a4a07;
+  background: #fef3c7;
+  border-color: #fde68a;
+}
+
 .renewal-email-input {
   width: 100%;
   padding: 0.5rem 0.75rem;

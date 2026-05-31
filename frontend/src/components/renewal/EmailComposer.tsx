@@ -6,6 +6,10 @@ import { formatCurrency } from '../../utils/format';
 
 interface EmailComposerProps {
   template: EmailTemplate | null;
+  // Key of the SF-status-derived template (e.g. SEND_EMAIL_1) so the dropdown
+  // can highlight which one the workflow engine matched. Users can still
+  // override by picking a different template from the picker.
+  templateKey?: string | null;
   opportunity: Opportunity | null;
   prsName: string;
   onClose: () => void;
@@ -14,6 +18,7 @@ interface EmailComposerProps {
 
 export const EmailComposer: React.FC<EmailComposerProps> = ({
   template,
+  templateKey,
   opportunity,
   prsName,
   onClose,
@@ -21,13 +26,17 @@ export const EmailComposer: React.FC<EmailComposerProps> = ({
 }) => {
   const [subject, setSubject] = useState(template?.subject || '');
   const [body, setBody] = useState(template?.body || '');
-  const [selectedTemplateKey, setSelectedTemplateKey] = useState<string>('');
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState<string>(templateKey || '');
 
   useEffect(() => {
+    // Sync the dropdown selection to the workflow-engine pick. If the prop
+    // changes (e.g. user re-opens for a different opp with a different
+    // milestone), the dropdown follows.
+    if (templateKey) setSelectedTemplateKey(templateKey);
     if (template && opportunity) {
       processTemplate(template);
     }
-  }, [template, opportunity, prsName]);
+  }, [template, templateKey, opportunity, prsName]);
 
   function processTemplate(tmpl: EmailTemplate) {
     if (!opportunity) return;
@@ -89,7 +98,19 @@ export const EmailComposer: React.FC<EmailComposerProps> = ({
         <div className="renewal-email-body">
           {!readOnly && (
             <div className="renewal-email-field">
-              <label>Template</label>
+              <label>
+                Template
+                {templateKey && selectedTemplateKey === templateKey && (
+                  <span className="renewal-email-auto-pick" title="Selected based on the opportunity's SF status (stage + milestone + PO state). Change the dropdown to override.">
+                    auto · from SF status
+                  </span>
+                )}
+                {templateKey && selectedTemplateKey !== templateKey && (
+                  <span className="renewal-email-auto-pick overridden" title={`Workflow engine suggested ${templateKey}; you've overridden it.`}>
+                    overridden
+                  </span>
+                )}
+              </label>
               <select
                 value={selectedTemplateKey}
                 onChange={(e) => handleTemplateChange(e.target.value)}
