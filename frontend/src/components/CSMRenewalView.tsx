@@ -10,6 +10,7 @@ import { Badge } from './renewal/Badge';
 import { OpportunityCard } from './renewal/OpportunityCard';
 import { useChurnedAccounts } from '../hooks/useChurnedAccounts';
 import { RenewalAccountTree } from './renewal/RenewalAccountTree';
+import { useEmailComposer } from '../hooks/useEmailComposer';
 
 const DAYS_OPTIONS = [30, 60, 90, 120, 180] as const;
 
@@ -28,6 +29,7 @@ export function CSMRenewalView() {
   const [expandedChurnOpp, setExpandedChurnOpp] = useState<string | null>(null);
   const [expandedNeedsActionOpp, setExpandedNeedsActionOpp] = useState<string | null>(null);
   const churnData = useChurnedAccounts();
+  const { openComposer, composer } = useEmailComposer();
 
 
   useEffect(() => {
@@ -276,6 +278,7 @@ export function CSMRenewalView() {
           <RenewalAccountTree
             opps={filteredOpps}
             mode="active"
+            onDraftEmail={openComposer}
           />
         )}
       </div>
@@ -298,6 +301,7 @@ export function CSMRenewalView() {
                     index={idx}
                     expanded={expandedNeedsActionOpp === opp.id}
                     onToggle={() => setExpandedNeedsActionOpp(expandedNeedsActionOpp === opp.id ? null : opp.id)}
+                    onDraftEmail={openComposer}
                   />
                 ))}
               </div>
@@ -307,6 +311,7 @@ export function CSMRenewalView() {
           </div>
         </div>
       )}
+      {composer}
     </div>
   );
 }

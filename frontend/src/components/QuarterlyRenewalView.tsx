@@ -6,6 +6,7 @@ import { transformApiOpportunity } from '../types/renewal';
 import { WorkflowEngine, isInvoicedOrDone, isClosedLost, isClosedWon } from '../services/workflow-engine';
 import { formatCurrency } from '../utils/format';
 import { RenewalAccountTree } from './renewal/RenewalAccountTree';
+import { useEmailComposer } from '../hooks/useEmailComposer';
 
 export function QuarterlyRenewalView() {
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
@@ -16,6 +17,7 @@ export function QuarterlyRenewalView() {
   const [filter, setFilter] = useState<'all' | 'urgent'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedOppId, setExpandedOppId] = useState<string | null>(null);
+  const { openComposer, composer } = useEmailComposer();
 
 
   useEffect(() => {
@@ -125,10 +127,11 @@ export function QuarterlyRenewalView() {
             mode="active"
             expandedOppId={expandedOppId}
             setExpandedOppId={setExpandedOppId}
+            onDraftEmail={openComposer}
           />
         )}
       </div>
-
+      {composer}
     </div>
   );
 }

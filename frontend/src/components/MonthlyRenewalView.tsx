@@ -6,6 +6,7 @@ import { transformApiOpportunity } from '../types/renewal';
 import { WorkflowEngine, isClosedLost, isClosedWon } from '../services/workflow-engine';
 import { formatCurrency } from '../utils/format';
 import { RenewalAccountTree } from './renewal/RenewalAccountTree';
+import { useEmailComposer } from '../hooks/useEmailComposer';
 
 const DAYS_OPTIONS = [30, 60, 90, 120, 180] as const;
 
@@ -18,6 +19,7 @@ export function MonthlyRenewalView() {
   const [filter, setFilter] = useState<'all' | 'urgent'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedOppId, setExpandedOppId] = useState<string | null>(null);
+  const { openComposer, composer } = useEmailComposer();
 
 
   useEffect(() => {
@@ -124,10 +126,11 @@ export function MonthlyRenewalView() {
             mode="active"
             expandedOppId={expandedOppId}
             setExpandedOppId={setExpandedOppId}
+            onDraftEmail={openComposer}
           />
         )}
       </div>
-
+      {composer}
     </div>
   );
 }

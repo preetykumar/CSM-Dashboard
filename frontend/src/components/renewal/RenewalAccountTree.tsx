@@ -20,7 +20,7 @@ import { HierarchyList } from "../HierarchyList";
 import { OpportunityCard } from "./OpportunityCard";
 import { formatCurrency } from "../../utils/format";
 import { fetchAccountArrBatch } from "../../services/api";
-import type { Opportunity } from "../../types/renewal";
+import type { Opportunity, RequiredAction } from "../../types/renewal";
 
 interface Props {
   opps: Opportunity[];
@@ -33,6 +33,10 @@ interface Props {
   // Optional sub-header for each account body (e.g., to surface a CSM name
   // when in ByCSM view, or a month label when in Monthly view).
   renderAccountSubheader?: (group: { accountId: string; opps: Opportunity[] }) => ReactNode;
+  // Optional: callback for the "Draft Email" button on active-mode cards.
+  // When omitted, OpportunityCard suppresses the button. Wire to
+  // useEmailComposer().openComposer to restore the R-6/R-3 email flow.
+  onDraftEmail?: (opp: Opportunity, action: RequiredAction) => void;
 }
 
 export function RenewalAccountTree({
@@ -41,6 +45,7 @@ export function RenewalAccountTree({
   expandedOppId: externalOppId,
   setExpandedOppId: externalSetOppId,
   renderAccountSubheader,
+  onDraftEmail,
 }: Props) {
   const { hierarchy } = useAccountHierarchy();
   const accountTree = useMemo(() => nestOppsByAccount(opps, hierarchy), [opps, hierarchy]);
@@ -123,6 +128,7 @@ export function RenewalAccountTree({
                     onToggle={() => setExpandedOppId(expandedOppId === opp.id ? null : opp.id)}
                     mode={mode}
                     customerArr={opp.accountId ? arrByAccount[opp.accountId] : undefined}
+                    onDraftEmail={onDraftEmail}
                   />
                 ))}
               </div>

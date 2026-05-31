@@ -6,6 +6,7 @@ import { Badge } from './renewal/Badge';
 import { isClosedLost, isClosedWon } from '../services/workflow-engine';
 import { SortHeader as SharedSortHeader } from './renewal/SortHeader';
 import { RenewalAccountTree } from './renewal/RenewalAccountTree';
+import { useEmailComposer } from '../hooks/useEmailComposer';
 
 // TypeScript interfaces
 
@@ -727,6 +728,7 @@ export default function RenewalAgent() {
   const [currentEmailTemplate, setCurrentEmailTemplate] = useState<EmailTemplate | null>(null);
   const [sortConfig] = useState<SortConfig>({ field: 'renewalDate', direction: 'asc' });
   const [daysAhead, setDaysAhead] = useState<number>(365);
+  const { openComposer, composer } = useEmailComposer();
 
   // Fetch renewal opportunities from API
   useEffect(() => {
@@ -927,6 +929,7 @@ export default function RenewalAgent() {
             <RenewalAccountTree
               opps={sortedOpportunities as unknown as Parameters<typeof RenewalAccountTree>[0]["opps"]}
               mode="active"
+              onDraftEmail={openComposer}
             />
           )}
         </div>
@@ -1026,6 +1029,7 @@ export default function RenewalAgent() {
           }}
         />
       )}
+      {composer}
     </div>
   );
 }

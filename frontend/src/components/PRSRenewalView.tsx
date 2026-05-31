@@ -5,24 +5,20 @@ import { useAuth } from '../contexts/AuthContext';
 import type { Opportunity, SortConfig, SortField } from '../types/renewal';
 import { transformApiOpportunity } from '../types/renewal';
 import { WorkflowEngine, getStageBadgeVariant, isClosedLost, isClosedWon } from '../services/workflow-engine';
-import { RENEWAL_EMAIL_TEMPLATES } from '../services/email-templates';
 import { formatCurrency } from '../utils/format';
 import { Badge } from './renewal/Badge';
-import { EmailComposer } from './renewal/EmailComposer';
 import { OpportunityCard } from './renewal/OpportunityCard';
 import { useChurnedAccounts } from '../hooks/useChurnedAccounts';
 import { RenewalAccountTree } from './renewal/RenewalAccountTree';
+import { useEmailComposer } from '../hooks/useEmailComposer';
 
 const DAYS_OPTIONS = [30, 60, 90, 120, 180] as const;
 
 export function PRSRenewalView() {
-  const { user, isAdmin } = useAuth();
+  const { isAdmin } = useAuth();
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showEmailComposer, setShowEmailComposer] = useState(false);
-  const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
-  const [currentTemplateKey, setCurrentTemplateKey] = useState<string | null>(null);
   const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'renewalDate', direction: 'asc' });
   const [daysAhead, setDaysAhead] = useState<number>(365);
   const [filter, setFilter] = useState<'all' | 'urgent'>('all');
@@ -36,8 +32,7 @@ export function PRSRenewalView() {
   const [expandedOverdueOpp, setExpandedOverdueOpp] = useState<string | null>(null);
   const [expandedChurnOpp, setExpandedChurnOpp] = useState<string | null>(null);
   const churnData = useChurnedAccounts();
-
-  const userName = user?.name || user?.email?.split('@')[0] || 'PRS User';
+  const { openComposer, composer } = useEmailComposer();
 
 
   useEffect(() => {
@@ -433,14 +428,6 @@ export function PRSRenewalView() {
             </>
           )}
 
-          {showEmailComposer && selectedOpportunity && (
-            <EmailComposer
-              template={currentTemplateKey ? RENEWAL_EMAIL_TEMPLATES[currentTemplateKey] : null}
-              opportunity={selectedOpportunity}
-              prsName={userName}
-              onClose={() => { setShowEmailComposer(false); setCurrentTemplateKey(null); setSelectedOpportunity(null); }}
-            />
-          )}
         </>
       ) : (
       <>
@@ -548,18 +535,12 @@ export function PRSRenewalView() {
           <RenewalAccountTree
             opps={filteredOpps}
             mode="active"
+            onDraftEmail={openComposer}
           />
         )}
       </div>
 
-      {showEmailComposer && selectedOpportunity && (
-        <EmailComposer
-          template={currentTemplateKey ? RENEWAL_EMAIL_TEMPLATES[currentTemplateKey] : null}
-          opportunity={selectedOpportunity}
-          prsName={userName}
-          onClose={() => { setShowEmailComposer(false); setCurrentTemplateKey(null); setSelectedOpportunity(null); }}
-        />
-      )}
+      {composer}
 
       {showNeedsActionModal && (
         <div className="renewal-email-modal">
