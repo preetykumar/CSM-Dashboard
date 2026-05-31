@@ -41,6 +41,7 @@ import {
 } from "../ui";
 import { useStickyState } from "../../hooks/useStickyState";
 import { CustomerDetailPanel } from "./CustomerDetailPanel";
+import { NoKantataModal } from "./NoKantataModal";
 
 // Status filter options for Kantata project status. Default = "in_progress"
 // because that's what TSAs care about day-to-day.
@@ -112,6 +113,7 @@ export function DeploymentsView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showNoKantataModal, setShowNoKantataModal] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -240,7 +242,14 @@ export function DeploymentsView() {
 
           {data.totals.oppsWithoutKantata > 0 && (
             <Banner tone="warning" icon={<AlertTriangle size={16} />}>
-              <strong>{data.totals.oppsWithoutKantata} opportunit{data.totals.oppsWithoutKantata === 1 ? "y has" : "ies have"} no Kantata project yet</strong> — these were booked in SF but the project hasn't been set up in Kantata. They surface with <em>No Kantata project</em> badges below.
+              <strong>{data.totals.oppsWithoutKantata} opportunit{data.totals.oppsWithoutKantata === 1 ? "y has" : "ies have"} no Kantata project yet</strong> — these were booked in SF but the project hasn't been set up in Kantata. They surface with <em>No Kantata project</em> badges below.{" "}
+              <button
+                type="button"
+                className="deployments-banner-link"
+                onClick={() => setShowNoKantataModal(true)}
+              >
+                View all {data.totals.oppsWithoutKantata} →
+              </button>
             </Banner>
           )}
 
@@ -273,6 +282,12 @@ export function DeploymentsView() {
             )}
           </section>
         </>
+      )}
+      {showNoKantataModal && data && (
+        <NoKantataModal
+          customers={data.customers}
+          onClose={() => setShowNoKantataModal(false)}
+        />
       )}
     </Page>
   );
