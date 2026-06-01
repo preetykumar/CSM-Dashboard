@@ -11571,6 +11571,18 @@ header .hint {
   color: var(--text-secondary, #6b7280);
   font-size: 13px;
 }
+/* Subject is a deep-link to the Zendesk agent ticket view. */
+.account-support-link {
+  color: var(--deque-teal, #2e5f7a);
+  text-decoration: none;
+  font-weight: 500;
+}
+.account-support-link:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  color: var(--deque-mauve, #b25295);
+}
 
 /* ─── Portfolio card lazy-load button ───────────────────────────────── */
 .portfolio-load-button {

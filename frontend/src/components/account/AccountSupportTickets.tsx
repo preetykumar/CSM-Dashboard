@@ -108,16 +108,29 @@ export function AccountSupportTickets({ zendeskOrgIds, accountName, limit = 20 }
           </tr>
         </thead>
         <tbody>
-          {tickets.map((t) => (
-            <tr key={t.id}>
-              <td>{t.subject}</td>
-              <td><Badge tone={STATUS_TONE[t.status] || "neutral"}>{t.status}</Badge></td>
-              <td>{t.priority ? <Badge tone={PRIORITY_TONE[t.priority] || "neutral"}>{t.priority}</Badge> : "—"}</td>
-              <td className="account-support-date">
-                {t.updated_at ? new Date(t.updated_at).toLocaleDateString() : "—"}
-              </td>
-            </tr>
-          ))}
+          {tickets.map((t) => {
+            const ticketUrl = `https://dequehelp.zendesk.com/agent/tickets/${t.id}`;
+            return (
+              <tr key={t.id}>
+                <td>
+                  <a
+                    href={ticketUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="account-support-link"
+                    title={`Open Zendesk ticket #${t.id} in a new tab`}
+                  >
+                    {t.subject || `(no subject) #${t.id}`}
+                  </a>
+                </td>
+                <td><Badge tone={STATUS_TONE[t.status] || "neutral"}>{t.status}</Badge></td>
+                <td>{t.priority ? <Badge tone={PRIORITY_TONE[t.priority] || "neutral"}>{t.priority}</Badge> : "—"}</td>
+                <td className="account-support-date">
+                  {t.updated_at ? new Date(t.updated_at).toLocaleDateString() : "—"}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
