@@ -248,6 +248,10 @@ interface SFOpportunity {
   Amount: number;
   StageName: string;
   CloseDate: string;
+  // Date this renewal was *originally* scheduled to close. Used as the
+  // canonical renewal date everywhere; CloseDate (which can be pushed when
+  // a renewal slips) is only consulted as a fallback when this is null.
+  Original_Renewal_Closed_Date__c?: string;
   Type: string;
   OwnerId: string;
   Owner: {
@@ -1441,18 +1445,23 @@ export class SalesforceService {
     futureDate.setDate(futureDate.getDate() + daysAhead);
     const futureDateStr = futureDate.toISOString().split("T")[0];
 
-    type Row = { Id: string; Name: string; AccountId: string; Amount: number | null; StageName: string; CloseDate: string };
+    type Row = { Id: string; Name: string; AccountId: string; Amount: number | null; StageName: string; CloseDate: string; Original_Renewal_Closed_Date__c: string | null };
     const out: Array<{ accountId: string; name: string; renewalDate: string; amount: number; stageName: string }> = [];
     const CHUNK = 150;
     for (let i = 0; i < accountIds.length; i += CHUNK) {
       const chunk = accountIds.slice(i, i + CHUNK);
       const inList = chunk.map((id) => `'${id}'`).join(",");
+      // Filter on Original_Renewal_Closed_Date__c (canonical) with CloseDate
+      // fallback when null. See getRenewalOpportunities for rationale.
       const rows = await this.queryAll<Row>(`
-        SELECT Id, Name, AccountId, Amount, StageName, CloseDate
+        SELECT Id, Name, AccountId, Amount, StageName, CloseDate, Original_Renewal_Closed_Date__c
         FROM Opportunity
         WHERE Type = 'Renewal'
         AND AccountId IN (${inList})
-        AND CloseDate <= ${futureDateStr}
+        AND (
+          Original_Renewal_Closed_Date__c <= ${futureDateStr}
+          OR (Original_Renewal_Closed_Date__c = null AND CloseDate <= ${futureDateStr})
+        )
         AND (NOT StageName LIKE '%Closed%')
       `);
       for (const r of rows) {
@@ -1460,7 +1469,7 @@ export class SalesforceService {
         out.push({
           accountId: r.AccountId,
           name: r.Name,
-          renewalDate: r.CloseDate,
+          renewalDate: r.Original_Renewal_Closed_Date__c || r.CloseDate,
           amount: r.Amount || 0,
           stageName: r.StageName,
         });
@@ -1482,6 +1491,10 @@ export class SalesforceService {
       // Query opportunities with PRS from both Opportunity and Account
       // Account uses Customer_Success_Specialist__c (reference, labeled "Product Retention Specialist")
       // Opportunity uses Product_Retention_Specialist__c (string field)
+      // Filter on Original_Renewal_Closed_Date__c (the canonical renewal date)
+      // with a CloseDate fallback for the ~1% of opps where ORD is null. SOQL
+      // has no COALESCE so we OR the two branches explicitly. JS sort after
+      // fetch (SOQL ORDER BY can't COALESCE either).
       const opportunities = await this.queryAll<SFOpportunity>(`
         SELECT Id, Name, AccountId, Account.Id, Account.Name,
                Account.Customer_Success_Manager_csm__r.Name,
@@ -1495,7 +1508,8 @@ export class SalesforceService {
                 FROM OpportunityContactRoles
                 ORDER BY IsPrimary DESC LIMIT 1),
                Amount, StageName,
-               CloseDate, Type, OwnerId, Owner.Id, Owner.Name, Owner.Email,
+               CloseDate, Original_Renewal_Closed_Date__c,
+               Type, OwnerId, Owner.Id, Owner.Name, Owner.Email,
                CreatedDate, LastModifiedDate,
                Customer_Success_Renewal_Status__c, Renewal_Status__c,
                PO_Required__c, PO_Received_Date__c,
@@ -1503,10 +1517,16 @@ export class SalesforceService {
                Leadership_Notes__c, Leadership_Risk_Status__c
         FROM Opportunity
         WHERE Type = 'Renewal'
-        AND CloseDate >= 2026-01-01
-        AND CloseDate <= ${futureDateStr}
-        ORDER BY CloseDate ASC
+        AND (
+          (Original_Renewal_Closed_Date__c >= 2026-01-01 AND Original_Renewal_Closed_Date__c <= ${futureDateStr})
+          OR (Original_Renewal_Closed_Date__c = null AND CloseDate >= 2026-01-01 AND CloseDate <= ${futureDateStr})
+        )
       `);
+      opportunities.sort((a, b) => {
+        const da = a.Original_Renewal_Closed_Date__c || a.CloseDate || "";
+        const db = b.Original_Renewal_Closed_Date__c || b.CloseDate || "";
+        return da.localeCompare(db);
+      });
 
       console.log(`Found ${opportunities.length} renewal opportunities`);
 
@@ -1520,7 +1540,7 @@ export class SalesforceService {
           accountName: opp.Account?.Name || "",
           amount: opp.Amount || 0,
           stageName: opp.StageName,
-          renewalDate: opp.CloseDate,
+          renewalDate: opp.Original_Renewal_Closed_Date__c || opp.CloseDate,
           type: opp.Type,
           ownerId: opp.OwnerId,
           ownerName: opp.Owner?.Name || "",
