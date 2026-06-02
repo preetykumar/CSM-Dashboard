@@ -192,6 +192,30 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({
             )}
           </dl>
 
+          {opp.description && (
+            <div className="renewal-opp-notes">
+              <strong>Description</strong>
+              <p>{opp.description}</p>
+            </div>
+          )}
+          {opp.r6Notes && (
+            <div className="renewal-opp-notes">
+              <strong>R-6 Notes</strong>
+              <p>{opp.r6Notes}</p>
+            </div>
+          )}
+          {opp.r3Notes && (
+            <div className="renewal-opp-notes">
+              <strong>R-3 Notes</strong>
+              <p>{opp.r3Notes}</p>
+            </div>
+          )}
+          {opp.accountingNotes && (
+            <div className="renewal-opp-notes">
+              <strong>Accounting Notes</strong>
+              <p>{opp.accountingNotes}</p>
+            </div>
+          )}
           {opp.leadershipNotes && (
             <div className="renewal-opp-notes">
               <strong>Leadership Notes</strong>

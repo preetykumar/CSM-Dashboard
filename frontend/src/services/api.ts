@@ -940,6 +940,7 @@ export interface RenewalOpportunity {
   prsName?: string;
   prsEmail?: string;
   // Additional renewal fields
+  description?: string;
   renewalStatus?: string;
   accountingRenewalStatus?: string;
   poRequired?: boolean;

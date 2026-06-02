@@ -24,6 +24,7 @@ export interface Opportunity {
   poRequired?: boolean;
   poReceivedDate?: string;
   atRisk?: boolean;
+  description?: string;
   r6Notes?: string;
   r3Notes?: string;
   accountingNotes?: string;
@@ -84,6 +85,7 @@ export function transformApiOpportunity(apiOpp: ApiRenewalOpportunity): Opportun
     poRequired: apiOpp.poRequired,
     poReceivedDate: apiOpp.poReceivedDate,
     atRisk: apiOpp.atRisk,
+    description: apiOpp.description,
     r6Notes: apiOpp.r6Notes,
     r3Notes: apiOpp.r3Notes,
     accountingNotes: apiOpp.accountingNotes,

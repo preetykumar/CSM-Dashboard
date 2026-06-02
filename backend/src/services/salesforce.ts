@@ -180,6 +180,8 @@ export interface RenewalOpportunity {
   productName?: string;
   contactName?: string;
   contactEmail?: string;
+  // Standard SF Opportunity.Description field — CSM-maintained running log.
+  description?: string;
   // CSM from Account's Customer Success Manager field
   csmName?: string;
   csmEmail?: string;
@@ -271,7 +273,11 @@ interface SFOpportunity {
   Customer_Success_Renewal_Status__c?: string;  // labeled "Renewal Status"
   Renewal_Status__c?: string;  // labeled "Accounting Renewal Status"
   PO_Required__c?: boolean;
+  // Picklist version that CSMs actually update in the SF UI ("Yes"/"No"/null).
+  // The boolean PO_Required__c is often stale/derived; prefer this.
+  Is_a_PO_required__c?: string;
   PO_Received_Date__c?: string;
+  Description?: string;
   Renewal_Status_1__c?: string;  // labeled "R6 Notes"
   Customer_Success_Next_Steps__c?: string;  // labeled "R3 Notes"
   Accounting_Notes_for_Renewal__c?: string;  // labeled "Accounting Notes for Renewal"
@@ -1510,9 +1516,9 @@ export class SalesforceService {
                Amount, StageName,
                CloseDate, Original_Renewal_Closed_Date__c,
                Type, OwnerId, Owner.Id, Owner.Name, Owner.Email,
-               CreatedDate, LastModifiedDate,
+               CreatedDate, LastModifiedDate, Description,
                Customer_Success_Renewal_Status__c, Renewal_Status__c,
-               PO_Required__c, PO_Received_Date__c,
+               PO_Required__c, Is_a_PO_required__c, PO_Received_Date__c,
                Renewal_Status_1__c, Customer_Success_Next_Steps__c, Accounting_Notes_for_Renewal__c,
                Leadership_Notes__c, Leadership_Risk_Status__c
         FROM Opportunity
@@ -1557,10 +1563,15 @@ export class SalesforceService {
           prsId: opp.Account?.Customer_Success_Specialist__r?.Id || opp.Account?.Customer_Success_Specialist__c,
           prsName: opp.Product_Retention_Specialist__c || opp.Account?.Customer_Success_Specialist__r?.Name,
           prsEmail: opp.Account?.Customer_Success_Specialist__r?.Email,
+          description: opp.Description,
           // Additional renewal fields
           renewalStatus: opp.Customer_Success_Renewal_Status__c,  // "Renewal Status"
           accountingRenewalStatus: opp.Renewal_Status__c,  // "Accounting Renewal Status"
-          poRequired: opp.PO_Required__c,
+          // Prefer the CSM-maintained picklist Is_a_PO_required__c. Fall back
+          // to the boolean PO_Required__c if the picklist isn't set. This
+          // fixes cases where the picklist says "Yes" but the boolean is
+          // False (e.g. P&G 006VT00000YeW8sYAF).
+          poRequired: opp.Is_a_PO_required__c === 'Yes' || !!opp.PO_Required__c,
           poReceivedDate: opp.PO_Received_Date__c,
           atRisk: !!opp.Leadership_Risk_Status__c,  // Based on Leadership Risk Status picklist
           r6Notes: opp.Renewal_Status_1__c,
