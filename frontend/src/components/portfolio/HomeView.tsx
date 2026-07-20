@@ -14,7 +14,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Users, AlertTriangle } from "lucide-react";
 import {
   countAccounts,
-  MOCK_USERS,
   type MockPortfolioAccount,
   type HealthScore,
   type Role,
@@ -29,20 +28,22 @@ import {
 import { PortfolioContent } from "./PortfolioContent";
 import { CalendarWidget } from "../home/CalendarWidget";
 import { PersonalTodoWidget } from "../home/PersonalTodoWidget";
+import { RoleSelectionModal } from "../home/RoleSelectionModal";
 import {
   Page,
   PageHeader,
   Card,
   Banner,
-  Badge,
   SectionHeader,
   LoadingRow,
   EmptyState,
 } from "../ui";
 import { useStickyState } from "../../hooks/useStickyState";
+import { useResolvedRole } from "../../hooks/useResolvedRole";
 
 const ROLE_LABELS: Record<Role, string> = {
   csm: "CSM",
+  pm: "Project Manager",
   prs: "Renewal Specialist",
   tsa: "Technical Solution Architect",
   ie: "Implementation Engineer",
@@ -57,13 +58,6 @@ const PREVIEWABLE_ROLES: Array<{ key: Role; label: string }> = [
   { key: "ie", label: "All Implementation Engineer portfolios" },
 ];
 
-const NON_ADMIN_ROLES: Array<{ key: Role; label: string }> = [
-  { key: "csm", label: `CSM (${MOCK_USERS.csm})` },
-  { key: "prs", label: `Renewal Specialist (${MOCK_USERS.prs})` },
-  { key: "tsa", label: `TSA (${MOCK_USERS.tsa})` },
-  { key: "ie", label: `Implementation Engineer (${MOCK_USERS.ie})` },
-];
-
 function getGreeting(): string {
   const h = new Date().getHours();
   if (h < 12) return "morning";
@@ -72,14 +66,28 @@ function getGreeting(): string {
 }
 
 export function HomeView() {
-  // Selections sticky per-user (localStorage namespaced by email).
-  const [isAdmin, setIsAdmin] = useStickyState<boolean>("home:isAdmin", true);
-  const [adminRole, setAdminRole] = useStickyState<Role>("home:adminRole", "admin");
-  const [nonAdminRole, setNonAdminRole] = useStickyState<Role>("home:nonAdminRole", "csm");
+  // Identity and privilege come from the authenticated Google session — never
+  // from mock tables. (Previously this screen read MOCK_USERS[role], which made
+  // every non-admin see mark.washburn@deque.com's portfolio + welcome.)
+  const {
+    isAdmin,
+    userEmail,
+    userName,
+    userRole,
+    portfolioRole,
+    loading: loadingPrefs,
+    needsRoleSelection,
+    openRoleSelection,
+    handleRoleSelected,
+  } = useResolvedRole();
 
-  const role: Role = isAdmin ? adminRole : nonAdminRole;
-  const userEmail = MOCK_USERS[role];
-  const userName = isAdmin ? "admin" : userEmail.split("@")[0].split(".")[0];
+  // Admin-only "Preview as" selection is sticky. It re-groups the already
+  // fetched admin universe client-side; it does NOT change the API call.
+  const [adminRole, setAdminRole] = useStickyState<Role>("home:adminRole", "admin");
+
+  // Display role: admins drive it from the preview selector; non-admins from
+  // their chosen role (already mapped onto the portfolio taxonomy by the hook).
+  const role: Role = isAdmin ? adminRole : portfolioRole;
 
   const [portfolio, setPortfolio] = useState<MockPortfolioAccount[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -87,12 +95,18 @@ export function HomeView() {
   const [error, setError] = useState<string | null>(null);
 
   // fetchKey scopes the effect to params that actually change the API call.
-  // Admin previewing different roles re-renders client-side without refetching.
-  const apiRole: Role = isAdmin ? "admin" : nonAdminRole;
-  const apiEmail = isAdmin ? "" : MOCK_USERS[nonAdminRole];
+  // Admins fetch the whole admin universe once (preview-as only re-groups
+  // client-side); non-admins fetch their own accounts by their real email.
+  const apiRole: Role = isAdmin ? "admin" : portfolioRole;
+  const apiEmail = userEmail;
   const fetchKey = `${apiRole}::${apiEmail}`;
 
+  // Hold off fetching until we know the user's role (avoids a throwaway CSM
+  // fetch before prefs resolve, and no fetch while the role modal is up).
+  const readyToFetch = isAdmin || (!loadingPrefs && !needsRoleSelection && !!userRole);
+
   useEffect(() => {
+    if (!readyToFetch) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -127,7 +141,7 @@ export function HomeView() {
     return () => {
       cancelled = true;
     };
-  }, [fetchKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchKey, readyToFetch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const accountCount = useMemo(() => countAccounts(portfolio), [portfolio]);
 
@@ -139,48 +153,45 @@ export function HomeView() {
     </span>
   );
 
-  const headerActions = (
-    <>
-      <label className="home-admin-toggle">
-        <input
-          type="checkbox"
-          checked={isAdmin}
-          onChange={(e) => setIsAdmin(e.target.checked)}
-        />
-        <span>I am admin <Badge tone="neutral">wireframe sim</Badge></span>
-      </label>
+  // Admins get a "Preview as" selector to inspect role-grouped portfolios.
+  // Non-admins get a "Change role" button that reopens the selection modal.
+  const headerActions = isAdmin ? (
+    <div className="home-role-switcher">
+      <label htmlFor="home-admin-role">Preview as</label>
+      <select
+        id="home-admin-role"
+        value={adminRole}
+        onChange={(e) => setAdminRole(e.target.value as Role)}
+        className="home-select"
+      >
+        {PREVIEWABLE_ROLES.map((r) => (
+          <option key={r.key} value={r.key}>{r.label}</option>
+        ))}
+      </select>
+    </div>
+  ) : userRole ? (
+    <button
+      type="button"
+      className="home-select"
+      onClick={openRoleSelection}
+    >
+      Change role
+    </button>
+  ) : null;
 
-      {isAdmin ? (
-        <div className="home-role-switcher">
-          <label htmlFor="home-admin-role">Preview as</label>
-          <select
-            id="home-admin-role"
-            value={adminRole}
-            onChange={(e) => setAdminRole(e.target.value as Role)}
-            className="home-select"
-          >
-            {PREVIEWABLE_ROLES.map((r) => (
-              <option key={r.key} value={r.key}>{r.label}</option>
-            ))}
-          </select>
-        </div>
-      ) : (
-        <div className="home-role-switcher">
-          <label htmlFor="home-non-admin-role">Logged in as</label>
-          <select
-            id="home-non-admin-role"
-            value={nonAdminRole}
-            onChange={(e) => setNonAdminRole(e.target.value as Role)}
-            className="home-select"
-          >
-            {NON_ADMIN_ROLES.map((r) => (
-              <option key={r.key} value={r.key}>{r.label}</option>
-            ))}
-          </select>
-        </div>
-      )}
-    </>
-  );
+  // First-login gate: resolve the saved role before rendering, then prompt the
+  // user to pick one if they haven't. Admins bypass both.
+  if (loadingPrefs) {
+    return (
+      <Page>
+        <Card><LoadingRow>Loading your portal…</LoadingRow></Card>
+      </Page>
+    );
+  }
+
+  if (needsRoleSelection) {
+    return <RoleSelectionModal onRoleSelected={handleRoleSelected} />;
+  }
 
   return (
     <Page>

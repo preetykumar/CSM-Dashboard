@@ -14,7 +14,7 @@ import type { SalesforceService, RenewalOpportunity } from "./salesforce.js";
 import type { KantataService } from "./kantata.js";
 import { enrichAccountsBatch, type PortfolioJoinedData } from "./portfolio-enrichment.js";
 
-export type Role = "csm" | "prs" | "tsa" | "ie" | "admin";
+export type Role = "csm" | "pm" | "prs" | "tsa" | "ie" | "admin";
 
 // Relevant product families for renewal/churn classification (mirrors frontend).
 const RENEWAL_RELEVANT_FAMILIES = new Set(["Deque University", "Product"]);
@@ -220,6 +220,21 @@ async function getAssignedAccountIds(
     const lower = email.toLowerCase();
     const ids = csmAssignments
       .filter((a: CachedCSMAssignment) => a.csm_email?.toLowerCase() === lower)
+      .map((a) => a.account_id)
+      .filter((id): id is string => !!id);
+    return { ids: Array.from(new Set(ids)) };
+  }
+
+  if (role === "pm") {
+    // PM assignments come from the Account.Project_Manager__c field, synced into
+    // pm_assignments (same shape as CSM assignments). Resolving to the account
+    // set is all that's needed — downstream enrichment (tickets, Kantata
+    // implementation projects, health, etc.) is keyed off the account IDs, so
+    // every tab is scoped to the PM's accounts automatically.
+    const pmAssignments = await db.getPMAssignments();
+    const lower = email.toLowerCase();
+    const ids = pmAssignments
+      .filter((a) => a.pm_email?.toLowerCase() === lower)
       .map((a) => a.account_id)
       .filter((id): id is string => !!id);
     return { ids: Array.from(new Set(ids)) };

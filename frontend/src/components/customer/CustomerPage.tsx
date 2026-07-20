@@ -16,7 +16,6 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Users, AlertTriangle, Search, X } from "lucide-react";
 import {
   countAccounts,
-  MOCK_USERS,
   type MockPortfolioAccount,
   type Role,
 } from "../../data/portfolioMocks";
@@ -32,10 +31,13 @@ import {
   EmptyState,
 } from "../ui";
 import { useStickyState } from "../../hooks/useStickyState";
+import { useResolvedRole } from "../../hooks/useResolvedRole";
+import { RoleSelectionModal } from "../home/RoleSelectionModal";
 import { CustomerDrilldown } from "./CustomerDrilldown";
 
 const ROLE_LABELS: Record<Role, string> = {
   csm: "CSM",
+  pm: "Project Manager",
   prs: "Renewal Specialist",
   tsa: "Technical Solution Architect",
   ie: "Implementation Engineer",
@@ -51,12 +53,21 @@ const PREVIEWABLE_ROLES: Array<{ key: Role; label: string }> = [
 ];
 
 export function CustomerPage() {
-  const [isAdmin, setIsAdmin] = useStickyState<boolean>("customer:isAdmin", true);
+  const {
+    isAdmin,
+    userEmail,
+    userRole,
+    portfolioRole,
+    loading: loadingPrefs,
+    needsRoleSelection,
+    openRoleSelection,
+    handleRoleSelected,
+  } = useResolvedRole();
+
   const [adminRole, setAdminRole] = useStickyState<Role>("customer:adminRole", "admin");
-  const [nonAdminRole, setNonAdminRole] = useStickyState<Role>("customer:nonAdminRole", "csm");
   const [expanded, setExpanded] = useStickyState<Record<string, boolean>>("customer:expanded", {});
 
-  const role: Role = isAdmin ? adminRole : nonAdminRole;
+  const role: Role = isAdmin ? adminRole : portfolioRole;
 
   const [portfolio, setPortfolio] = useState<MockPortfolioAccount[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -64,12 +75,14 @@ export function CustomerPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  // Scope the effect to params that actually change the API call.
-  const apiRole: Role = isAdmin ? "admin" : nonAdminRole;
-  const apiEmail = isAdmin ? "" : MOCK_USERS[nonAdminRole];
-  const fetchKey = `${apiRole}::${apiEmail}`;
+  // Admins fetch the whole admin universe (email=""); non-admins fetch their
+  // own accounts by their real email. Hold off until the role is resolved.
+  const apiRole: Role = isAdmin ? "admin" : portfolioRole;
+  const apiEmail = userEmail;
+  const readyToFetch = isAdmin || (!loadingPrefs && !needsRoleSelection && !!userRole);
 
   useEffect(() => {
+    if (!readyToFetch) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -88,7 +101,7 @@ export function CustomerPage() {
     return () => {
       cancelled = true;
     };
-  }, [fetchKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [apiRole, apiEmail, readyToFetch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const accountCount = useMemo(() => countAccounts(portfolio), [portfolio]);
   const filteredPortfolio = useMemo(() => filterAccounts(portfolio, search), [portfolio, search]);
@@ -110,34 +123,40 @@ export function CustomerPage() {
     </span>
   );
 
-  const headerActions = (
-    <>
-      <label className="customer-admin-toggle">
-        <input
-          type="checkbox"
-          checked={isAdmin}
-          onChange={(e) => setIsAdmin(e.target.checked)}
-        />
-        <span>I am admin <Badge tone="neutral">role preview</Badge></span>
-      </label>
+  // Admins get a "Preview as" selector; non-admins get a "Change role" button.
+  const headerActions = isAdmin ? (
+    <div className="customer-role-switcher">
+      <label htmlFor="customer-role-select">Preview as</label>
+      <select
+        id="customer-role-select"
+        value={adminRole}
+        onChange={(e) => setAdminRole(e.target.value as Role)}
+        className="customer-select"
+      >
+        {PREVIEWABLE_ROLES.map((r) => (
+          <option key={r.key} value={r.key}>{r.label}</option>
+        ))}
+      </select>
+    </div>
+  ) : userRole ? (
+    <button type="button" className="customer-select" onClick={openRoleSelection}>
+      Change role
+    </button>
+  ) : null;
 
-      <div className="customer-role-switcher">
-        <label htmlFor="customer-role-select">{isAdmin ? "Preview as" : "Logged in as"}</label>
-        <select
-          id="customer-role-select"
-          value={isAdmin ? adminRole : nonAdminRole}
-          onChange={(e) =>
-            isAdmin ? setAdminRole(e.target.value as Role) : setNonAdminRole(e.target.value as Role)
-          }
-          className="customer-select"
-        >
-          {(isAdmin ? PREVIEWABLE_ROLES : PREVIEWABLE_ROLES.filter((r) => r.key !== "admin")).map((r) => (
-            <option key={r.key} value={r.key}>{r.label}</option>
-          ))}
-        </select>
-      </div>
-    </>
-  );
+  // First-login gate: resolve the saved role before rendering, then prompt the
+  // user to pick one if they haven't. Admins bypass both.
+  if (loadingPrefs) {
+    return (
+      <Page>
+        <Card><LoadingRow>Loading customers…</LoadingRow></Card>
+      </Page>
+    );
+  }
+
+  if (needsRoleSelection) {
+    return <RoleSelectionModal onRoleSelected={handleRoleSelected} />;
+  }
 
   return (
     <Page>
@@ -201,7 +220,7 @@ export function CustomerPage() {
               detail={
                 isAdmin
                   ? "No accounts found in Salesforce."
-                  : `No accounts are assigned to ${MOCK_USERS[nonAdminRole]} as a ${ROLE_LABELS[nonAdminRole]}.`
+                  : `No accounts are assigned to ${userEmail} as a ${ROLE_LABELS[role]}.`
               }
             />
           </Card>

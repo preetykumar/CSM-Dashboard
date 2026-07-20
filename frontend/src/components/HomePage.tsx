@@ -11,6 +11,8 @@ const ROLE_DISPLAY: Record<UserRole, string> = {
   csm: "Customer Success Manager",
   pm: "Project Manager",
   "renewal-specialist": "Renewal Specialist",
+  tsa: "Technical Solution Architect",
+  ie: "Implementation Engineer",
   "field-engineers": "Field Engineer",
 };
 

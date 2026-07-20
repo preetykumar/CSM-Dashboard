@@ -44,7 +44,7 @@ export function createPortfolioRoutes(
       const role: Role = queryRole || (sessionUser?.role as Role) || "csm";
       const email = queryEmail || sessionUser?.email || "";
 
-      if (!["csm", "prs", "tsa", "ie", "admin"].includes(role)) {
+      if (!["csm", "pm", "prs", "tsa", "ie", "admin"].includes(role)) {
         return res.status(400).json({ error: `Invalid role: ${role}` });
       }
       if (role !== "admin" && !email) {

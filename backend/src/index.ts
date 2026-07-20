@@ -604,11 +604,16 @@ async function startServer() {
         });
       } else {
         console.log(`Cache contains ${orgs.length} organizations`);
-        // Always sync CSM assignments on startup to update org-to-SF-account mappings
+        // Always sync CSM + PM assignments on startup to update org-to-SF-account
+        // mappings (both drive role-scoped portfolios; keep them in lockstep).
         if (salesforce) {
           console.log("Syncing CSM assignments to update org mappings...");
           sync.syncCSMAssignments().catch((error) => {
             console.error("CSM sync failed:", error);
+          });
+          console.log("Syncing PM assignments to update org mappings...");
+          sync.syncPMAssignments().catch((error) => {
+            console.error("PM sync failed:", error);
           });
         }
       }

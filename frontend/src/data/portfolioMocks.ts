@@ -9,7 +9,7 @@
 // The mock includes deliberately patchy coverage so the wireframe shows
 // each empty-state variant + a churned account for the revival workflow.
 
-export type Role = "csm" | "prs" | "tsa" | "ie" | "admin";
+export type Role = "csm" | "pm" | "prs" | "tsa" | "ie" | "admin";
 
 // (Account lifecycle state is no longer a stored flag — see getRenewalState which
 // derives "active" / "churned" / "none" from the open + past closed-won opps.)

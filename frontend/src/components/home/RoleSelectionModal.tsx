@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { saveUserPreferences } from "../../services/api";
 
-export type UserRole = "csm" | "pm" | "renewal-specialist" | "field-engineers";
+export type UserRole =
+  | "csm"
+  | "pm"
+  | "renewal-specialist"
+  | "tsa"
+  | "ie"
+  // Legacy value — kept for backward compatibility with previously saved
+  // preferences. No longer offered in the picker (superseded by "ie").
+  | "field-engineers";
 
 interface RoleOption {
   id: UserRole;
@@ -30,9 +38,15 @@ const ROLE_OPTIONS: RoleOption[] = [
     icon: "🔄",
   },
   {
-    id: "field-engineers",
-    label: "Field Engineer",
-    description: "Field engineer portfolio views and customer technical engagements (coming soon)",
+    id: "tsa",
+    label: "Technical Solution Architect",
+    description: "Track technical engagements and solution design across your assigned accounts",
+    icon: "🛠️",
+  },
+  {
+    id: "ie",
+    label: "Implementation Engineer",
+    description: "Drive implementation projects and technical onboarding for your assigned accounts",
     icon: "🔧",
   },
 ];
@@ -71,15 +85,13 @@ export function RoleSelectionModal({ onRoleSelected }: RoleSelectionModalProps) 
           {ROLE_OPTIONS.map((option) => (
             <button
               key={option.id}
-              className={`role-option${selected === option.id ? " selected" : ""}${option.id === "field-engineers" ? " coming-soon" : ""}`}
-              onClick={() => option.id !== "field-engineers" && setSelected(option.id)}
+              className={`role-option${selected === option.id ? " selected" : ""}`}
+              onClick={() => setSelected(option.id)}
               aria-pressed={selected === option.id}
-              disabled={option.id === "field-engineers"}
             >
               <span className="role-option-icon" aria-hidden="true">{option.icon}</span>
               <div className="role-option-text">
                 <strong>{option.label}</strong>
-                {option.id === "field-engineers" && <span className="tab-badge-soon" style={{ marginLeft: "0.5rem" }}>Soon</span>}
                 <p>{option.description}</p>
               </div>
             </button>

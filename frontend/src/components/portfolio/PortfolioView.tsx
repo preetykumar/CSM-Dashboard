@@ -1,12 +1,12 @@
-// Standalone portfolio page — header + role switcher controls + cards.
+// Standalone portfolio page — header + role controls + cards.
 // Kept around for back-compat at /portfolio; the merged Home (/home) is the
-// new primary surface.
+// new primary surface. Identity/role come from the authenticated session via
+// useResolvedRole — never from mock tables.
 
 import { useEffect, useState } from "react";
 import { Users, AlertTriangle } from "lucide-react";
 import {
   countAccounts,
-  MOCK_USERS,
   type MockPortfolioAccount,
   type HealthScore,
   type Role,
@@ -19,9 +19,12 @@ import {
   applyHealthScores,
 } from "../../services/api";
 import { PortfolioContent } from "./PortfolioContent";
+import { RoleSelectionModal } from "../home/RoleSelectionModal";
+import { useResolvedRole } from "../../hooks/useResolvedRole";
 
 const ROLE_LABELS: Record<Role, string> = {
   csm: "CSM",
+  pm: "Project Manager",
   prs: "Renewal Specialist",
   tsa: "Technical Solution Architect",
   ie: "Implementation Engineer",
@@ -36,35 +39,40 @@ const PREVIEWABLE_ROLES: Array<{ key: Role; label: string }> = [
   { key: "ie", label: "All Implementation Engineer portfolios" },
 ];
 
-const NON_ADMIN_ROLES: Array<{ key: Role; label: string }> = [
-  { key: "csm", label: "CSM (mark.washburn@deque.com)" },
-  { key: "prs", label: "Renewal Specialist (prs.tester@deque.com)" },
-  { key: "tsa", label: "TSA (tsa.tester@deque.com)" },
-  { key: "ie", label: "Implementation Engineer (ie.tester@deque.com)" },
-];
-
 export function PortfolioView() {
-  const [isAdmin, setIsAdmin] = useState(true);
-  const [adminRole, setAdminRole] = useState<Role>("admin");
-  const [nonAdminRole, setNonAdminRole] = useState<Role>("csm");
+  const {
+    isAdmin,
+    userEmail,
+    userRole,
+    portfolioRole,
+    loading: loadingPrefs,
+    needsRoleSelection,
+    openRoleSelection,
+    handleRoleSelected,
+  } = useResolvedRole();
 
-  const role: Role = isAdmin ? adminRole : nonAdminRole;
-  const userEmail = MOCK_USERS[role];
+  // Admin-only preview selector (re-groups the admin universe client-side).
+  const [adminRole, setAdminRole] = useState<Role>("admin");
+  const role: Role = isAdmin ? adminRole : portfolioRole;
 
   const [portfolio, setPortfolio] = useState<MockPortfolioAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Admins fetch the whole admin universe (email=""); non-admins fetch their
+  // own accounts by their real email. Hold off until the role is resolved.
+  const apiRole: Role = isAdmin ? "admin" : portfolioRole;
+  const apiEmail = userEmail;
+  const readyToFetch = isAdmin || (!loadingPrefs && !needsRoleSelection && !!userRole);
+
   // Fetch portfolio + lazy-load health. Health is excluded from /api/portfolio
   // (it dominated cold response time) and merged in via /api/health/batch once
   // the accounts list has rendered.
   useEffect(() => {
+    if (!readyToFetch) return;
     let cancelled = false;
     setLoading(true);
     setError(null);
-
-    const apiRole: Role = isAdmin ? "admin" : role;
-    const apiEmail = isAdmin ? "" : userEmail;
 
     fetchPortfolio(apiRole, apiEmail)
       .then((resp) => {
@@ -95,7 +103,19 @@ export function PortfolioView() {
     return () => {
       cancelled = true;
     };
-  }, [isAdmin, role, userEmail]);
+  }, [apiRole, apiEmail, readyToFetch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (loadingPrefs) {
+    return (
+      <div className="portfolio-view">
+        <p className="portfolio-empty">Loading portfolio…</p>
+      </div>
+    );
+  }
+
+  if (needsRoleSelection) {
+    return <RoleSelectionModal onRoleSelected={handleRoleSelected} />;
+  }
 
   return (
     <div className="portfolio-view">
@@ -113,11 +133,6 @@ export function PortfolioView() {
         </div>
 
         <div className="portfolio-controls">
-          <label className="portfolio-admin-toggle">
-            <input type="checkbox" checked={isAdmin} onChange={(e) => setIsAdmin(e.target.checked)} />
-            <span>I am admin (wireframe sim)</span>
-          </label>
-
           {isAdmin ? (
             <div className="portfolio-role-switcher" aria-label="Preview as">
               <label htmlFor="admin-preview-role">Preview as:</label>
@@ -127,16 +142,11 @@ export function PortfolioView() {
                 ))}
               </select>
             </div>
-          ) : (
-            <div className="portfolio-role-switcher" aria-label="Simulate non-admin role (wireframe only)">
-              <label htmlFor="non-admin-role">Logged in as:</label>
-              <select id="non-admin-role" value={nonAdminRole} onChange={(e) => setNonAdminRole(e.target.value as Role)}>
-                {NON_ADMIN_ROLES.map((r) => (
-                  <option key={r.key} value={r.key}>{r.label}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          ) : userRole ? (
+            <button type="button" className="portfolio-change-role" onClick={openRoleSelection}>
+              Change role
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -145,8 +155,8 @@ export function PortfolioView() {
         <span>
           <strong>Live data from Salesforce.</strong>{" "}
           {isAdmin
-            ? "Role switcher above simulates admin previewing different role views — admin sees all portfolios grouped by owner."
-            : "Non-admin sees only their own assigned accounts. No role switcher in production for this persona."
+            ? "Admin sees all portfolios grouped by owner; use Preview as to inspect a role view."
+            : "You see only your own assigned accounts."
           }
         </span>
       </div>
