@@ -44,6 +44,63 @@
   overflow: hidden;
 }
 
+/* Popped-out variant: fill the separate browser window */
+.chat-window--popout {
+  position: static;
+  width: 100%;
+  height: 100vh;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.chat-popout-root {
+  height: 100%;
+}
+
+/* Drag-resize handles (docked window only). The window is anchored
+   bottom-right, so these sit on the top and left edges and the top-left
+   corner, growing the window up/left. */
+.chat-resize {
+  position: absolute;
+  z-index: 3;
+}
+
+.chat-resize--left {
+  top: 0;
+  left: 0;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+}
+
+.chat-resize--top {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  cursor: ns-resize;
+}
+
+.chat-resize--corner {
+  top: 0;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+}
+
+.chat-resize--corner::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 7px;
+  height: 7px;
+  border-top: 2px solid rgba(255, 255, 255, 0.7);
+  border-left: 2px solid rgba(255, 255, 255, 0.7);
+  border-top-left-radius: 2px;
+}
+
 /* Chat Header */
 .chat-header {
   display: flex;
