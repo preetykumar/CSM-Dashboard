@@ -164,8 +164,8 @@ function loadKantataConfig() {
 
 function loadAnthropicConfig() {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
-  const maxTokens = parseInt(process.env.AGENT_MAX_TOKENS || "4096", 10);
+  const model = process.env.ANTHROPIC_MODEL || "claude-opus-5";
+  const maxTokens = parseInt(process.env.AGENT_MAX_TOKENS || "8192", 10);
 
   if (!apiKey) {
     console.warn("Anthropic API key not configured. AI Agent features will be disabled.");

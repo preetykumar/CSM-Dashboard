@@ -37,6 +37,27 @@ interface ChatMessage {
   content: string;
 }
 
+// Anthropic list pricing, USD per 1M tokens. cacheRead = 0.1x input,
+// cacheWrite5m = 1.25x input (5-minute ephemeral cache). Update if Anthropic
+// changes pricing. (Sonnet 5 intro pricing $2/$10 runs through 2026-08-31;
+// the standard $3/$15 is used here so cost isn't understated afterward.)
+const MODEL_PRICING: Record<
+  string,
+  { input: number; output: number; cacheRead: number; cacheWrite5m: number }
+> = {
+  "claude-opus-5": { input: 5, output: 25, cacheRead: 0.5, cacheWrite5m: 6.25 },
+  "claude-sonnet-5": { input: 3, output: 15, cacheRead: 0.3, cacheWrite5m: 3.75 },
+};
+const DEFAULT_PRICING = MODEL_PRICING["claude-opus-5"];
+
+interface UsageTotals {
+  requests: number;
+  inputTokens: number; // uncached input billed at full rate
+  outputTokens: number;
+  cacheReadTokens: number; // billed at ~0.1x input
+  cacheCreationTokens: number; // billed at ~1.25x input (5m TTL)
+}
+
 export class AgentService {
   private anthropic: Anthropic;
   private db: IDatabaseService;
@@ -45,6 +66,16 @@ export class AgentService {
   private apiBaseUrl: string;
   private model: string;
   private maxTokens: number;
+
+  // Cumulative token usage for cost instrumentation (see getUsageStats()).
+  private usage: UsageTotals = {
+    requests: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+  };
+  private usageSince = new Date().toISOString();
 
   constructor(
     db: IDatabaseService,
@@ -62,8 +93,12 @@ export class AgentService {
     this.zendesk = zendesk;
     this.salesforce = salesforce || null;
     this.apiBaseUrl = apiBaseUrl || "http://localhost:3001";
-    this.model = config.model || "claude-sonnet-4-20250514";
-    this.maxTokens = config.maxTokens || 4096;
+    // claude-sonnet-4-20250514 (Claude Sonnet 4) retired 2026-06-15 → 404.
+    // Now on claude-opus-5 for stronger reasoning over the SF/Zendesk/Amplitude
+    // data. Opus 5 runs adaptive thinking by default, which shares the
+    // max_tokens budget — hence the larger default.
+    this.model = config.model || "claude-opus-5";
+    this.maxTokens = config.maxTokens || 8192;
   }
 
   // System prompt for the CSM Agent
@@ -917,13 +952,26 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
     const callClaude = async (msgs: Anthropic.MessageParam[]) => {
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          return await this.anthropic.messages.create({
+          const resp = await this.anthropic.messages.create({
             model: this.model,
             max_tokens: this.maxTokens,
-            system: this.getSystemPrompt(context),
+            // Cache the system prompt + tool definitions. Render order is
+            // tools → system → messages, so a breakpoint on the system block
+            // caches BOTH tools and system. This prefix is re-sent on every
+            // iteration of the tool-use loop below; caching makes iterations
+            // 2+ read it at ~0.1x input price instead of full price.
+            system: [
+              {
+                type: "text",
+                text: this.getSystemPrompt(context),
+                cache_control: { type: "ephemeral" },
+              },
+            ],
             tools: this.getTools() as Anthropic.Tool[],
             messages: msgs,
           });
+          this.recordUsage(resp.usage);
+          return resp;
         } catch (err: any) {
           const status = err?.status || err?.error?.status;
           if ((status === 429 || status === 529) && attempt < 2) {
@@ -1033,5 +1081,60 @@ If the user asks about "usage" or "analytics", use the product usage tools to fe
   // Create a new conversation ID
   createConversationId(): string {
     return uuidv4();
+  }
+
+  // ── Cost instrumentation ───────────────────────────────────────────────
+  // Accumulate token usage from each Anthropic response (one chat can make
+  // several calls through the tool-use loop).
+  private recordUsage(u: Anthropic.Usage): void {
+    this.usage.requests += 1;
+    this.usage.inputTokens += u.input_tokens || 0;
+    this.usage.outputTokens += u.output_tokens || 0;
+    this.usage.cacheReadTokens += u.cache_read_input_tokens || 0;
+    this.usage.cacheCreationTokens += u.cache_creation_input_tokens || 0;
+  }
+
+  // Cumulative usage + computed cost since the counters were last reset.
+  // Exposed via GET /api/agent/usage.
+  getUsageStats() {
+    const p = MODEL_PRICING[this.model] || DEFAULT_PRICING;
+    const u = this.usage;
+    const cost = {
+      input: (u.inputTokens * p.input) / 1e6,
+      output: (u.outputTokens * p.output) / 1e6,
+      cacheRead: (u.cacheReadTokens * p.cacheRead) / 1e6,
+      cacheWrite: (u.cacheCreationTokens * p.cacheWrite5m) / 1e6,
+    };
+    const total = cost.input + cost.output + cost.cacheRead + cost.cacheWrite;
+    const round = (n: number) => Math.round(n * 1e6) / 1e6;
+    return {
+      model: this.model,
+      since: this.usageSince,
+      requests: u.requests,
+      tokens: { ...u },
+      pricingPerMTokUsd: p,
+      costUsd: {
+        input: round(cost.input),
+        output: round(cost.output),
+        cacheRead: round(cost.cacheRead),
+        cacheWrite: round(cost.cacheWrite),
+        total: round(total),
+      },
+      // What the cache-read tokens WOULD have cost at the full input rate,
+      // minus what they actually cost — i.e. dollars saved by prompt caching.
+      cacheSavingsUsd: round((u.cacheReadTokens * (p.input - p.cacheRead)) / 1e6),
+      avgCostPerRequestUsd: u.requests ? round(total / u.requests) : 0,
+    };
+  }
+
+  resetUsage(): void {
+    this.usage = {
+      requests: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+    };
+    this.usageSince = new Date().toISOString();
   }
 }

@@ -52,6 +52,17 @@ export function createAgentRoutes(agentService: AgentService): Router {
     }
   });
 
+  // GET /api/agent/usage - Cumulative token usage + cost for the chat agent
+  router.get("/usage", (_req: Request, res: Response) => {
+    res.json(agentService.getUsageStats());
+  });
+
+  // POST /api/agent/usage/reset - Reset the usage counters (start a new window)
+  router.post("/usage/reset", (_req: Request, res: Response) => {
+    agentService.resetUsage();
+    res.json({ success: true, ...agentService.getUsageStats() });
+  });
+
   // GET /api/agent/conversations - List user's conversations
   router.get("/conversations", async (req: Request, res: Response) => {
     try {
