@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { AuthUser, getAuthStatus, getAuthConfig, logout as logoutApi, getLoginUrl } from "../services/auth";
+import { resetResolvedRoleCache } from "../hooks/useResolvedRole";
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -49,6 +50,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     await logoutApi();
+    // Drop any cached role identity so a different account signing in on this
+    // browser never inherits the previous user's role.
+    resetResolvedRoleCache();
+    localStorage.removeItem("home_role");
     setAuthenticated(false);
     setUser(null);
     setIsAdmin(false);

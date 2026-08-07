@@ -33,6 +33,52 @@ export function toPortfolioRole(role: UserRole | null): Role {
   return role ? USER_ROLE_TO_PORTFOLIO[role] ?? "csm" : "csm";
 }
 
+// ── Session-level role cache ────────────────────────────────────────────────
+// The saved role is resolved ONCE per session and shared by every consumer.
+// Without this, each of Home / Customers / Portfolio re-fetched preferences on
+// mount, and because the portfolio fetch is gated on that result it added a
+// full round trip in front of the (expensive) portfolio call on every single
+// navigation. `undefined` = not resolved yet; `null` = resolved, none saved.
+let cachedRole: UserRole | null | undefined = undefined;
+let inflight: Promise<UserRole | null> | null = null;
+
+/** Resolve (and de-dupe) the saved role. Concurrent callers share one request. */
+function resolveRoleOnce(): Promise<UserRole | null> {
+  if (inflight) return inflight;
+
+  const fromLegacyStore = (): UserRole | null => {
+    const saved = localStorage.getItem("home_role") as UserRole | null;
+    if (saved) {
+      // Migrate the legacy local choice into the server store so it follows the
+      // user across devices and survives a cache clear.
+      saveUserPreferences({ role: saved }).catch(() => {});
+    }
+    return saved;
+  };
+
+  inflight = fetchUserPreferences()
+    .then((prefs) => {
+      if (prefs.role) {
+        localStorage.setItem("home_role", prefs.role);
+        return prefs.role as UserRole;
+      }
+      return fromLegacyStore();
+    })
+    .catch(() => fromLegacyStore())
+    .then((role) => {
+      cachedRole = role;
+      return role;
+    });
+
+  return inflight;
+}
+
+/** Reset the session cache (call on logout / role change by another surface). */
+export function resetResolvedRoleCache(): void {
+  cachedRole = undefined;
+  inflight = null;
+}
+
 export interface ResolvedRole {
   /** True until the saved role has been resolved. */
   loading: boolean;
@@ -55,78 +101,61 @@ export interface ResolvedRole {
 
 export function useResolvedRole(): ResolvedRole {
   const { user, isAdmin, authenticated, authEnabled } = useAuth();
-  const [userRole, setUserRole] = useState<UserRole | null>(null);
-  const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
-  const [loading, setLoading] = useState(true);
+
+  // Seed synchronously from the session cache so a second mount (i.e. any
+  // navigation between Home / Customers / Portfolio) is already resolved and
+  // fires the portfolio fetch immediately, with no preferences round trip.
+  const [userRole, setUserRole] = useState<UserRole | null>(cachedRole ?? null);
+  const [resolved, setResolved] = useState(cachedRole !== undefined);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
-
     // Not signed in yet, or an admin → nothing to resolve. Admins bypass role
     // selection entirely (they preview roles via their own controls).
-    if (authEnabled && !authenticated) {
-      setLoading(false);
+    if ((authEnabled && !authenticated) || isAdmin) {
+      setResolved(true);
       return;
     }
-    if (isAdmin) {
-      setLoading(false);
+    if (cachedRole !== undefined) {
+      setUserRole(cachedRole);
+      setResolved(true);
       return;
     }
 
-    const legacy = () => {
-      const saved = localStorage.getItem("home_role") as UserRole | null;
+    let cancelled = false;
+    resolveRoleOnce().then((role) => {
       if (cancelled) return;
-      if (saved) {
-        setUserRole(saved);
-        // Migrate the legacy local choice into the server store so it follows
-        // the user across devices and survives a cache clear.
-        saveUserPreferences({ role: saved }).catch(() => {});
-      } else {
-        setNeedsRoleSelection(true);
-      }
-    };
-
-    fetchUserPreferences()
-      .then((prefs) => {
-        if (cancelled) return;
-        if (prefs.role) {
-          setUserRole(prefs.role as UserRole);
-          localStorage.setItem("home_role", prefs.role);
-        } else {
-          legacy();
-        }
-      })
-      .catch(() => {
-        if (!cancelled) legacy();
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
+      setUserRole(role);
+      setResolved(true);
+    });
     return () => {
       cancelled = true;
     };
   }, [authenticated, authEnabled, isAdmin]);
 
   const handleRoleSelected = (selectedRole: UserRole) => {
-    // RoleSelectionModal already POSTs to /api/user/preferences; mirror locally.
-    setUserRole(selectedRole);
-    setNeedsRoleSelection(false);
+    // RoleSelectionModal already POSTs to /api/user/preferences; mirror locally
+    // and into the session cache so other views pick it up without a refetch.
+    cachedRole = selectedRole;
     localStorage.setItem("home_role", selectedRole);
+    setUserRole(selectedRole);
+    setPickerOpen(false);
   };
 
   const firstName =
     user?.name?.trim().split(/\s+/)[0] || user?.email?.split("@")[0] || "there";
 
   return {
-    loading,
+    loading: !resolved,
     isAdmin,
     userEmail: isAdmin ? "" : (user?.email ?? ""),
     userName: isAdmin ? "admin" : firstName,
     userRole,
     portfolioRole: toPortfolioRole(userRole),
-    needsRoleSelection,
-    openRoleSelection: () => setNeedsRoleSelection(true),
+    // Prompt when a non-admin has resolved with no saved role, or explicitly
+    // reopened the picker.
+    needsRoleSelection: !isAdmin && resolved && (pickerOpen || !userRole),
+    openRoleSelection: () => setPickerOpen(true),
     handleRoleSelected,
   };
 }
